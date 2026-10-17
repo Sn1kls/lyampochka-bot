@@ -82,3 +82,10 @@ async def test_register_reactivates_the_own_target(
 
     assert await subscriptions.register("telegram", "1", "telegram", "chat-1") == alice
     assert len(await repository.delivery_targets(alice)) == 1
+
+
+async def test_find_user_is_read_only_and_does_not_register(subscriptions: Subscriptions) -> None:
+    assert await subscriptions.find_user("telegram", "1") is None
+    alice = await subscriptions.register("telegram", "1", "telegram", "1")
+    assert await subscriptions.find_user("telegram", "1") == alice
+    assert await subscriptions.find_user("telegram", "2") is None

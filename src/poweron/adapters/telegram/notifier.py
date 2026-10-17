@@ -4,7 +4,6 @@ from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
-from aiogram.types import LinkPreviewOptions
 
 from poweron.core.domain.models import MessageKind
 from poweron.core.ports import DeliveryTargetGone
@@ -27,11 +26,7 @@ class TelegramNotifier:
         text = render_update(payload)
         await self._wait_for_slot()
         try:
-            await self._bot.send_message(
-                int(address),
-                text,
-                link_preview_options=LinkPreviewOptions(is_disabled=True),
-            )
+            await self._bot.send_message(int(address), text)
         except TelegramForbiddenError as error:
             raise DeliveryTargetGone(address) from error
         except TelegramBadRequest as error:

@@ -15,6 +15,9 @@ class Subscriptions:
     async def register(self, provider: str, external_id: str, channel: str, address: str) -> int:
         return await self._repository.register_user(provider, external_id, channel, address)
 
+    async def find_user(self, provider: str, external_id: str) -> int | None:
+        return await self._repository.find_user(provider, external_id)
+
     async def add(
         self,
         user_id: int,

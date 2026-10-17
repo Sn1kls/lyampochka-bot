@@ -12,6 +12,7 @@ from poweron.core.domain.models import (
     ScheduleVersion,
     SlotState,
     Street,
+    Subscription,
 )
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.subscriptions import Subscriptions
@@ -40,16 +41,10 @@ async def save(repository: SqlRepository, schedule: DaySchedule) -> None:
 
 
 @pytest.fixture
-async def user_id(repository: SqlRepository) -> int:
-    return await Subscriptions(repository).register("telegram", "1", "telegram", "1")
-
-
-@pytest.fixture
-async def subscription_id(repository: SqlRepository, user_id: int) -> int:
-    subscription = await Subscriptions(repository).add(
-        user_id, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), NOW
-    )
-    return subscription.id
+async def subscription(repository: SqlRepository) -> Subscription:
+    subscriptions = Subscriptions(repository)
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    return await subscriptions.add(user_id, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), NOW)
 
 
 @pytest.fixture
@@ -58,10 +53,10 @@ def schedules(repository: SqlRepository) -> Schedules:
 
 
 async def test_day_view_carries_intervals_and_timestamps(
-    repository: SqlRepository, schedules: Schedules, user_id: int, subscription_id: int
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
 ) -> None:
     await save(repository, day_schedule(outages={"10:00": "1", "10:30": "1"}))
-    view = await schedules.day(user_id, subscription_id, TODAY)
+    view = await schedules.day(subscription, TODAY)
     assert view is not None
     assert view.day == TODAY
     assert view.published_at == NOW
@@ -71,60 +66,74 @@ async def test_day_view_carries_intervals_and_timestamps(
 
 
 async def test_day_without_a_version_is_none(
-    schedules: Schedules, user_id: int, subscription_id: int
+    schedules: Schedules, subscription: Subscription
 ) -> None:
-    assert await schedules.day(user_id, subscription_id, TOMORROW) is None
-
-
-async def test_other_users_subscription_is_invisible(
-    repository: SqlRepository, schedules: Schedules, subscription_id: int
-) -> None:
-    await save(repository, day_schedule(outages={"20:00": "1"}))
-    stranger = await Subscriptions(repository).register("telegram", "2", "telegram", "2")
-    assert await schedules.day(stranger, subscription_id, TODAY) is None
-    assert await schedules.next_event(stranger, subscription_id, kyiv(TODAY, 18)) is None
+    assert await schedules.day(subscription, TOMORROW) is None
 
 
 async def test_next_event_within_today(
-    repository: SqlRepository, schedules: Schedules, user_id: int, subscription_id: int
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
 ) -> None:
     await save(repository, day_schedule(outages={"20:00": "1", "20:30": "1"}))
-    assert await schedules.next_event(user_id, subscription_id, kyiv(TODAY, 18)) == NextEvent(
+    assert await schedules.next_event(subscription, kyiv(TODAY, 18)) == NextEvent(
         kyiv(TODAY, 20), power_on=False
     )
-    assert await schedules.next_event(user_id, subscription_id, kyiv(TODAY, 20, 15)) == NextEvent(
+    assert await schedules.next_event(subscription, kyiv(TODAY, 20, 15)) == NextEvent(
         kyiv(TODAY, 21), power_on=True
     )
 
 
 async def test_next_event_is_strictly_after_now(
-    repository: SqlRepository, schedules: Schedules, user_id: int, subscription_id: int
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
 ) -> None:
     await save(repository, day_schedule(outages={"20:00": "1"}))
-    event = await schedules.next_event(user_id, subscription_id, kyiv(TODAY, 20))
+    event = await schedules.next_event(subscription, kyiv(TODAY, 20))
     assert event == NextEvent(kyiv(TODAY, 20, 30), power_on=True)
 
 
 async def test_next_event_continues_across_midnight(
-    repository: SqlRepository, schedules: Schedules, user_id: int, subscription_id: int
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
 ) -> None:
     await save(repository, day_schedule(outages={"23:00": "1", "23:30": "1"}))
     await save(repository, day_schedule(TOMORROW, outages={"00:00": "1", "00:30": "1"}))
-    event = await schedules.next_event(user_id, subscription_id, kyiv(TODAY, 23, 10))
+    event = await schedules.next_event(subscription, kyiv(TODAY, 23, 10))
     assert event == NextEvent(kyiv(TOMORROW, 1), power_on=True)
 
 
 async def test_next_event_ignores_changes_between_outage_states(
-    repository: SqlRepository, schedules: Schedules, user_id: int, subscription_id: int
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
 ) -> None:
     await save(repository, day_schedule(outages={"20:00": "1", "20:30": "10", "21:00": "1"}))
-    event = await schedules.next_event(user_id, subscription_id, kyiv(TODAY, 20, 10))
+    event = await schedules.next_event(subscription, kyiv(TODAY, 20, 10))
     assert event == NextEvent(kyiv(TODAY, 21, 30), power_on=True)
 
 
-async def test_next_event_is_none_without_data_or_flip(
-    repository: SqlRepository, schedules: Schedules, user_id: int, subscription_id: int
+async def test_next_event_warns_from_the_start_of_switching(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
 ) -> None:
-    assert await schedules.next_event(user_id, subscription_id, NOW) is None
+    await save(repository, day_schedule(outages={"20:00": "10", "20:30": "1"}))
+    event = await schedules.next_event(subscription, kyiv(TODAY, 18))
+    assert event == NextEvent(kyiv(TODAY, 20), power_on=False)
+
+
+async def test_next_event_is_none_without_data_or_flip(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    assert await schedules.next_event(subscription, NOW) is None
     await save(repository, day_schedule())
-    assert await schedules.next_event(user_id, subscription_id, NOW) is None
+    assert await schedules.next_event(subscription, NOW) is None
+
+
+async def test_next_event_uses_tomorrow_when_today_is_missing(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    await save(repository, day_schedule(TOMORROW, outages={"00:00": "1", "00:30": "1"}))
+    event = await schedules.next_event(subscription, kyiv(TODAY, 22))
+    assert event == NextEvent(kyiv(TOMORROW, 0), power_on=False)
+
+
+async def test_unknown_slot_inside_power_is_not_an_event(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    await save(repository, day_schedule(outages={"20:00": "?"}))
+    assert await schedules.next_event(subscription, kyiv(TODAY, 18)) is None

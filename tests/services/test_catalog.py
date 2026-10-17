@@ -16,6 +16,7 @@ CITIES = [
     City(id=4, name="Бережани", otg_name=None),
     TERNOPIL,
     City(id=5, name="Нова Тернопільська", otg_name=None),
+    City(id=6, name="Єнакієве", otg_name=None),
 ]
 STREETS = [
     Street(id=1, name="вул. Садова"),
@@ -84,6 +85,12 @@ async def test_apostrophes_are_unified(catalog: Catalog) -> None:
         assert [street.id for street in await catalog.find_streets(1, query, NOW)] == [4]
 
 
+async def test_ye_and_latin_lookalikes_are_unified(catalog: Catalog) -> None:
+    for query in ("єнакієве", "енакієве", "ёнакієве", "Eнaкiєвe"):
+        assert [city.id for city in await catalog.find_cities(query, NOW)] == [6]
+    assert [street.id for street in await catalog.find_streets(1, "Лiсова", NOW)] == [5]
+
+
 async def test_blank_query_finds_nothing(catalog: Catalog) -> None:
     assert await catalog.find_cities("   ", NOW) == []
     assert await catalog.find_cities("", NOW) == []
@@ -119,6 +126,38 @@ async def test_stale_cache_is_served_when_the_source_fails(
     assert TERNOPIL in await catalog.find_cities("тер", NOW + timedelta(days=3))
 
 
+async def test_failed_refresh_is_not_retried_for_five_minutes(
+    catalog: Catalog, source: FakeCatalogSource
+) -> None:
+    await catalog.find_cities("тер", NOW)
+    source.failing = True
+    stale = NOW + timedelta(days=3)
+    await catalog.find_cities("тер", stale)
+    await catalog.find_cities("тер", stale + timedelta(minutes=4))
+    assert source.city_calls == 2
+    await catalog.find_cities("тер", stale + timedelta(minutes=6))
+    assert source.city_calls == 3
+
+
+async def test_recovered_source_refreshes_the_cache(
+    catalog: Catalog, source: FakeCatalogSource
+) -> None:
+    await catalog.find_cities("тер", NOW)
+    source.failing = True
+    stale = NOW + timedelta(days=3)
+    await catalog.find_cities("тер", stale)
+    source.failing = False
+    await catalog.find_cities("тер", stale + timedelta(minutes=6))
+    await catalog.find_cities("тер", stale + timedelta(minutes=7))
+    assert source.city_calls == 3
+
+
+async def test_storing_a_key_twice_keeps_the_latest_value(repository: SqlRepository) -> None:
+    await repository.store_catalog("cities", [{"id": 1}], NOW)
+    await repository.store_catalog("cities", [{"id": 2}], NOW + timedelta(hours=1))
+    assert await repository.cached_catalog("cities") == ([{"id": 2}], NOW + timedelta(hours=1))
+
+
 async def test_source_error_without_cache_is_raised(
     catalog: Catalog, source: FakeCatalogSource
 ) -> None:
@@ -129,7 +168,15 @@ async def test_source_error_without_cache_is_raised(
 
 @pytest.mark.parametrize(
     ("text", "expected"),
-    [("1а", 2), (" 1А ", 2), ("буд. 23", 3), ("БУД 1", 1), ("2", None), ("", None)],
+    [
+        ("1а", 2),
+        (" 1А ", 2),
+        ("1a", 2),
+        ("буд. 23", 3),
+        ("БУД 1", 1),
+        ("2", None),
+        ("", None),
+    ],
 )
 def test_find_building_matches_the_normalised_name_exactly(text: str, expected: int | None) -> None:
     found = find_building(BUILDINGS, text)

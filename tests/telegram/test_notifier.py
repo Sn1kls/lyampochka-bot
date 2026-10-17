@@ -1,6 +1,5 @@
 import asyncio
 from itertools import pairwise
-from typing import Any
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramServerError
@@ -23,29 +22,28 @@ METHOD = SendMessage(chat_id=1, text="x")
 class FakeBot:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
-        self.sent: list[tuple[int, str, dict[str, Any]]] = []
+        self.sent: list[tuple[int, str]] = []
         self.send_times: list[float] = []
 
-    async def send_message(self, chat_id: int, text: str, **options: Any) -> None:
+    async def send_message(self, chat_id: int, text: str) -> None:
         self.send_times.append(asyncio.get_running_loop().time())
         if self.error is not None:
             raise self.error
-        self.sent.append((chat_id, text, options))
+        self.sent.append((chat_id, text))
 
 
 def notifier_with(bot: FakeBot) -> TelegramNotifier:
     return TelegramNotifier(bot)  # type: ignore[arg-type]
 
 
-async def test_sends_rendered_update_without_link_preview() -> None:
+async def test_sends_rendered_update() -> None:
     bot = FakeBot()
 
     await notifier_with(bot).send("42", "schedule_updated", PAYLOAD)
 
-    chat_id, text, options = bot.sent[0]
+    chat_id, text = bot.sent[0]
     assert chat_id == 42
     assert text.startswith("💡 Графік для <b>Дім</b> оновлено")
-    assert options["link_preview_options"].is_disabled is True
 
 
 @pytest.mark.parametrize(

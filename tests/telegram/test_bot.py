@@ -6,4 +6,6 @@ def test_dispatcher_carries_services_and_bot_defaults_to_html() -> None:
     dispatcher = build_dispatcher(**services)  # type: ignore[arg-type]
 
     assert dispatcher.workflow_data == services
-    assert create_bot("123:abc").default.parse_mode == "HTML"
+    bot = create_bot("123:abc")
+    assert bot.default.parse_mode == "HTML"
+    assert bot.default.link_preview_is_disabled is True

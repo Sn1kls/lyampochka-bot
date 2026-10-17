@@ -55,6 +55,8 @@ class Repository(Protocol):
         self, provider: str, external_id: str, channel: str, address: str
     ) -> int: ...
 
+    async def find_user(self, provider: str, external_id: str) -> int | None: ...
+
     async def add_subscription(
         self,
         user_id: int,

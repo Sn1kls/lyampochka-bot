@@ -1,7 +1,8 @@
 from collections.abc import Sequence
 
 from aiogram.filters.callback_data import CallbackData
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from poweron.core.domain.models import Subscription
 
@@ -13,11 +14,13 @@ PAGE_SIZE = 8
 class Page(CallbackData, prefix="pg"):
     kind: str
     number: int
+    generation: int
 
 
 class Pick(CallbackData, prefix="pk"):
     kind: str
     index: int
+    generation: int
 
 
 class DayChoice(CallbackData, prefix="day"):
@@ -35,71 +38,59 @@ class Decision(CallbackData, prefix="ok"):
     accepted: bool
 
 
-def choice_keyboard(kind: str, labels: Sequence[str], page: int = 0) -> InlineKeyboardMarkup:
+def choice_keyboard(
+    kind: str, labels: Sequence[str], generation: int, page: int = 0
+) -> InlineKeyboardMarkup:
+    """`generation` ties the buttons to one search, so buttons of an older list are detectable."""
     start = page * PAGE_SIZE
-    rows = [
-        [InlineKeyboardButton(text=label, callback_data=Pick(kind=kind, index=index).pack())]
-        for index, label in enumerate(labels[start : start + PAGE_SIZE], start)
-    ]
-    navigation = []
+    builder = InlineKeyboardBuilder()
+    for index, label in enumerate(labels[start : start + PAGE_SIZE], start):
+        builder.button(
+            text=label, callback_data=Pick(kind=kind, index=index, generation=generation)
+        )
+    builder.adjust(1)
+    navigation = InlineKeyboardBuilder()
     if page > 0:
-        navigation.append(_page_button("◀️", kind, page - 1))
+        navigation.button(
+            text=texts.BUTTON_PREVIOUS,
+            callback_data=Page(kind=kind, number=page - 1, generation=generation),
+        )
     if start + PAGE_SIZE < len(labels):
-        navigation.append(_page_button("▶️", kind, page + 1))
-    if navigation:
-        rows.append(navigation)
-    rows.append([_decision_button(texts.BUTTON_CANCEL, "add", accepted=False)])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+        navigation.button(
+            text=texts.BUTTON_NEXT,
+            callback_data=Page(kind=kind, number=page + 1, generation=generation),
+        )
+    cancel = InlineKeyboardBuilder()
+    cancel.button(text=texts.BUTTON_CANCEL, callback_data=Decision(action="add", accepted=False))
+    builder.attach(navigation)
+    builder.attach(cancel)
+    return builder.as_markup()
 
 
 def day_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=text,
-                    callback_data=DayChoice(subscription_id=subscription_id, offset=offset).pack(),
-                )
-                for text, offset in ((texts.TODAY, 0), (texts.TOMORROW, 1))
-            ]
-        ]
-    )
+    builder = InlineKeyboardBuilder()
+    for text, offset in ((texts.TODAY, 0), (texts.TOMORROW, 1)):
+        builder.button(
+            text=text, callback_data=DayChoice(subscription_id=subscription_id, offset=offset)
+        )
+    return builder.as_markup()
 
 
 def subscription_keyboard(
     action: str, subscriptions: Sequence[Subscription]
 ) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=subscription.label,
-                    callback_data=SubscriptionChoice(
-                        action=action, subscription_id=subscription.id
-                    ).pack(),
-                )
-            ]
-            for subscription in subscriptions
-        ]
-    )
+    builder = InlineKeyboardBuilder()
+    for subscription in subscriptions:
+        builder.button(
+            text=subscription.label,
+            callback_data=SubscriptionChoice(action=action, subscription_id=subscription.id),
+        )
+    builder.adjust(1)
+    return builder.as_markup()
 
 
 def confirm_keyboard(action: str, accept_text: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                _decision_button(accept_text, action, accepted=True),
-                _decision_button(texts.BUTTON_CANCEL, action, accepted=False),
-            ]
-        ]
-    )
-
-
-def _page_button(text: str, kind: str, number: int) -> InlineKeyboardButton:
-    return InlineKeyboardButton(text=text, callback_data=Page(kind=kind, number=number).pack())
-
-
-def _decision_button(text: str, action: str, accepted: bool) -> InlineKeyboardButton:
-    return InlineKeyboardButton(
-        text=text, callback_data=Decision(action=action, accepted=accepted).pack()
-    )
+    builder = InlineKeyboardBuilder()
+    builder.button(text=accept_text, callback_data=Decision(action=action, accepted=True))
+    builder.button(text=texts.BUTTON_CANCEL, callback_data=Decision(action=action, accepted=False))
+    return builder.as_markup()

@@ -11,7 +11,10 @@ from .handlers import router
 
 
 def create_bot(token: str) -> Bot:
-    return Bot(token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    return Bot(
+        token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview_is_disabled=True),
+    )
 
 
 def build_dispatcher(

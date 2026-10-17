@@ -1,8 +1,8 @@
-import contextlib
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from html import escape
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.enums import ChatType
@@ -10,23 +10,31 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, ExceptionTypeFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardMarkup, Message, User
 
 from poweron.core.domain.models import KYIV, Building, City, Street, Subscription
 from poweron.core.ports import SourceError
 from poweron.core.services.catalog import Catalog, find_building
 from poweron.core.services.schedules import Schedules
-from poweron.core.services.subscriptions import NoScheduleForAddress, Subscriptions
+from poweron.core.services.subscriptions import Subscriptions
 
 from . import keyboards, texts
-from .middleware import RegisterUser
-from .render import render_day, render_next, subqueue_label
+from .middleware import KnownUser
+from .render import (
+    render_confirm,
+    render_day,
+    render_list,
+    render_next,
+    render_no_schedule_for_address,
+)
 
 router = Router(name="telegram")
 router.message.filter(F.chat.type == ChatType.PRIVATE)
 router.callback_query.filter(F.message.chat.type == ChatType.PRIVATE)
-router.message.outer_middleware(RegisterUser())
-router.callback_query.outer_middleware(RegisterUser())
+router.message.outer_middleware(KnownUser())
+router.callback_query.outer_middleware(KnownUser())
+
+NOT_MODIFIED = "message is not modified"
 
 
 class AddFlow(StatesGroup):
@@ -47,17 +55,20 @@ async def _respond(
         await event.answer(text, reply_markup=markup)
         return
     if isinstance(event.message, Message):
-        # editing to identical text (same button pressed twice) is rejected by Telegram
-        with contextlib.suppress(TelegramBadRequest):
+        try:
             await event.message.edit_text(text, reply_markup=markup)
+        except TelegramBadRequest as error:
+            # the same button pressed twice edits to identical text
+            if NOT_MODIFIED not in error.message:
+                raise
     await event.answer()
 
 
-def _address(subscription: Subscription) -> str:
-    return escape(
-        f"{subscription.city_name}, {subscription.street_name}, "
-        f"{subscription.address.building_name}"
-    )
+async def _reset(state: FSMContext) -> None:
+    """Leaves the wizard but keeps its search counter, so buttons of a finished wizard stay stale."""
+    generation = (await state.get_data()).get("generation", 0)
+    await state.set_data({"generation": generation})
+    await state.set_state(None)
 
 
 @router.errors(ExceptionTypeFilter(SourceError))
@@ -70,8 +81,13 @@ async def on_source_error(event: ErrorEvent) -> None:
 
 
 @router.message(Command("start"))
-async def start(message: Message, state: FSMContext) -> None:
-    await state.clear()
+async def start(
+    message: Message, event_from_user: User, state: FSMContext, subscriptions: Subscriptions
+) -> None:
+    await _reset(state)
+    await subscriptions.register(
+        "telegram", str(event_from_user.id), "telegram", str(message.chat.id)
+    )
     await message.answer(texts.GREETING)
 
 
@@ -83,51 +99,32 @@ async def help_(message: Message) -> None:
 @router.message(Command("list"))
 async def list_(message: Message, user_id: int, subscriptions: Subscriptions) -> None:
     items = await subscriptions.of_user(user_id)
-    if not items:
-        await message.answer(texts.NO_SUBSCRIPTIONS)
-        return
-    lines = [
-        texts.LIST_ITEM.format(
-            label=escape(item.label),
-            address=_address(item),
-            subqueue=subqueue_label(item.cherg_gpv),
-        )
-        for item in items
-    ]
-    await message.answer("\n".join([texts.LIST_HEADER, *lines]))
+    await message.answer(render_list(items) if items else texts.NO_SUBSCRIPTIONS)
 
 
 @router.message(Command("schedule"))
 async def schedule(message: Message, user_id: int, subscriptions: Subscriptions) -> None:
-    items = await subscriptions.of_user(user_id)
-    if not items:
-        await message.answer(texts.NO_SUBSCRIPTIONS)
-    elif len(items) == 1:
-        await message.answer(texts.CHOOSE_DAY, reply_markup=keyboards.day_keyboard(items[0].id))
-    else:
-        await _ask_subscription(message, "schedule", items)
+    async def ask_day(subscription: Subscription) -> None:
+        await message.answer(texts.CHOOSE_DAY, reply_markup=keyboards.day_keyboard(subscription.id))
+
+    await _choose_subscription(message, user_id, subscriptions, "schedule", ask_day)
 
 
 @router.message(Command("next"))
 async def next_(
     message: Message, user_id: int, subscriptions: Subscriptions, schedules: Schedules
 ) -> None:
-    items = await subscriptions.of_user(user_id)
-    if not items:
-        await message.answer(texts.NO_SUBSCRIPTIONS)
-    elif len(items) == 1:
-        await message.answer(await _next_text(schedules, user_id, items[0]))
-    else:
-        await _ask_subscription(message, "next", items)
+    async def answer_next(subscription: Subscription) -> None:
+        await message.answer(await _next_text(schedules, subscription))
+
+    await _choose_subscription(message, user_id, subscriptions, "next", answer_next)
 
 
 @router.message(Command("remove"))
 async def remove(message: Message, user_id: int, subscriptions: Subscriptions) -> None:
-    items = await subscriptions.of_user(user_id)
-    if items:
-        await _ask_subscription(message, "remove", items, texts.REMOVE_PROMPT)
-    else:
-        await message.answer(texts.NO_SUBSCRIPTIONS)
+    await _choose_subscription(
+        message, user_id, subscriptions, "remove", prompt=texts.REMOVE_PROMPT
+    )
 
 
 @router.message(Command("forget"))
@@ -138,19 +135,27 @@ async def forget(message: Message) -> None:
     )
 
 
-async def _ask_subscription(
+async def _choose_subscription(
     message: Message,
+    user_id: int,
+    subscriptions: Subscriptions,
     action: str,
-    items: Sequence[Subscription],
+    on_single: Callable[[Subscription], Awaitable[None]] | None = None,
     prompt: str = texts.CHOOSE_SUBSCRIPTION,
 ) -> None:
-    await message.answer(prompt, reply_markup=keyboards.subscription_keyboard(action, items))
+    """Handles none / exactly one / several addresses; `on_single` None means always ask."""
+    items = await subscriptions.of_user(user_id)
+    if not items:
+        await message.answer(texts.NO_SUBSCRIPTIONS)
+    elif len(items) == 1 and on_single is not None:
+        await on_single(items[0])
+    else:
+        await message.answer(prompt, reply_markup=keyboards.subscription_keyboard(action, items))
 
 
-async def _next_text(schedules: Schedules, user_id: int, subscription: Subscription) -> str:
+async def _next_text(schedules: Schedules, subscription: Subscription) -> str:
     now = _now()
-    event = await schedules.next_event(user_id, subscription.id, now)
-    return render_next(subscription, event, now)
+    return render_next(subscription, await schedules.next_event(subscription, now), now)
 
 
 @router.callback_query(keyboards.SubscriptionChoice.filter())
@@ -167,7 +172,7 @@ async def choose_subscription(
     elif callback_data.action == "schedule":
         await _respond(callback, texts.CHOOSE_DAY, keyboards.day_keyboard(subscription.id))
     elif callback_data.action == "next":
-        await _respond(callback, await _next_text(schedules, user_id, subscription))
+        await _respond(callback, await _next_text(schedules, subscription))
     elif callback_data.action == "remove":
         removed = await subscriptions.remove(user_id, subscription.id)
         await _respond(callback, texts.REMOVED if removed else texts.ADDRESS_GONE)
@@ -185,12 +190,12 @@ async def show_day(
     if subscription is None:
         await _respond(callback, texts.ADDRESS_GONE)
         return
-    today = datetime.now(KYIV).date()
-    day = today + timedelta(days=callback_data.offset)
-    view = await schedules.day(user_id, subscription.id, day)
+    now = _now()
+    day = now.astimezone(KYIV).date() + timedelta(days=callback_data.offset)
+    view = await schedules.day(subscription, day)
     await _respond(
         callback,
-        render_day(subscription, view, day, today),
+        render_day(subscription, view, day, now),
         keyboards.day_keyboard(subscription.id),
     )
 
@@ -205,20 +210,20 @@ async def decide_forget(
 ) -> None:
     if callback_data.accepted:
         await subscriptions.forget(user_id)
-        await state.clear()
+        await _reset(state)
     await _respond(callback, texts.FORGOTTEN if callback_data.accepted else texts.CANCELLED)
 
 
 @router.message(Command("add"))
 async def add(message: Message, state: FSMContext) -> None:
-    await state.clear()
+    await _reset(state)
     await state.set_state(AddFlow.city)
     await message.answer(texts.ASK_CITY)
 
 
 @router.callback_query(keyboards.Decision.filter((F.action == "add") & ~F.accepted))
 async def cancel_add(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
+    await _reset(state)
     await _respond(callback, texts.CANCELLED)
 
 
@@ -228,12 +233,39 @@ async def cancel_add(callback: CallbackQuery, state: FSMContext) -> None:
 async def turn_page(
     callback: CallbackQuery, callback_data: keyboards.Page, state: FSMContext
 ) -> None:
-    labels = (await state.get_data())["labels"]
+    data = await _current_data(callback, callback_data, state)
+    if data is None:
+        return
     if isinstance(callback.message, Message):
         await callback.message.edit_reply_markup(
-            reply_markup=keyboards.choice_keyboard(callback_data.kind, labels, callback_data.number)
+            reply_markup=keyboards.choice_keyboard(
+                callback_data.kind, data["labels"], data["generation"], callback_data.number
+            )
         )
     await callback.answer()
+
+
+async def _current_data(
+    callback: CallbackQuery, callback_data: keyboards.Page | keyboards.Pick, state: FSMContext
+) -> dict[str, Any] | None:
+    """The wizard data, unless the button belongs to an older search (then the user is told)."""
+    data = await state.get_data()
+    if callback_data.generation != data.get("generation"):
+        await callback.answer(texts.STALE_BUTTON, show_alert=True)
+        return None
+    return data
+
+
+async def _picked_option(
+    callback: CallbackQuery, callback_data: keyboards.Pick, state: FSMContext
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    data = await _current_data(callback, callback_data, state)
+    if data is None:
+        return None
+    if not 0 <= callback_data.index < len(data["options"]):
+        await callback.answer(texts.STALE_BUTTON, show_alert=True)
+        return None
+    return data, data["options"][callback_data.index]
 
 
 async def _offer(
@@ -244,8 +276,11 @@ async def _offer(
     prompt: str,
 ) -> None:
     labels = [_choice_label(item) for item in items]
-    await state.update_data(options=[asdict(item) for item in items], labels=labels)
-    await _respond(event, prompt, keyboards.choice_keyboard(kind, labels))
+    generation = (await state.get_data()).get("generation", 0) + 1
+    await state.update_data(
+        options=[asdict(item) for item in items], labels=labels, generation=generation
+    )
+    await _respond(event, prompt, keyboards.choice_keyboard(kind, labels, generation))
 
 
 def _choice_label(item: City | Street | Building) -> str:
@@ -267,7 +302,10 @@ async def search_city(message: Message, state: FSMContext, catalog: Catalog) -> 
 async def pick_city(
     callback: CallbackQuery, callback_data: keyboards.Pick, state: FSMContext
 ) -> None:
-    city = (await state.get_data())["options"][callback_data.index]
+    picked = await _picked_option(callback, callback_data, state)
+    if picked is None:
+        return
+    _, city = picked
     await state.update_data(city=city)
     await state.set_state(AddFlow.street)
     await _respond(callback, texts.ASK_STREET.format(city=escape(city["name"])))
@@ -290,8 +328,10 @@ async def pick_street(
     state: FSMContext,
     catalog: Catalog,
 ) -> None:
-    data = await state.get_data()
-    street = data["options"][callback_data.index]
+    picked = await _picked_option(callback, callback_data, state)
+    if picked is None:
+        return
+    data, street = picked
     buildings = await catalog.buildings(data["city"]["id"], street["id"], _now())
     if not buildings:
         await _respond(callback, texts.NO_BUILDINGS)
@@ -305,8 +345,9 @@ async def pick_street(
 async def pick_building(
     callback: CallbackQuery, callback_data: keyboards.Pick, state: FSMContext
 ) -> None:
-    raw_building = (await state.get_data())["options"][callback_data.index]
-    await _choose_building(callback, state, Building(**raw_building))
+    picked = await _picked_option(callback, callback_data, state)
+    if picked is not None:
+        await _choose_building(callback, state, Building(**picked[1]))
 
 
 @router.message(AddFlow.building, F.text)
@@ -334,20 +375,21 @@ async def _reject_address(
     event: Message | CallbackQuery, state: FSMContext, building: Building
 ) -> None:
     data = await state.get_data()
-    address = escape(f"{data['city']['name']}, {data['street']['name']}, {building.name}")
-    await state.clear()
-    await _respond(event, texts.NO_SCHEDULE_FOR_ADDRESS.format(address=address))
+    await _reset(state)
+    await _respond(
+        event,
+        render_no_schedule_for_address(data["city"]["name"], data["street"]["name"], building.name),
+    )
 
 
 async def _show_confirm(event: Message | CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
-    address = escape(
-        f"{data['city']['name']}, {data['street']['name']}, {data['building']['name']}"
-    )
-    text = texts.CONFIRM_ADDRESS.format(
-        address=address,
-        subqueue=escape(subqueue_label(data["building"]["cherg_gpv"])),
-        label=escape(data["label"]),
+    text = render_confirm(
+        data["city"]["name"],
+        data["street"]["name"],
+        data["building"]["name"],
+        data["building"]["cherg_gpv"],
+        data["label"],
     )
     await _respond(event, text, keyboards.confirm_keyboard("add", texts.BUTTON_SAVE))
 
@@ -365,18 +407,15 @@ async def save(
     callback: CallbackQuery, state: FSMContext, user_id: int, subscriptions: Subscriptions
 ) -> None:
     data = await state.get_data()
-    await state.clear()
-    city, street, building = (
+    await _reset(state)
+    await subscriptions.add(
+        user_id,
+        data["label"],
         City(**data["city"]),
         Street(**data["street"]),
         Building(**data["building"]),
+        _now(),
     )
-    try:
-        await subscriptions.add(user_id, data["label"], city, street, building, _now())
-    except NoScheduleForAddress:
-        address = escape(f"{city.name}, {street.name}, {building.name}")
-        await _respond(callback, texts.NO_SCHEDULE_FOR_ADDRESS.format(address=address))
-        return
     await _respond(callback, texts.ADDED.format(label=escape(data["label"])))
 
 

@@ -1,6 +1,13 @@
-from datetime import UTC, date, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 
-from poweron.adapters.telegram.render import render_day, render_next, render_update
+from poweron.adapters.telegram.render import (
+    render_day,
+    render_list,
+    render_next,
+    render_update,
+    subqueue_label,
+)
 from poweron.core.domain.diff import schedule_change
 from poweron.core.domain.models import (
     KYIV,
@@ -17,6 +24,7 @@ TOMORROW = date(2026, 10, 18)
 NOTE = "Графік може змінюватися впродовж дня, тож поглядай і на poweron.toe.com.ua"
 LINK = '<a href="https://poweron.toe.com.ua">poweron.toe.com.ua</a>'
 PUBLISHED = datetime(2026, 10, 17, 14, 16, 5, tzinfo=UTC)
+NOW = datetime(2026, 10, 17, 14, 20, tzinfo=UTC)
 
 SUBSCRIPTION = Subscription(
     id=1,
@@ -43,7 +51,7 @@ def fixture_slots() -> dict[str, str]:
 def test_render_day_lists_kyiv_intervals_with_total_outage() -> None:
     view = DayView(DAY, parse_slots(fixture_slots(), DAY), PUBLISHED, PUBLISHED)
 
-    assert render_day(SUBSCRIPTION, view, DAY, today=DAY) == "\n".join(
+    assert render_day(SUBSCRIPTION, view, DAY, NOW) == "\n".join(
         [
             "💡 <b>Дім &lt;&amp;&gt;</b>, сьогодні (17.10)",
             "Підчерга 4.1 · оновлено 17.10 14:16",
@@ -66,12 +74,49 @@ def test_render_day_lists_kyiv_intervals_with_total_outage() -> None:
 
 
 def test_render_day_without_tomorrow_says_it_is_not_published_yet() -> None:
-    assert render_day(SUBSCRIPTION, None, TOMORROW, today=DAY) == "\n\n".join(
+    assert render_day(SUBSCRIPTION, None, TOMORROW, NOW) == "\n\n".join(
         [
             "💡 <b>Дім &lt;&amp;&gt;</b>, завтра (18.10)",
             "Графіка на завтра ще немає — щойно з'явиться, напишу.",
             NOTE,
         ]
+    )
+
+
+def test_render_day_warns_when_the_data_was_last_checked_long_ago() -> None:
+    view = DayView(DAY, parse_slots(fixture_slots(), DAY), PUBLISHED, PUBLISHED)
+    fresh = render_day(SUBSCRIPTION, view, DAY, PUBLISHED + timedelta(minutes=30))
+    stale = render_day(SUBSCRIPTION, view, DAY, PUBLISHED + timedelta(minutes=31))
+
+    warning = "⚠️ Дані могли застаріти: востаннє з сайту оновлено 17.10 17:16."
+    assert warning not in fresh
+    assert stale.splitlines()[:5] == [
+        "💡 <b>Дім &lt;&amp;&gt;</b>, сьогодні (17.10)",
+        "Підчерга 4.1 · оновлено 17.10 14:16",
+        "",
+        warning,
+        "",
+    ]
+
+
+def test_render_day_derives_today_in_kyiv_from_now() -> None:
+    late_evening = datetime(2026, 10, 17, 21, 30, tzinfo=UTC)  # already 18.10 in Kyiv
+
+    assert "сьогодні (18.10)" in render_day(SUBSCRIPTION, None, TOMORROW, late_evening)
+
+
+def test_subqueue_label_is_escaped_everywhere() -> None:
+    subscription = replace(SUBSCRIPTION, cherg_gpv="<b>4.1</b>#7")
+    view = DayView(DAY, parse_slots(fixture_slots(), DAY), PUBLISHED, PUBLISHED)
+
+    assert subqueue_label(subscription.cherg_gpv) == "&lt;b&gt;4.1&lt;/b&gt;"
+    assert "Підчерга &lt;b&gt;4.1&lt;/b&gt; ·" in render_day(subscription, view, DAY, NOW)
+    assert "(підчерга &lt;b&gt;4.1&lt;/b&gt;)" in render_list([subscription])
+
+
+def test_render_list_shows_one_escaped_address_per_subscription() -> None:
+    assert render_list([SUBSCRIPTION]) == "\n".join(
+        ["Твої адреси:", "• <b>Дім &lt;&amp;&gt;</b> — Тернопіль, Руська, 5 (підчерга 4.1)"]
     )
 
 
@@ -107,6 +152,7 @@ def test_render_update_for_a_change_shows_added_and_removed() -> None:
             "Зміни на 17.10:",
             "Додано:\n🔴 18:00–18:30 немає світла",
             "Прибрано:\n🔴 10:00–11:00 немає світла",
+            NOTE,
             LINK,
         ]
     )
@@ -121,6 +167,7 @@ def test_render_update_for_new_tomorrow() -> None:
             "💡 Графік для <b>Дім</b> оновлено",
             "З'явився графік на 17.10:",
             "🔴 23:00–24:00 немає світла",
+            NOTE,
             LINK,
         ]
     )

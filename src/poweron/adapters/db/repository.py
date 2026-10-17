@@ -6,6 +6,7 @@ from typing import Any
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import Row, and_, delete, event, func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from poweron.adapters.db.tables import (
@@ -105,6 +106,15 @@ class SqlRepository:
                     channel,
                 )
             return int(user_id)
+
+    async def find_user(self, provider: str, external_id: str) -> int | None:
+        async with self._engine.connect() as connection:
+            user_id: int | None = await connection.scalar(
+                select(identities.c.user_id).where(
+                    identities.c.provider == provider, identities.c.external_id == external_id
+                )
+            )
+            return user_id
 
     async def add_subscription(
         self,
@@ -283,18 +293,24 @@ class SqlRepository:
             return None if row is None else (row.value, row.fetched_at)
 
     async def store_catalog(self, key: str, value: Any, now: datetime) -> None:
-        async with self._engine.begin() as connection:
-            exists = await connection.scalar(select(func.count()).where(catalog_cache.c.key == key))
-            if exists:
-                await connection.execute(
-                    update(catalog_cache)
-                    .where(catalog_cache.c.key == key)
-                    .values(value=value, fetched_at=now)
-                )
-            else:
+        if await self._update_catalog(key, value, now):
+            return
+        try:
+            async with self._engine.begin() as connection:
                 await connection.execute(
                     catalog_cache.insert().values(key=key, value=value, fetched_at=now)
                 )
+        except IntegrityError:  # a concurrent writer inserted the key first
+            await self._update_catalog(key, value, now)
+
+    async def _update_catalog(self, key: str, value: Any, now: datetime) -> bool:
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                update(catalog_cache)
+                .where(catalog_cache.c.key == key)
+                .values(value=value, fetched_at=now)
+            )
+            return result.rowcount > 0
 
 
 async def _enqueue(connection: AsyncConnection, message: OutboxMessage) -> None:

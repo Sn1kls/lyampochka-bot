@@ -7,6 +7,8 @@ from poweron.core.domain.models import KYIV, DayView, Interval, NextEvent, SlotS
 
 from . import texts
 
+STALE_AFTER = timedelta(minutes=30)
+
 STATE_LINES = {
     SlotState.ON: texts.LINE_ON,
     SlotState.OFF: texts.LINE_OFF,
@@ -16,10 +18,44 @@ STATE_LINES = {
 
 
 def subqueue_label(cherg_gpv: str) -> str:
-    return cherg_gpv.split("#")[0]
+    """HTML-safe: the value comes from the API."""
+    return escape(cherg_gpv.split("#")[0])
 
 
-def render_day(subscription: Subscription, view: DayView | None, day: date, today: date) -> str:
+def render_address(city_name: str, street_name: str, building_name: str) -> str:
+    return escape(f"{city_name}, {street_name}, {building_name}")
+
+
+def render_list(subscriptions: Sequence[Subscription]) -> str:
+    lines = [
+        texts.LIST_ITEM.format(
+            label=escape(item.label),
+            address=render_address(item.city_name, item.street_name, item.address.building_name),
+            subqueue=subqueue_label(item.cherg_gpv),
+        )
+        for item in subscriptions
+    ]
+    return "\n".join([texts.LIST_HEADER, *lines])
+
+
+def render_confirm(
+    city_name: str, street_name: str, building_name: str, cherg_gpv: str, label: str
+) -> str:
+    return texts.CONFIRM_ADDRESS.format(
+        address=render_address(city_name, street_name, building_name),
+        subqueue=subqueue_label(cherg_gpv),
+        label=escape(label),
+    )
+
+
+def render_no_schedule_for_address(city_name: str, street_name: str, building_name: str) -> str:
+    return texts.NO_SCHEDULE_FOR_ADDRESS.format(
+        address=render_address(city_name, street_name, building_name)
+    )
+
+
+def render_day(subscription: Subscription, view: DayView | None, day: date, now: datetime) -> str:
+    today = now.astimezone(KYIV).date()
     title = texts.DAY_TITLE.format(label=escape(subscription.label), day=_day_name(day, today))
     if view is None:
         missing = texts.NO_SCHEDULE_TODAY if day <= today else texts.NO_SCHEDULE_TOMORROW
@@ -37,7 +73,11 @@ def render_day(subscription: Subscription, view: DayView | None, day: date, toda
         timedelta(),
     )
     total = texts.TOTAL_OFF.format(duration=_duration(outage)) if outage else texts.NO_OUTAGES
-    return "\n\n".join([f"{title}\n{header}", _lines(view.intervals, day), total, texts.NOTE])
+    parts = [f"{title}\n{header}"]
+    if now - view.checked_at > STALE_AFTER:
+        checked = f"{view.checked_at.astimezone(KYIV):%d.%m %H:%M}"
+        parts.append(texts.STALE_DATA.format(checked=checked))
+    return "\n\n".join([*parts, _lines(view.intervals, day), total, texts.NOTE])
 
 
 def render_next(subscription: Subscription, event: NextEvent | None, now: datetime) -> str:
@@ -68,7 +108,7 @@ def render_update(payload: Mapping[str, Any]) -> str:
             intervals = _intervals(payload[key])
             if intervals:
                 parts.append(f"{heading}\n{_lines(intervals, day)}")
-    parts.append(texts.UPDATE_LINK)
+    parts += [texts.NOTE, texts.UPDATE_LINK]
     return "\n\n".join(parts)
 
 
