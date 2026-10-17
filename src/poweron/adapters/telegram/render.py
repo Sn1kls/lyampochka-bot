@@ -64,15 +64,12 @@ def render_day(subscription: Subscription, view: DayView | None, day: date, now:
         subqueue=subqueue_label(subscription.cherg_gpv),
         updated=f"{view.published_at:%d.%m %H:%M}",
     )
-    outage = sum(
-        (
-            interval.end - interval.start
-            for interval in view.intervals
-            if interval.state is SlotState.OFF
-        ),
-        timedelta(),
-    )
-    total = texts.TOTAL_OFF.format(duration=_duration(outage)) if outage else texts.NO_OUTAGES
+    outage = _state_duration(view, SlotState.OFF)
+    switching = _state_duration(view, SlotState.SWITCHING)
+    total = texts.TOTAL_OFF.format(duration=_duration(outage)) if outage or switching else ""
+    if switching:
+        total += texts.TOTAL_WITH_SWITCHING.format(duration=_duration(outage + switching))
+    total = total or texts.NO_OUTAGES
     parts = [f"{title}\n{header}"]
     if now - view.checked_at > STALE_AFTER:
         checked = f"{view.checked_at.astimezone(KYIV):%d.%m %H:%M}"
@@ -84,11 +81,21 @@ def render_next(subscription: Subscription, event: NextEvent | None, now: dateti
     label = escape(subscription.label)
     if event is None:
         return texts.NEXT_NONE.format(label=label)
-    template = texts.NEXT_ON if event.power_on else texts.NEXT_OFF
+    earliest = event.earliest.astimezone(KYIV)
+    latest = event.latest and event.latest.astimezone(KYIV)
+    if latest is None:
+        template = texts.NEXT_OFF_POSSIBLE
+    elif event.power_on and event.earliest <= now:
+        template = texts.NEXT_ON_ANYTIME
+    elif event.power_on:
+        template = texts.NEXT_ON if event.earliest == event.latest else texts.NEXT_ON_WINDOW
+    else:
+        template = texts.NEXT_OFF if event.earliest == event.latest else texts.NEXT_OFF_WINDOW
     return template.format(
         label=label,
-        time=f"{event.at.astimezone(KYIV):%H:%M}",
-        delta=_duration(max(event.at - now, timedelta())),
+        earliest=f"{earliest:%H:%M}",
+        latest=f"{latest:%H:%M}" if latest else "",
+        delta=_duration(max(event.earliest - now, timedelta())),
     )
 
 
@@ -142,6 +149,12 @@ def _day_name(day: date, today: date) -> str:
     if day == today + timedelta(days=1):
         return texts.DAY_TOMORROW.format(date=date_text)
     return date_text
+
+
+def _state_duration(view: DayView, state: SlotState) -> timedelta:
+    return sum(
+        (item.end - item.start for item in view.intervals if item.state is state), timedelta()
+    )
 
 
 def _duration(span: timedelta) -> str:

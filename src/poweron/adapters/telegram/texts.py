@@ -72,6 +72,7 @@ LINE_OFF = "🔴 {start}–{end} немає світла"
 LINE_SWITCHING = "🟡 {start}–{end} можливе відключення (перемикання)"
 LINE_UNKNOWN = "⚪ {start}–{end} невідомо, уточни на сайті"
 TOTAL_OFF = "Разом без світла: {duration}"
+TOTAL_WITH_SWITCHING = " (до {duration} з перемиканнями)"
 NO_OUTAGES = "Відключень не заплановано 🎉"
 NO_SCHEDULE_TODAY = (
     "Графіка на сьогодні поки немає: його або ще не опубліковано, або він ще не завантажився. "
@@ -81,8 +82,16 @@ NO_SCHEDULE_TOMORROW = "Графіка на завтра ще немає — щ�
 STALE_DATA = "⚠️ Дані могли застаріти: востаннє з сайту оновлено {checked}."
 NOTE = "Графік може змінюватися впродовж дня, тож поглядай і на poweron.toe.com.ua"
 
-NEXT_OFF = "<b>{label}</b>: світло вимкнуть о {time} (через {delta})"
-NEXT_ON = "<b>{label}</b>: світло увімкнуть о {time} (через {delta})"
+NEXT_OFF = "<b>{label}</b>: світло вимкнуть о {latest} (через {delta})"
+NEXT_OFF_WINDOW = (
+    "<b>{label}</b>: світло можуть вимкнути з {earliest}, точно — о {latest} (через {delta})"
+)
+NEXT_OFF_POSSIBLE = "<b>{label}</b>: можливе вимкнення з {earliest} (перемикання)"
+NEXT_ON = "<b>{label}</b>: світло увімкнуть о {latest} (через {delta})"
+NEXT_ON_WINDOW = (
+    "<b>{label}</b>: світло можуть увімкнути з {earliest}, точно — о {latest} (через {delta})"
+)
+NEXT_ON_ANYTIME = "<b>{label}</b>: світло можуть дати будь-якої хвилини, точно — о {latest}"
 NEXT_NONE = "<b>{label}</b>: найближчим часом змін не заплановано."
 
 UPDATE_TITLE = "💡 Графік для <b>{label}</b> оновлено"

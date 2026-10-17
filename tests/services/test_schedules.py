@@ -76,10 +76,10 @@ async def test_next_event_within_today(
 ) -> None:
     await save(repository, day_schedule(outages={"20:00": "1", "20:30": "1"}))
     assert await schedules.next_event(subscription, kyiv(TODAY, 18)) == NextEvent(
-        kyiv(TODAY, 20), power_on=False
+        False, kyiv(TODAY, 20), kyiv(TODAY, 20)
     )
     assert await schedules.next_event(subscription, kyiv(TODAY, 20, 15)) == NextEvent(
-        kyiv(TODAY, 21), power_on=True
+        True, kyiv(TODAY, 21), kyiv(TODAY, 21)
     )
 
 
@@ -88,7 +88,7 @@ async def test_next_event_is_strictly_after_now(
 ) -> None:
     await save(repository, day_schedule(outages={"20:00": "1"}))
     event = await schedules.next_event(subscription, kyiv(TODAY, 20))
-    assert event == NextEvent(kyiv(TODAY, 20, 30), power_on=True)
+    assert event == NextEvent(True, kyiv(TODAY, 20, 30), kyiv(TODAY, 20, 30))
 
 
 async def test_next_event_continues_across_midnight(
@@ -97,7 +97,7 @@ async def test_next_event_continues_across_midnight(
     await save(repository, day_schedule(outages={"23:00": "1", "23:30": "1"}))
     await save(repository, day_schedule(TOMORROW, outages={"00:00": "1", "00:30": "1"}))
     event = await schedules.next_event(subscription, kyiv(TODAY, 23, 10))
-    assert event == NextEvent(kyiv(TOMORROW, 1), power_on=True)
+    assert event == NextEvent(True, kyiv(TOMORROW, 1), kyiv(TOMORROW, 1))
 
 
 async def test_next_event_ignores_changes_between_outage_states(
@@ -105,7 +105,7 @@ async def test_next_event_ignores_changes_between_outage_states(
 ) -> None:
     await save(repository, day_schedule(outages={"20:00": "1", "20:30": "10", "21:00": "1"}))
     event = await schedules.next_event(subscription, kyiv(TODAY, 20, 10))
-    assert event == NextEvent(kyiv(TODAY, 21, 30), power_on=True)
+    assert event == NextEvent(True, kyiv(TODAY, 21, 30), kyiv(TODAY, 21, 30))
 
 
 async def test_next_event_warns_from_the_start_of_switching(
@@ -113,7 +113,7 @@ async def test_next_event_warns_from_the_start_of_switching(
 ) -> None:
     await save(repository, day_schedule(outages={"20:00": "10", "20:30": "1"}))
     event = await schedules.next_event(subscription, kyiv(TODAY, 18))
-    assert event == NextEvent(kyiv(TODAY, 20), power_on=False)
+    assert event == NextEvent(False, kyiv(TODAY, 20), kyiv(TODAY, 20, 30))
 
 
 async def test_next_event_is_none_without_data_or_flip(
@@ -129,7 +129,7 @@ async def test_next_event_uses_tomorrow_when_today_is_missing(
 ) -> None:
     await save(repository, day_schedule(TOMORROW, outages={"00:00": "1", "00:30": "1"}))
     event = await schedules.next_event(subscription, kyiv(TODAY, 22))
-    assert event == NextEvent(kyiv(TOMORROW, 0), power_on=False)
+    assert event == NextEvent(False, kyiv(TOMORROW, 0), kyiv(TOMORROW, 0))
 
 
 async def test_unknown_slot_inside_power_is_not_an_event(
@@ -137,3 +137,42 @@ async def test_unknown_slot_inside_power_is_not_an_event(
 ) -> None:
     await save(repository, day_schedule(outages={"20:00": "?"}))
     assert await schedules.next_event(subscription, kyiv(TODAY, 18)) is None
+
+
+SWITCHING_AROUND_OUTAGE = {
+    "10:30": "10",
+    **{f"{hour}:{minute}": "1" for hour in (11, 12, 13) for minute in ("00", "30")},
+    "14:00": "10",
+}
+
+
+async def test_off_window_runs_from_switching_to_the_guaranteed_outage(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    await save(repository, day_schedule(outages=SWITCHING_AROUND_OUTAGE))
+    event = await schedules.next_event(subscription, kyiv(TODAY, 9))
+    assert event == NextEvent(False, kyiv(TODAY, 10, 30), kyiv(TODAY, 11))
+
+
+async def test_on_window_runs_from_switching_to_the_guaranteed_power(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    await save(repository, day_schedule(outages=SWITCHING_AROUND_OUTAGE))
+    event = await schedules.next_event(subscription, kyiv(TODAY, 12))
+    assert event == NextEvent(True, kyiv(TODAY, 14), kyiv(TODAY, 14, 30))
+
+
+async def test_on_window_starts_now_when_inside_the_switching(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    await save(repository, day_schedule(outages=SWITCHING_AROUND_OUTAGE))
+    event = await schedules.next_event(subscription, kyiv(TODAY, 14, 10))
+    assert event == NextEvent(True, kyiv(TODAY, 14, 10), kyiv(TODAY, 14, 30))
+
+
+async def test_switching_only_block_has_no_guaranteed_outage(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    await save(repository, day_schedule(outages={"20:00": "10"}))
+    event = await schedules.next_event(subscription, kyiv(TODAY, 18))
+    assert event == NextEvent(False, kyiv(TODAY, 20), None)

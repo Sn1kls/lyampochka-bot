@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from poweron.core.domain.models import KYIV, DayView, NextEvent, SlotState, Subscription
+from poweron.core.domain.models import KYIV, DayView, Interval, NextEvent, SlotState, Subscription
 from poweron.core.domain.schedule import merge, parse_slots
 from poweron.core.ports import Repository
 
@@ -28,13 +28,26 @@ class Schedules:
         views = [await self.day(subscription, day) for day in (today, today + timedelta(days=1))]
         intervals = merge(interval for view in views if view for interval in view.intervals)
         baseline = None
-        for interval in intervals:
+        for index, interval in enumerate(intervals):
             is_outage = _is_outage(interval.state)
             if interval.start <= now < interval.end:
                 baseline = is_outage
             elif interval.start > now and is_outage is not None and is_outage != baseline:
-                return NextEvent(at=interval.start, power_on=not is_outage)
+                return _event(intervals, index, now)
         return None
+
+
+def _event(intervals: list[Interval], index: int, now: datetime) -> NextEvent:
+    if intervals[index].state is SlotState.ON:
+        first = index
+        while first > 0 and intervals[first - 1].state is SlotState.SWITCHING:
+            first -= 1
+        return NextEvent(True, max(intervals[first].start, now), intervals[index].start)
+    after = index
+    while after < len(intervals) and intervals[after].state is SlotState.SWITCHING:
+        after += 1
+    guaranteed = after < len(intervals) and intervals[after].state is SlotState.OFF
+    return NextEvent(False, intervals[index].start, intervals[after].start if guaranteed else None)
 
 
 def _is_outage(state: SlotState) -> bool | None:

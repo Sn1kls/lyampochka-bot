@@ -124,5 +124,8 @@ class DayView:
 
 @dataclass(frozen=True)
 class NextEvent:
-    at: datetime
+    """The window in which the change happens; `latest` is the guaranteed moment, None if only possible."""
+
     power_on: bool
+    earliest: datetime
+    latest: datetime | None

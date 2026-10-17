@@ -1,6 +1,8 @@
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
 from poweron.adapters.telegram.render import (
     render_day,
     render_list,
@@ -66,11 +68,20 @@ def test_render_day_lists_kyiv_intervals_with_total_outage() -> None:
             "🟡 22:00–22:30 можливе відключення (перемикання)",
             "🟢 22:30–24:00 є світло",
             "",
-            "Разом без світла: 5 год",
+            "Разом без світла: 5 год (до 7 год з перемиканнями)",
             "",
             NOTE,
         ]
     )
+
+
+def test_render_day_total_has_no_switching_suffix_without_switching() -> None:
+    slots = {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
+    view = DayView(
+        DAY, parse_slots(slots | {"10:00": "1", "10:30": "1"}, DAY), PUBLISHED, PUBLISHED
+    )
+
+    assert "Разом без світла: 1 год\n" in render_day(SUBSCRIPTION, view, DAY, NOW) + "\n"
 
 
 def test_render_day_without_tomorrow_says_it_is_not_published_yet() -> None:
@@ -120,18 +131,53 @@ def test_render_list_shows_one_escaped_address_per_subscription() -> None:
     )
 
 
-def test_render_next_power_off_and_on() -> None:
-    now = datetime(2026, 10, 17, 9, 0, tzinfo=KYIV)
-    off = NextEvent(datetime(2026, 10, 17, 11, 30, tzinfo=KYIV), power_on=False)
-    on = NextEvent(datetime(2026, 10, 17, 9, 45, tzinfo=KYIV), power_on=True)
+def kyiv_time(hour: int, minute: int = 0) -> datetime:
+    return datetime(2026, 10, 17, hour, minute, tzinfo=KYIV)
 
-    assert render_next(SUBSCRIPTION, off, now) == (
-        "<b>Дім &lt;&amp;&gt;</b>: світло вимкнуть о 11:30 (через 2 год 30 хв)"
-    )
-    assert render_next(SUBSCRIPTION, on, now) == (
-        "<b>Дім &lt;&amp;&gt;</b>: світло увімкнуть о 09:45 (через 45 хв)"
-    )
-    assert "змін не заплановано" in render_next(SUBSCRIPTION, None, now)
+
+@pytest.mark.parametrize(
+    ("event", "now", "expected"),
+    [
+        (
+            NextEvent(False, kyiv_time(11, 30), kyiv_time(11, 30)),
+            kyiv_time(9),
+            "світло вимкнуть о 11:30 (через 2 год 30 хв)",
+        ),
+        (
+            NextEvent(False, kyiv_time(10, 30), kyiv_time(11)),
+            kyiv_time(9),
+            "світло можуть вимкнути з 10:30, точно — о 11:00 (через 1 год 30 хв)",
+        ),
+        (
+            NextEvent(False, kyiv_time(10, 30), None),
+            kyiv_time(9),
+            "можливе вимкнення з 10:30 (перемикання)",
+        ),
+        (
+            NextEvent(True, kyiv_time(9, 45), kyiv_time(9, 45)),
+            kyiv_time(9),
+            "світло увімкнуть о 09:45 (через 45 хв)",
+        ),
+        (
+            NextEvent(True, kyiv_time(14), kyiv_time(14, 30)),
+            kyiv_time(12),
+            "світло можуть увімкнути з 14:00, точно — о 14:30 (через 2 год)",
+        ),
+        (
+            NextEvent(True, kyiv_time(14, 10), kyiv_time(14, 30)),
+            kyiv_time(14, 10),
+            "світло можуть дати будь-якої хвилини, точно — о 14:30",
+        ),
+    ],
+)
+def test_render_next_shows_earliest_and_guaranteed_times(
+    event: NextEvent, now: datetime, expected: str
+) -> None:
+    assert render_next(SUBSCRIPTION, event, now) == f"<b>Дім &lt;&amp;&gt;</b>: {expected}"
+
+
+def test_render_next_without_an_event() -> None:
+    assert "змін не заплановано" in render_next(SUBSCRIPTION, None, kyiv_time(9))
 
 
 def update_payload(previous: dict[str, str] | None, current: dict[str, str]) -> dict[str, object]:
