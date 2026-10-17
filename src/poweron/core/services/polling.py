@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from poweron.core.domain.diff import ScheduleChange, data_hash, schedule_change
 from poweron.core.domain.models import (
@@ -14,23 +14,33 @@ from poweron.core.ports import Repository, ScheduleSource, SourceError
 
 logger = logging.getLogger(__name__)
 
+NEW_SUBQUEUE_RETRY = timedelta(minutes=5)
+
 
 class Polling:
     def __init__(self, repository: Repository, source: ScheduleSource) -> None:
         self._repository = repository
         self._source = source
+        self._new_attempts: dict[str, datetime] = {}
 
     async def poll(self, now: datetime) -> None:
         """Fetch every subscribed subqueue once and store new versions with their messages."""
         await self._poll_each(await self._by_subqueue(), now)
 
     async def poll_new(self, now: datetime) -> None:
-        """Fetch only the subscribed subqueues that have no stored version yet."""
+        """Fetch only the subscribed subqueues that have no stored version yet.
+
+        A subqueue the source has nothing for is retried only after NEW_SUBQUEUE_RETRY,
+        so a frequent caller does not hammer the API.
+        """
         never_polled = {
             cherg_gpv: subscribers
             for cherg_gpv, subscribers in (await self._by_subqueue()).items()
             if await self._repository.last_polled_at(cherg_gpv) is None
+            and now - self._new_attempts.get(cherg_gpv, datetime.min.replace(tzinfo=UTC))
+            >= NEW_SUBQUEUE_RETRY
         }
+        self._new_attempts.update(dict.fromkeys(never_polled, now))
         await self._poll_each(never_polled, now)
 
     async def _by_subqueue(self) -> dict[str, list[Subscription]]:

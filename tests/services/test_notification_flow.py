@@ -273,3 +273,15 @@ async def test_poll_new_fetches_only_subqueues_without_a_stored_version(
 
     assert sorted(fetched) == ["1.2", "2.2"]
     assert await repository.latest_version("1.2", TODAY) is not None
+
+
+async def test_poll_new_retries_an_empty_subqueue_only_after_a_while(
+    repository: SqlRepository, source: FakeSource
+) -> None:
+    await subscribe(repository, "101")
+    polling = Polling(repository, source)
+
+    for seconds in (0, 10, 20, 301):
+        await polling.poll_new(NOW + timedelta(seconds=seconds))
+
+    assert source.requested == ["4.1", "4.1"]
