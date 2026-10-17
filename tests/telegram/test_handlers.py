@@ -446,7 +446,7 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
     assert chat.sent_texts()[-1] == "\n".join(
         [
             "⚙️ Налаштування для <b>Дім</b>",
-            "Пуші про оновлення графіка: увімкнено",
+            "Пуші про оновлення графіка і планові роботи: увімкнено",
             "⏰ Нагадати перед вимкненням: 30 хв",
             "💡 Нагадати перед поверненням світла: без",
         ]
@@ -465,7 +465,7 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
         1: {"notify_on_update": False, "remind_before_off_min": 60, "remind_before_on_min": 15}
     }
     assert chat.edited_texts()[-1].splitlines()[1:] == [
-        "Пуші про оновлення графіка: вимкнено",
+        "Пуші про оновлення графіка і планові роботи: вимкнено",
         "⏰ Нагадати перед вимкненням: 60 хв",
         "💡 Нагадати перед поверненням світла: 15 хв",
     ]

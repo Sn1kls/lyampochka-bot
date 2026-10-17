@@ -3,8 +3,8 @@ from collections import defaultdict
 from datetime import datetime
 
 from poweron.core.domain.models import MessageKind, OutboxMessage, PlannedWork, Subscription
-from poweron.core.ports import PlannedWorkSource, Repository
-from poweron.core.services.catalog import normalise
+from poweron.core.domain.text import normalise
+from poweron.core.ports import PlannedWorkSource, Repository, SourceError
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,10 @@ class PlannedWorks:
                         if _affects(work, subscription)
                     ]
                 )
+            except SourceError as error:
+                logger.warning("planned works check failed for street %s: %s", street_id, error)
             except Exception:
-                logger.exception("planned works check failed for street %s", street_id)
+                logger.exception("planned works check crashed for street %s", street_id)
 
 
 def _affects(work: PlannedWork, subscription: Subscription) -> bool:
@@ -61,5 +63,5 @@ def _message(subscription: Subscription, work: PlannedWork) -> OutboxMessage:
             "ends_at": ends_at,
             "reason": work.reason,
         },
-        dedupe_key=f"planned:{subscription.id}:{work.id}:{starts_at}:{ends_at}",
+        dedupe_key=f"planned:{subscription.instance_key}:{work.id}:{starts_at}:{ends_at}",
     )

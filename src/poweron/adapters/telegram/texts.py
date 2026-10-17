@@ -149,7 +149,7 @@ PLANNED_WORK = "🛠 <b>{label}</b>: планові роботи {date} з {star
 PLANNED_WORK_REASON = " — {reason}"
 
 SETTINGS_TITLE = "⚙️ Налаштування для <b>{label}</b>"
-SETTINGS_UPDATES = "Пуші про оновлення графіка: {state}"
+SETTINGS_UPDATES = "Пуші про оновлення графіка і планові роботи: {state}"
 SETTINGS_REMINDER_OFF = "⏰ Нагадати перед вимкненням: {when}"
 SETTINGS_REMINDER_ON = "💡 Нагадати перед поверненням світла: {when}"
 SETTINGS_ENABLED = "увімкнено"

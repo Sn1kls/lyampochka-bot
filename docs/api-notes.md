@@ -153,6 +153,10 @@ Verified live 2026-10-17 (Phase 5).
   UTC instant. The `datePlanIn[after]` filter value is likewise Kyiv wall time without offset, e.g. `2026-10-17T21:40:00`.
 - The filter is on `datePlanIn`, the planned end, so a work that has already started but not ended is still returned.
 - `typeOff` is not confirmed for this endpoint; the domain and the texts ignore it.
+- The adapter guards the wall-clock assumption: an item with a non-zero offset is skipped with a warning (a sign the
+  site changed its format). A malformed item is skipped; a page where no item matches the format raises `ApiSchemaError`.
+- Filtering by `datePlanIn[after]` works (checked on August data). On 2026-10-17 Ternopil had no planned works after
+  September, so the feature was verified on the recorded sample only.
 - Sample (three items, no personal addresses): `pw_accident_planeds_1032_sample.json`.
 
 ## Fixtures

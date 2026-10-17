@@ -96,6 +96,11 @@ class Subscription:
     remind_before_on_min: int
     created_at: datetime
 
+    @property
+    def instance_key(self) -> str:
+        """Id plus creation time: SQLite may reuse the id of a deleted subscription."""
+        return f"{self.id}.{int(self.created_at.timestamp())}"
+
 
 @dataclass(frozen=True)
 class ScheduleVersion:

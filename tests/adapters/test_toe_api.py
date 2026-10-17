@@ -420,3 +420,40 @@ async def test_planned_works_with_an_unexpected_shape_raise_schema_error(
     respx.get(f"{API}/pw_accident_planeds").respond(json=[{"id": 1}])
     with pytest.raises(ApiSchemaError):
         await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+
+@respx.mock
+async def test_a_malformed_planned_work_is_skipped_not_the_whole_street(client: ToeClient) -> None:
+    broken = copy.deepcopy(PLANNED[0]) | {"datePlanIn": None, "id": 9}
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=[broken, PLANNED[0]]), httpx.Response(200, json=[])]
+    )
+
+    works = await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+    assert [work.id for work in works] == [2421]
+
+
+@respx.mock
+async def test_a_real_time_offset_breaks_the_wall_clock_assumption_and_is_skipped(
+    client: ToeClient,
+) -> None:
+    shifted = copy.deepcopy(PLANNED[0]) | {"dateEvent": "2026-08-22T08:30:00+03:00"}
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=[shifted]), httpx.Response(200, json=[])]
+    )
+
+    assert await client.planned_works(1032, LIFT_STREET_ID, NOW) == []
+
+
+@respx.mock
+async def test_a_long_planned_work_reason_is_cut(client: ToeClient) -> None:
+    wordy = copy.deepcopy(PLANNED[0]) | {"koment": "ремонт " * 200}
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=[wordy]), httpx.Response(200, json=[])]
+    )
+
+    (work,) = await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+    assert len(work.reason) <= 300
+    assert work.reason.endswith("…")

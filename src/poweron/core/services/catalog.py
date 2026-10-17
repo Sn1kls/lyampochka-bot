@@ -1,19 +1,13 @@
-import re
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from datetime import datetime, timedelta
 
 from poweron.core.domain.models import Building, City, Street
+from poweron.core.domain.text import normalise
 from poweron.core.ports import CatalogSource, Repository, SourceError
 
 CACHE_TTL = timedelta(hours=24)
 FAILED_REFRESH_BACKOFF = timedelta(minutes=5)
-# Apostrophes, Ukrainian/Russian spelling variants and Latin letters typed instead of Cyrillic
-SPELLING = str.maketrans(
-    {"ʼ": "'", "’": "'", "‘": "'", "`": "'", "ё": "е", "є": "е"}
-    | dict(zip("aeiocpxk", "аеіосрхк", strict=True))
-)
-TYPE_PREFIX = re.compile(r"^(вул|просп|пров|бул|пл|м|с|смт|буд)\.?\s+")
 
 
 class Catalog:
@@ -80,11 +74,6 @@ def find_by_name[Item: (City, Street, Building)](items: list[Item], text: str) -
     wanted = normalise(text)
     matches = [item for item in items if normalise(item.name) == wanted]
     return matches[0] if len(matches) == 1 else None
-
-
-def normalise(text: str) -> str:
-    text = text.casefold().translate(SPELLING)
-    return TYPE_PREFIX.sub("", " ".join(text.split()))
 
 
 def _search[Item: (City, Street)](items: list[Item], query: str) -> list[Item]:
