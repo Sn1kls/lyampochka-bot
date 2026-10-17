@@ -10,6 +10,7 @@ from poweron.config import Settings
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
+from poweron.core.services.planned_works import PlannedWorks
 from poweron.core.services.polling import Polling
 from poweron.core.services.reminders import Reminders
 from poweron.core.services.schedules import Schedules
@@ -56,6 +57,7 @@ async def run(role: str, settings: Settings) -> None:
                         notifications,
                         Reminders(repository, Schedules(repository)),
                         SubqueueChecker(repository, toe_client),
+                        PlannedWorks(repository, toe_client),
                         settings.poll_interval_sec,
                     )
                 )

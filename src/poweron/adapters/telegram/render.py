@@ -225,6 +225,21 @@ def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
     )
 
 
+def render_planned_work(payload: Mapping[str, Any]) -> str:
+    starts_at = datetime.fromisoformat(payload["starts_at"]).astimezone(KYIV)
+    ends_at = datetime.fromisoformat(payload["ends_at"]).astimezone(KYIV)
+    end = f"{ends_at:%H:%M}" if ends_at.date() == starts_at.date() else f"{ends_at:%d.%m %H:%M}"
+    text = texts.PLANNED_WORK.format(
+        label=escape(payload["label"]),
+        date=f"{starts_at:%d.%m}",
+        start=f"{starts_at:%H:%M}",
+        end=end,
+    )
+    if payload["reason"]:
+        text += texts.PLANNED_WORK_REASON.format(reason=escape(payload["reason"]))
+    return text
+
+
 def _queue_list(subqueues: Sequence[str]) -> str:
     return ", ".join(subqueue_label(queue) for queue in subqueues)
 

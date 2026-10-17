@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
+from poweron.core.services.planned_works import PlannedWorks
 from poweron.core.services.polling import Polling
 from poweron.core.services.reminders import Reminders
 
@@ -15,6 +16,7 @@ DISPATCH_INTERVAL = 5.0
 NEW_SUBQUEUE_INTERVAL = 10.0
 REMINDER_INTERVAL = 60.0
 CHECK_SUBQUEUES_INTERVAL = 3600.0
+PLANNED_WORKS_INTERVAL = 3600.0
 POLL_JITTER = 20.0
 MIN_DELAY = 1.0
 
@@ -24,6 +26,7 @@ async def run_worker(
     notifications: Notifications,
     reminders: Reminders,
     subqueue_checker: SubqueueChecker,
+    planned_works: PlannedWorks,
     poll_interval: float,
 ) -> None:
     async with asyncio.TaskGroup() as group:
@@ -39,6 +42,9 @@ async def run_worker(
         group.create_task(repeat(lambda: reminders.tick(datetime.now(UTC)), REMINDER_INTERVAL))
         group.create_task(
             repeat(lambda: subqueue_checker.check(datetime.now(UTC)), CHECK_SUBQUEUES_INTERVAL)
+        )
+        group.create_task(
+            repeat(lambda: planned_works.check(datetime.now(UTC)), PLANNED_WORKS_INTERVAL)
         )
 
 

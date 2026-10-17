@@ -9,6 +9,7 @@ from poweron.core.domain.models import (
     DaySchedule,
     DeliveryTarget,
     OutboxMessage,
+    PlannedWork,
     QueuedMessage,
     ScheduleVersion,
     Street,
@@ -49,6 +50,14 @@ class CatalogSource(Protocol):
         self, city_id: int, street_id: int, building_name: str
     ) -> list[str]:
         """All subqueues a building belongs to (a building can have several power sources)."""
+        ...
+
+
+class PlannedWorkSource(Protocol):
+    async def planned_works(
+        self, city_id: int, street_id: int, after: datetime
+    ) -> list[PlannedWork]:
+        """Planned works on the street that end after `after`."""
         ...
 
 

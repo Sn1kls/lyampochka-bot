@@ -3,7 +3,7 @@ import base64
 import random
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from importlib.metadata import version
 from typing import Any
 
@@ -14,6 +14,7 @@ from poweron.adapters.toe_api.models import (
     BUILDING_GROUPS_ADAPTER,
     BUILDINGS_ADAPTER,
     CITIES_ADAPTER,
+    PLANNED_WORKS_ADAPTER,
     SCHEDULES_ADAPTER,
     STREETS_ADAPTER,
     subqueue,
@@ -24,6 +25,7 @@ from poweron.core.domain.models import (
     Building,
     City,
     DaySchedule,
+    PlannedWork,
     Street,
 )
 from poweron.core.ports import ApiSchemaError, SourceUnavailable
@@ -32,6 +34,7 @@ ATTEMPTS = 3
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 MIN_REQUEST_INTERVAL = 1.0
 MAX_RETRY_AFTER = 60.0
+MAX_PLANNED_WORK_PAGES = 10
 
 
 class ToeClient:
@@ -120,6 +123,38 @@ class ToeClient:
         groups = _validate(BUILDING_GROUPS_ADAPTER, response).buildingGroups
         return list(dict.fromkeys(q for group in groups if (q := subqueue(group.chergGpv))))
 
+    async def planned_works(
+        self, city_id: int, street_id: int, after: datetime
+    ) -> list[PlannedWork]:
+        params: dict[str, Any] = {
+            "city.id": city_id,
+            "street.id": street_id,
+            "datePlanIn[after]": f"{after.astimezone(KYIV):%Y-%m-%dT%H:%M:%S}",
+        }
+        works: list[PlannedWork] = []
+        for page in range(1, MAX_PLANNED_WORK_PAGES + 1):
+            response = await self._get("pw_accident_planeds", params | {"page": page})
+            raw_works = _validate(PLANNED_WORKS_ADAPTER, _members(response))
+            if not raw_works:
+                break
+            works += [
+                PlannedWork(
+                    id=raw.id,
+                    street_id=raw.street.id,
+                    starts_at=_kyiv_wall_clock(raw.dateEvent),
+                    ends_at=_kyiv_wall_clock(raw.datePlanIn),
+                    reason=" ".join((raw.koment or "").split()),
+                    building_names=tuple(
+                        name
+                        for part in (raw.buildingNames or "").split(",")
+                        if (name := part.strip())
+                    ),
+                )
+                for raw in raw_works
+                if raw.street.id == street_id
+            ]
+        return works
+
     async def _get(
         self, path: str, params: dict[str, Any], headers: dict[str, str] | None = None
     ) -> Any:
@@ -145,6 +180,11 @@ class ToeClient:
                 if attempt < ATTEMPTS:
                     await self._sleep(delay)
             raise SourceUnavailable(f"{path}: {failure} after {ATTEMPTS} attempts")
+
+
+def _kyiv_wall_clock(labelled: datetime) -> datetime:
+    """The site labels Kyiv wall-clock time as +00:00; keep the clock fields, fix the zone."""
+    return labelled.replace(tzinfo=KYIV).astimezone(UTC)
 
 
 def _backoff(attempt: int) -> float:

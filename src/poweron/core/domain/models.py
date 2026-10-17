@@ -51,6 +51,18 @@ class Building:
 
 
 @dataclass(frozen=True)
+class PlannedWork:
+    """Aware UTC instants; an empty `building_names` means the whole street."""
+
+    id: int
+    street_id: int
+    starts_at: datetime
+    ends_at: datetime
+    reason: str
+    building_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DaySchedule:
     """`slots`: Kyiv wall-clock "HH:MM" -> raw value. Show `created_at` without tz conversion."""
 
@@ -65,6 +77,7 @@ class MessageKind(StrEnum):
     REMINDER_OFF = "reminder_off"
     REMINDER_ON = "reminder_on"
     SUBQUEUES_CHANGED = "subqueues_changed"
+    PLANNED_WORK = "planned_work"
 
 
 @dataclass(frozen=True)

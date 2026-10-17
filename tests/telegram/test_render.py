@@ -9,6 +9,7 @@ from poweron.adapters.telegram.render import (
     render_day,
     render_list,
     render_next,
+    render_planned_work,
     render_queues,
     render_reminder,
     render_settings,
@@ -442,3 +443,38 @@ def test_render_settings_shows_each_setting() -> None:
             "💡 Нагадати перед поверненням світла: без",
         ]
     )
+
+
+def planned_payload(**changes: object) -> dict[str, object]:
+    return {
+        "subscription_id": 1,
+        "label": "Дім",
+        "starts_at": "2026-08-22T05:30:00+00:00",
+        "ends_at": "2026-08-22T14:30:00+00:00",
+        "reason": "Ремонт ПЛ",
+    } | changes
+
+
+def test_planned_work_shows_kyiv_times_and_reason() -> None:
+    assert render_planned_work(planned_payload()) == (
+        "🛠 <b>Дім</b>: планові роботи 22.08 з 08:30 до 17:30 — Ремонт ПЛ"
+    )
+
+
+def test_planned_work_without_reason_has_no_dash() -> None:
+    assert render_planned_work(planned_payload(reason="")) == (
+        "🛠 <b>Дім</b>: планові роботи 22.08 з 08:30 до 17:30"
+    )
+
+
+def test_planned_work_ending_on_another_day_shows_the_end_date() -> None:
+    text = render_planned_work(planned_payload(ends_at="2026-08-23T14:30:00+00:00"))
+
+    assert text.startswith("🛠 <b>Дім</b>: планові роботи 22.08 з 08:30 до 23.08 17:30")
+
+
+def test_planned_work_escapes_label_and_reason() -> None:
+    text = render_planned_work(planned_payload(label="<i>", reason="a < b & c"))
+
+    assert "<b>&lt;i&gt;</b>" in text
+    assert text.endswith("a &lt; b &amp; c")
