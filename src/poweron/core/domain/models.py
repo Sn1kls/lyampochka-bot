@@ -62,6 +62,9 @@ class DaySchedule:
 
 class MessageKind(StrEnum):
     SCHEDULE_UPDATED = "schedule_updated"
+    REMINDER_OFF = "reminder_off"
+    REMINDER_ON = "reminder_on"
+    SUBQUEUES_CHANGED = "subqueues_changed"
 
 
 @dataclass(frozen=True)

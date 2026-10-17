@@ -35,6 +35,12 @@ class Schedules:
             checked_at=version.fetched_at,
         )
 
+    async def events(
+        self, subscription: Subscription, now: datetime
+    ) -> list[tuple[str, NextEvent]]:
+        """Every change ahead (today and tomorrow) per tracked subqueue, ordered by `earliest`."""
+        raise NotImplementedError
+
     async def next_event(
         self, subscription: Subscription, now: datetime
     ) -> list[tuple[str, NextEvent]]:

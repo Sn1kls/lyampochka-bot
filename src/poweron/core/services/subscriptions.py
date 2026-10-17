@@ -49,3 +49,15 @@ class Subscriptions:
 
     async def forget(self, user_id: int) -> None:
         await self._repository.delete_user(user_id)
+
+    async def update_settings(
+        self,
+        user_id: int,
+        subscription_id: int,
+        *,
+        notify_on_update: bool | None = None,
+        remind_before_off_min: int | None = None,
+        remind_before_on_min: int | None = None,
+    ) -> Subscription | None:
+        """Change only the given settings of the user's own subscription; None if not theirs."""
+        raise NotImplementedError
