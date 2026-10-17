@@ -56,7 +56,7 @@ layers = ["poweron.adapters | poweron.worker", "poweron.core"]
 [[tool.importlinter.contracts]]
 name = "adapters are independent of each other"
 type = "independence"
-modules = ["poweron.adapters.db", "poweron.adapters.toe_api"]
+modules = ["poweron.adapters.db", "poweron.adapters.toe_api", "poweron.adapters.telegram"]
 
 [[tool.importlinter.contracts]]
 name = "core uses only stdlib and pydantic"

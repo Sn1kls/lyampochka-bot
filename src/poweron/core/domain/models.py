@@ -110,3 +110,19 @@ class DeliveryTarget:
     id: int
     channel: str
     address: str
+
+
+@dataclass(frozen=True)
+class DayView:
+    """One day's schedule for display; `published_at` is dateCreate, shown as is."""
+
+    day: date
+    intervals: list[Interval]
+    published_at: datetime
+    checked_at: datetime
+
+
+@dataclass(frozen=True)
+class NextEvent:
+    at: datetime
+    power_on: bool
