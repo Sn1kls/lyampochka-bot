@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
@@ -285,3 +286,15 @@ async def test_poll_new_retries_an_empty_subqueue_only_after_a_while(
         await polling.poll_new(NOW + timedelta(seconds=seconds))
 
     assert source.requested == ["4.1", "4.1"]
+
+
+async def test_regular_and_new_polls_never_fetch_the_same_subqueue_together(
+    repository: SqlRepository, source: FakeSource
+) -> None:
+    await subscribe(repository, "101")
+    source.schedules = {"4.1": [day_schedule()]}
+    polling = Polling(repository, source)
+
+    await asyncio.gather(polling.poll(NOW), polling.poll_new(NOW))
+
+    assert source.requested == ["4.1"]

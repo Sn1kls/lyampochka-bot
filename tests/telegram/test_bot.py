@@ -1,3 +1,4 @@
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.types import BotCommand
 
 from poweron.adapters.telegram import texts
@@ -28,3 +29,11 @@ async def test_command_menu_matches_help() -> None:
     assert all(
         f"/{command} — {description}" in texts.HELP for command, description in texts.COMMANDS
     )
+
+
+async def test_a_failing_command_menu_does_not_stop_the_bot() -> None:
+    class FailingBot:
+        async def set_my_commands(self, commands: list[BotCommand]) -> None:
+            raise TelegramNetworkError(method=None, message="timeout")  # type: ignore[arg-type]
+
+    await publish_commands(FailingBot())  # type: ignore[arg-type]

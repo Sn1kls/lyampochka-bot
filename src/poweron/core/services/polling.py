@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
@@ -22,10 +23,12 @@ class Polling:
         self._repository = repository
         self._source = source
         self._new_attempts: dict[str, datetime] = {}
+        self._lock = asyncio.Lock()
 
     async def poll(self, now: datetime) -> None:
         """Fetch every subscribed subqueue once and store new versions with their messages."""
-        await self._poll_each(await self._by_subqueue(), now)
+        async with self._lock:
+            await self._poll_each(await self._by_subqueue(), now)
 
     async def poll_new(self, now: datetime) -> None:
         """Fetch only the subscribed subqueues that have no stored version yet.
@@ -33,15 +36,17 @@ class Polling:
         A subqueue the source has nothing for is retried only after NEW_SUBQUEUE_RETRY,
         so a frequent caller does not hammer the API.
         """
-        never_polled = {
-            cherg_gpv: subscribers
-            for cherg_gpv, subscribers in (await self._by_subqueue()).items()
-            if await self._repository.last_polled_at(cherg_gpv) is None
-            and now - self._new_attempts.get(cherg_gpv, datetime.min.replace(tzinfo=UTC))
-            >= NEW_SUBQUEUE_RETRY
-        }
-        self._new_attempts.update(dict.fromkeys(never_polled, now))
-        await self._poll_each(never_polled, now)
+        # Shares the lock with poll() so a subqueue is never fetched twice at once.
+        async with self._lock:
+            never_polled = {
+                cherg_gpv: subscribers
+                for cherg_gpv, subscribers in (await self._by_subqueue()).items()
+                if await self._repository.last_polled_at(cherg_gpv) is None
+                and now - self._new_attempts.get(cherg_gpv, datetime.min.replace(tzinfo=UTC))
+                >= NEW_SUBQUEUE_RETRY
+            }
+            self._new_attempts.update(dict.fromkeys(never_polled, now))
+            await self._poll_each(never_polled, now)
 
     async def _by_subqueue(self) -> dict[str, list[Subscription]]:
         """Every queue of a building is fetched, so that the untracked ones can be viewed too."""

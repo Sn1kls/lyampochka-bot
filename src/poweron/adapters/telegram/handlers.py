@@ -236,12 +236,11 @@ async def show_day(
         return
     now = _now()
     day = now.astimezone(KYIV).date() + timedelta(days=callback_data.offset)
-    views = await schedules.day(subscription, day, callback_data.subqueue or None)
+    viewed = _viewed_queues(subscription, callback_data.subqueue)
+    views = await schedules.day(subscription, day, viewed[0] if viewed else None)
     await _respond(
         callback,
-        render_day(
-            subscription, views, day, now, _viewed_queues(subscription, callback_data.subqueue)
-        ),
+        render_day(subscription, views, day, now, viewed),
         keyboards.day_keyboard(subscription, callback_data.offset, callback_data.subqueue),
     )
 
@@ -539,3 +538,8 @@ async def stale_button(callback: CallbackQuery) -> None:
 
 def _viewed_queues(subscription: Subscription, subqueue: str | None) -> list[str] | None:
     return [subqueue] if subqueue and subqueue in subscription.subqueues else None
+
+
+@router.message(AddFlow.queues, F.text)
+async def queue_typed(message: Message) -> None:
+    await message.answer(texts.PICK_QUEUE_BUTTON)

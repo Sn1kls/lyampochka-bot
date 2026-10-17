@@ -1,6 +1,9 @@
+import logging
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
 
@@ -10,6 +13,8 @@ from poweron.core.services.subscriptions import Subscriptions
 
 from . import texts
 from .handlers import router
+
+logger = logging.getLogger(__name__)
 
 
 def create_bot(token: str) -> Bot:
@@ -34,7 +39,10 @@ def build_dispatcher(
 
 
 async def publish_commands(bot: Bot) -> None:
-    """The command menu Telegram shows when the user types "/"."""
-    await bot.set_my_commands(
-        [BotCommand(command=command, description=text) for command, text in texts.COMMANDS]
-    )
+    """The command menu Telegram shows when the user types "/"; cosmetic, so never fatal."""
+    try:
+        await bot.set_my_commands(
+            [BotCommand(command=command, description=text) for command, text in texts.COMMANDS]
+        )
+    except TelegramAPIError as error:
+        logger.warning("could not publish the command menu: %r", error)
