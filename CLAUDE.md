@@ -49,6 +49,8 @@ Ports and adapters (SPEC §3). Package root `src/poweron/`.
 
 ## Git
 
-- Commit at the end of each phase with Conventional Commits (`feat(phase2): ...`). Show `git status` first.
-- Never push, never force, never rewrite history without an explicit request.
+- Remote: `github.com/Sn1kls/lyampochka-bot` (private). Work through pull requests; the owner reviews and merges.
+- Each phase on its own branch `phase-N` from an up-to-date `main`. Commit at the end with Conventional Commits (`feat(phase2): ...`), show `git status` first.
+- Push only the phase branch (`git push -u origin phase-N`) and open a PR with `gh pr create`. Never push to `main`, never merge PRs yourself.
+- Never force-push, never rewrite history without an explicit request.
 - Never commit `.env`, `data/`, or recorded fixtures containing personal addresses.
