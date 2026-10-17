@@ -26,12 +26,27 @@ def render_address(city_name: str, street_name: str, building_name: str) -> str:
     return escape(f"{city_name}, {street_name}, {building_name}")
 
 
+def render_queues(subqueues: Sequence[str], tracked: Sequence[str]) -> str:
+    """Marks the tracked queues only when the building has queues that are not tracked."""
+    labels = [subqueue_label(queue) for queue in subqueues]
+    if len(labels) == 1:
+        return texts.QUEUES_ONE.format(queues=labels[0])
+    if set(subqueues) <= set(tracked):
+        joined = texts.QUEUES_AND.join([", ".join(labels[:-1]), labels[-1]])
+    else:
+        joined = ", ".join(
+            texts.QUEUE_TRACKED.format(queue=label) if queue in tracked else label
+            for queue, label in zip(subqueues, labels, strict=True)
+        )
+    return texts.QUEUES_MANY.format(queues=joined)
+
+
 def render_list(subscriptions: Sequence[Subscription]) -> str:
     lines = [
         texts.LIST_ITEM.format(
             label=escape(item.label),
             address=render_address(item.city_name, item.street_name, item.address.building_name),
-            subqueue=subqueue_label(item.cherg_gpv),
+            queues=render_queues(item.subqueues, item.tracked_subqueues),
         )
         for item in subscriptions
     ]
@@ -39,11 +54,17 @@ def render_list(subscriptions: Sequence[Subscription]) -> str:
 
 
 def render_confirm(
-    city_name: str, street_name: str, building_name: str, cherg_gpv: str, label: str
+    city_name: str,
+    street_name: str,
+    building_name: str,
+    subqueues: Sequence[str],
+    tracked: Sequence[str],
+    label: str,
 ) -> str:
+    queues = render_queues(subqueues, tracked)
     return texts.CONFIRM_ADDRESS.format(
         address=render_address(city_name, street_name, building_name),
-        subqueue=subqueue_label(cherg_gpv),
+        queues=queues[0].upper() + queues[1:],
         label=escape(label),
     )
 
@@ -54,14 +75,26 @@ def render_no_schedule_for_address(city_name: str, street_name: str, building_na
     )
 
 
-def render_day(subscription: Subscription, view: DayView | None, day: date, now: datetime) -> str:
+def render_day(
+    subscription: Subscription, views: Sequence[DayView], day: date, now: datetime
+) -> str:
     today = now.astimezone(KYIV).date()
     title = texts.DAY_TITLE.format(label=escape(subscription.label), day=_day_name(day, today))
-    if view is None:
+    if not views:
         missing = texts.NO_SCHEDULE_TODAY if day <= today else texts.NO_SCHEDULE_TOMORROW
         return "\n\n".join([title, missing, texts.NOTE])
+    blocks = [_queue_block(view, day, now) for view in views]
+    if len(blocks) == 1:
+        header, *rest = blocks[0]
+        return "\n\n".join([f"{title}\n{header}", *rest, texts.NOTE])
+    texts_per_queue = [f"{header}\n" + "\n\n".join(rest) for header, *rest in blocks]
+    return "\n\n".join([title, *texts_per_queue, texts.NOTE])
+
+
+def _queue_block(view: DayView, day: date, now: datetime) -> list[str]:
+    """Header, optional stale warning, interval lines and total of one subqueue."""
     header = texts.SUBQUEUE_UPDATED.format(
-        subqueue=subqueue_label(subscription.cherg_gpv),
+        subqueue=subqueue_label(view.cherg_gpv),
         updated=f"{view.published_at:%d.%m %H:%M}",
     )
     outage = _state_duration(view, SlotState.OFF)
@@ -76,17 +109,29 @@ def render_day(subscription: Subscription, view: DayView | None, day: date, now:
         total = texts.TOTAL_OFF.format(duration=_duration(outage))
         if switching:
             total += texts.TOTAL_WITH_SWITCHING.format(duration=_duration(outage + switching))
-    parts = [f"{title}\n{header}"]
+    block = [header]
     if now - view.checked_at > STALE_AFTER:
         checked = f"{view.checked_at.astimezone(KYIV):%d.%m %H:%M}"
-        parts.append(texts.STALE_DATA.format(checked=checked))
-    return "\n\n".join([*parts, _lines(view.intervals, day), total, texts.NOTE])
+        block.append(texts.STALE_DATA.format(checked=checked))
+    return [*block, _lines(view.intervals, day), total]
 
 
-def render_next(subscription: Subscription, event: NextEvent | None, now: datetime) -> str:
+def render_next(
+    subscription: Subscription, events: Sequence[tuple[str, NextEvent]], now: datetime
+) -> str:
     label = escape(subscription.label)
-    if event is None:
+    if not events:
         return texts.NEXT_NONE.format(label=label)
+    if len(subscription.tracked_subqueues) == 1:
+        return texts.NEXT_ONE.format(label=label, event=_next_sentence(events[0][1], now))
+    lines = [
+        texts.NEXT_QUEUE.format(queue=subqueue_label(queue), event=_next_sentence(event, now))
+        for queue, event in events
+    ]
+    return "\n".join([texts.NEXT_TITLE.format(label=label), *lines])
+
+
+def _next_sentence(event: NextEvent, now: datetime) -> str:
     earliest = event.earliest.astimezone(KYIV)
     latest = event.latest and event.latest.astimezone(KYIV)
     if latest is None:
@@ -98,7 +143,6 @@ def render_next(subscription: Subscription, event: NextEvent | None, now: dateti
     else:
         template = texts.NEXT_OFF if event.earliest == event.latest else texts.NEXT_OFF_WINDOW
     return template.format(
-        label=label,
         earliest=f"{earliest:%H:%M}",
         latest=f"{latest:%H:%M}" if latest else "",
         delta=_duration(max(event.earliest - now, timedelta())),
@@ -108,7 +152,12 @@ def render_next(subscription: Subscription, event: NextEvent | None, now: dateti
 def render_update(payload: Mapping[str, Any]) -> str:
     day = date.fromisoformat(payload["day"])
     day_text = f"{day:%d.%m}"
-    parts = [texts.UPDATE_TITLE.format(label=escape(payload["label"]))]
+    queue = (
+        texts.UPDATE_QUEUE.format(queue=subqueue_label(payload["cherg_gpv"]))
+        if payload.get("queue_count", 1) > 1
+        else ""
+    )
+    parts = [texts.UPDATE_TITLE.format(label=escape(payload["label"]), queue=queue)]
     if payload["previous"] is None:
         current = _intervals(payload["current"])
         if current:

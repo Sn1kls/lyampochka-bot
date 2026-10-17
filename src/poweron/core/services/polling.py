@@ -22,10 +22,26 @@ class Polling:
 
     async def poll(self, now: datetime) -> None:
         """Fetch every subscribed subqueue once and store new versions with their messages."""
+        await self._poll_each(await self._by_subqueue(), now)
+
+    async def poll_new(self, now: datetime) -> None:
+        """Fetch only the subscribed subqueues that have no stored version yet."""
+        never_polled = {
+            cherg_gpv: subscribers
+            for cherg_gpv, subscribers in (await self._by_subqueue()).items()
+            if await self._repository.last_polled_at(cherg_gpv) is None
+        }
+        await self._poll_each(never_polled, now)
+
+    async def _by_subqueue(self) -> dict[str, list[Subscription]]:
+        """Every queue of a building is fetched, so that the untracked ones can be viewed too."""
         by_subqueue: dict[str, list[Subscription]] = defaultdict(list)
         for subscription in await self._repository.all_subscriptions():
-            by_subqueue[subscription.cherg_gpv].append(subscription)
+            for cherg_gpv in subscription.subqueues:
+                by_subqueue[cherg_gpv].append(subscription)
+        return by_subqueue
 
+    async def _poll_each(self, by_subqueue: dict[str, list[Subscription]], now: datetime) -> None:
         for cherg_gpv, subscribers in by_subqueue.items():
             try:
                 await self._poll_subqueue(cherg_gpv, subscribers, now)
@@ -45,6 +61,7 @@ class Polling:
             subscription
             for subscription in subscribers
             if subscription.notify_on_update
+            and cherg_gpv in subscription.tracked_subqueues
             and last_polled_at is not None
             and subscription.created_at <= last_polled_at
         ]
@@ -86,8 +103,13 @@ def _messages(
         OutboxMessage(
             user_id=subscription.user_id,
             kind=MessageKind.SCHEDULE_UPDATED,
-            payload=payload | {"subscription_id": subscription.id, "label": subscription.label},
-            dedupe_key=f"update:{subscription.id}:{change.day}:{transition}",
+            payload=payload
+            | {
+                "subscription_id": subscription.id,
+                "label": subscription.label,
+                "queue_count": len(subscription.tracked_subqueues),
+            },
+            dedupe_key=f"update:{subscription.id}:{change.cherg_gpv}:{change.day}:{transition}",
         )
         for subscription in recipients
     ]

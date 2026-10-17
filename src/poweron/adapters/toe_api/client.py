@@ -11,6 +11,7 @@ import httpx
 from pydantic import TypeAdapter, ValidationError
 
 from poweron.adapters.toe_api.models import (
+    BUILDING_GROUPS_ADAPTER,
     BUILDINGS_ADAPTER,
     CITIES_ADAPTER,
     SCHEDULES_ADAPTER,
@@ -110,6 +111,14 @@ class ToeClient:
             Building(id=building.id, name=building.buildingName, cherg_gpv=building.chergGpv)
             for building in _validate(BUILDINGS_ADAPTER, response).buildingNames
         ]
+
+    async def building_subqueues(
+        self, city_id: int, street_id: int, building_name: str
+    ) -> list[str]:
+        params = {"cityId": city_id, "streetId": street_id, "buildingNames": building_name}
+        response = await self._get("pw-accounts/building-groups", params)
+        groups = _validate(BUILDING_GROUPS_ADAPTER, response).buildingGroups
+        return list(dict.fromkeys(q for group in groups if (q := subqueue(group.chergGpv))))
 
     async def _get(
         self, path: str, params: dict[str, Any], headers: dict[str, str] | None = None

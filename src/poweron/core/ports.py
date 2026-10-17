@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from typing import Any, Protocol
 
@@ -45,6 +45,12 @@ class CatalogSource(Protocol):
 
     async def buildings(self, city_id: int, street_id: int) -> list[Building]: ...
 
+    async def building_subqueues(
+        self, city_id: int, street_id: int, building_name: str
+    ) -> list[str]:
+        """All subqueues a building belongs to (a building can have several power sources)."""
+        ...
+
 
 class Notifier(Protocol):
     async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> None: ...
@@ -64,6 +70,8 @@ class Repository(Protocol):
         city: City,
         street: Street,
         building: Building,
+        subqueues: Sequence[str],
+        tracked: Sequence[str],
         now: datetime,
     ) -> Subscription: ...
 

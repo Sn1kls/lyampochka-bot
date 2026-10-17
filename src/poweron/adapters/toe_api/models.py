@@ -68,7 +68,16 @@ class BuildingNames(BaseModel):
     buildingNames: list[RawBuilding]
 
 
+class BuildingGroup(BaseModel):
+    chergGpv: str | None = None
+
+
+class BuildingGroups(BaseModel):
+    buildingGroups: list[BuildingGroup]
+
+
 SCHEDULES_ADAPTER = TypeAdapter(GpvCollection)
 CITIES_ADAPTER = TypeAdapter(list[RawCity])
 STREETS_ADAPTER = TypeAdapter(list[RawStreet])
 BUILDINGS_ADAPTER = TypeAdapter(BuildingNames)
+BUILDING_GROUPS_ADAPTER = TypeAdapter(BuildingGroups)

@@ -40,6 +40,13 @@ class Catalog:
             now,
         )
 
+    async def subqueues(self, city_id: int, street_id: int, building: Building) -> list[str]:
+        """All subqueues of the building; empty when schedules do not apply to it."""
+        if building.cherg_gpv is None:
+            return []
+        found = await self._source.building_subqueues(city_id, street_id, building.name)
+        return found or [building.cherg_gpv]
+
     async def _cached[Item: (City, Street, Building)](
         self,
         key: str,

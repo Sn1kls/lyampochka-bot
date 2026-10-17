@@ -33,6 +33,7 @@ class FakeCatalogSource:
     failing: bool = False
     city_calls: int = 0
     street_calls: list[int] = field(default_factory=list)
+    groups: list[str] = field(default_factory=list)
 
     async def cities(self) -> list[City]:
         self.city_calls += 1
@@ -46,6 +47,11 @@ class FakeCatalogSource:
 
     async def buildings(self, city_id: int, street_id: int) -> list[Building]:
         return BUILDINGS
+
+    async def building_subqueues(
+        self, city_id: int, street_id: int, building_name: str
+    ) -> list[str]:
+        return self.groups
 
 
 @pytest.fixture
@@ -186,3 +192,23 @@ def test_find_by_name_matches_the_normalised_name_exactly(text: str, expected: i
 def test_find_by_name_refuses_an_ambiguous_name() -> None:
     twins = [City(1, "Іванівка", "Теребовлянська"), City(2, "Іванівка", "Бучацька")]
     assert find_by_name(twins, "іванівка") is None
+
+
+async def test_subqueues_come_from_the_source(catalog: Catalog, source: FakeCatalogSource) -> None:
+    source.groups = ["2.2", "4.1"]
+
+    assert await catalog.subqueues(1, 1, Building(1, "96", "4.1")) == ["2.2", "4.1"]
+
+
+async def test_subqueues_fall_back_to_the_building_list_value(
+    catalog: Catalog, source: FakeCatalogSource
+) -> None:
+    assert await catalog.subqueues(1, 1, Building(1, "96", "4.1")) == ["4.1"]
+
+
+async def test_subqueues_are_empty_when_no_schedule_applies(
+    catalog: Catalog, source: FakeCatalogSource
+) -> None:
+    source.groups = ["4.1"]
+
+    assert await catalog.subqueues(1, 1, Building(3, "23", None)) == []

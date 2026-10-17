@@ -25,8 +25,12 @@ def subscriptions(repository: SqlRepository) -> Subscriptions:
 async def test_of_user_and_get_are_scoped_to_the_user(subscriptions: Subscriptions) -> None:
     alice = await subscriptions.register("telegram", "1", "telegram", "1")
     bob = await subscriptions.register("telegram", "2", "telegram", "2")
-    home = await subscriptions.add(alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), NOW)
-    await subscriptions.add(bob, "Робота", TERNOPIL, SADOVA, Building(2, "2", "1.2"), NOW)
+    home = await subscriptions.add(
+        alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
+    )
+    await subscriptions.add(
+        bob, "Робота", TERNOPIL, SADOVA, Building(2, "2", "1.2"), ["1.2"], ["1.2"], NOW
+    )
 
     assert await subscriptions.of_user(alice) == [home]
     assert await subscriptions.get(alice, home.id) == home
@@ -39,8 +43,12 @@ async def test_forget_removes_everything_of_the_user_only(
 ) -> None:
     alice = await subscriptions.register("telegram", "1", "telegram", "1")
     bob = await subscriptions.register("telegram", "2", "telegram", "2")
-    await subscriptions.add(alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), NOW)
-    bobs = await subscriptions.add(bob, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), NOW)
+    await subscriptions.add(
+        alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
+    )
+    bobs = await subscriptions.add(
+        bob, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
+    )
     slots = {"00:00": "0"}
     version = ScheduleVersion("4.1", NOW.date(), NOW, data_hash(slots), slots, NOW)
     await repository.save_version(
@@ -89,3 +97,29 @@ async def test_find_user_is_read_only_and_does_not_register(subscriptions: Subsc
     alice = await subscriptions.register("telegram", "1", "telegram", "1")
     assert await subscriptions.find_user("telegram", "1") == alice
     assert await subscriptions.find_user("telegram", "2") is None
+
+
+async def test_subscription_keeps_all_queues_with_the_tracked_ones_first(
+    subscriptions: Subscriptions,
+) -> None:
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    building = Building(1, "96", "4.1")
+
+    added = await subscriptions.add(
+        user_id, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["4.1"], NOW
+    )
+
+    assert added.subqueues == ("4.1", "2.2")
+    assert added.tracked_subqueues == ("4.1",)
+    assert await subscriptions.get(user_id, added.id) == added
+
+
+async def test_tracked_queues_must_be_a_non_empty_subset(subscriptions: Subscriptions) -> None:
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    building = Building(1, "96", "4.1")
+
+    for tracked in ([], ["9.9"]):
+        with pytest.raises(ValueError):
+            await subscriptions.add(
+                user_id, "Дім", TERNOPIL, SADOVA, building, ["4.1"], tracked, NOW
+            )

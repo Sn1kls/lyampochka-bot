@@ -30,9 +30,15 @@ NO_SCHEDULE_FOR_ADDRESS = (
     "На жаль, для адреси <b>{address}</b> графіки погодинних відключень не діють, "
     "тож підписувати не буду."
 )
+CHOOSE_QUEUES = "Твій будинок у кількох чергах: {queues}. Яку відстежувати?"
+BUTTON_QUEUE = "Черга {queue}"
+BUTTON_ALL_QUEUES = "Усі"
+QUEUES_ONE = "підчерга {queues}"
+QUEUES_MANY = "черги {queues}"
+QUEUES_AND = " і "
+QUEUE_TRACKED = "{queue} (стежу)"
 CONFIRM_ADDRESS = (
-    "<b>{address}</b>\nПідчерга {subqueue}\n\n"
-    "Зберегти як «{label}»? Хочеш іншу назву — просто напиши її."
+    "<b>{address}</b>\n{queues}\n\nЗберегти як «{label}»? Хочеш іншу назву — просто напиши її."
 )
 ADDED = (
     "Готово! Адресу «{label}» додано. Графік з'явиться за кілька хвилин після першої "
@@ -44,7 +50,7 @@ LABEL_MAX_LENGTH = 40
 
 NO_SUBSCRIPTIONS = "Адрес ще немає. Додай першу: /add"
 LIST_HEADER = "Твої адреси:"
-LIST_ITEM = "• <b>{label}</b> — {address} (підчерга {subqueue})"
+LIST_ITEM = "• <b>{label}</b> — {address} ({queues})"
 CHOOSE_SUBSCRIPTION = "Яка адреса?"
 CHOOSE_DAY = "На коли?"
 TODAY = "Сьогодні"
@@ -58,6 +64,13 @@ FORGOTTEN = "Усе стерто. Якщо передумаєш — /start."
 SOURCE_DOWN = "Сервіс обленерго зараз не відповідає. Спробуй трохи пізніше."
 STALE_BUTTON = "Ця кнопка вже застаріла. Почни спочатку."
 START_FIRST = "Спершу натисни /start, щоб ми познайомились."
+
+MENU_SCHEDULE = "📅 Графік"
+MENU_NEXT = "⏭ Що далі"
+MENU_LIST = "📋 Мої адреси"
+MENU_ADD = "➕ Додати адресу"
+MENU_REMOVE = "🗑 Видалити адресу"
+MENU_HELP = "❓ Допомога"
 
 BUTTON_SAVE = "Зберегти"
 BUTTON_FORGET = "Так, видалити все"
@@ -85,19 +98,19 @@ NO_SCHEDULE_TOMORROW = "Графіка на завтра ще немає — щ�
 STALE_DATA = "⚠️ Дані могли застаріти: востаннє з сайту оновлено {checked}."
 NOTE = "Графік може змінюватися впродовж дня, тож поглядай і на poweron.toe.com.ua"
 
-NEXT_OFF = "<b>{label}</b>: світло вимкнуть о {latest} (через {delta})"
-NEXT_OFF_WINDOW = (
-    "<b>{label}</b>: світло можуть вимкнути з {earliest}, точно — о {latest} (через {delta})"
-)
-NEXT_OFF_POSSIBLE = "<b>{label}</b>: можливе вимкнення з {earliest} (перемикання)"
-NEXT_ON = "<b>{label}</b>: світло увімкнуть о {latest} (через {delta})"
-NEXT_ON_WINDOW = (
-    "<b>{label}</b>: світло можуть увімкнути з {earliest}, точно — о {latest} (через {delta})"
-)
-NEXT_ON_ANYTIME = "<b>{label}</b>: світло можуть дати будь-якої хвилини, точно — о {latest}"
+NEXT_OFF = "світло вимкнуть о {latest} (через {delta})"
+NEXT_OFF_WINDOW = "світло можуть вимкнути з {earliest}, точно — о {latest} (через {delta})"
+NEXT_OFF_POSSIBLE = "можливе вимкнення з {earliest} (перемикання)"
+NEXT_ON = "світло увімкнуть о {latest} (через {delta})"
+NEXT_ON_WINDOW = "світло можуть увімкнути з {earliest}, точно — о {latest} (через {delta})"
+NEXT_ON_ANYTIME = "світло можуть дати будь-якої хвилини, точно — о {latest}"
+NEXT_ONE = "<b>{label}</b>: {event}"
+NEXT_TITLE = "<b>{label}</b>:"
+NEXT_QUEUE = "• підчерга {queue}: {event}"
 NEXT_NONE = "<b>{label}</b>: найближчим часом змін не заплановано."
 
-UPDATE_TITLE = "💡 Графік для <b>{label}</b> оновлено"
+UPDATE_TITLE = "💡 Графік для <b>{label}</b>{queue} оновлено"
+UPDATE_QUEUE = " (черга {queue})"
 UPDATE_NEW_DAY = "З'явився графік на {date}:"
 UPDATE_NEW_DAY_EMPTY = "З'явився графік на {date}: без відключень 🎉"
 UPDATE_CHANGED_DAY = "Зміни на {date}:"

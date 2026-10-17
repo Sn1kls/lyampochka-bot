@@ -265,3 +265,33 @@ async def test_buildings_without_schedule_have_no_subqueue(client: ToeClient) ->
     buildings = await client.buildings(1032, 9985)
     assert Building(id=358136, name="1", cherg_gpv="4.1") in buildings
     assert Building(id=350657, name="23", cherg_gpv=None) in buildings
+
+
+@respx.mock
+async def test_building_subqueues_lists_every_group_once_in_order(client: ToeClient) -> None:
+    route = respx.get(f"{API}/pw-accounts/building-groups").respond(
+        json={
+            "filters": {"cityId": 1, "streetId": 7},
+            "buildingGroups": [
+                {"chergGpv": "2.2"},
+                {"chergGpv": " 4.1 "},
+                {"chergGpv": "2.2"},
+                {"chergGpv": "Не входить"},
+                {"chergGpv": ""},
+                {"chergGpv": None},
+                {},
+            ],
+        }
+    )
+
+    assert await client.building_subqueues(1, 7, "96") == ["2.2", "4.1"]
+    params = route.calls.last.request.url.params
+    assert (params["cityId"], params["streetId"], params["buildingNames"]) == ("1", "7", "96")
+
+
+@respx.mock
+async def test_building_subqueues_rejects_an_unexpected_shape(client: ToeClient) -> None:
+    respx.get(f"{API}/pw-accounts/building-groups").respond(json={"buildingGroups": "none"})
+
+    with pytest.raises(ApiSchemaError):
+        await client.building_subqueues(1, 7, "96")

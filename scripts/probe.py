@@ -294,5 +294,33 @@ def main() -> int:
     return 0
 
 
+def probe_building(city_id: int, street_id: int, building_name: str) -> int:
+    """Print what the API says about one building; saves nothing (addresses are personal)."""
+    _, _, names = get("/pw-accounts/building-names", {"cityId": city_id, "streetId": street_id})
+    rows = [row for row in names["buildingNames"] if row["buildingName"] == building_name]
+    print(f"  building-names rows for {building_name!r}: {rows}")
+    params = {"cityId": city_id, "streetId": street_id, "buildingNames": building_name}
+    _, _, groups = get("/pw-accounts/building-groups", params)
+    print(f"  building-groups: {groups}")
+    after, before = site_range(datetime.now(KYIV))
+    unique_before = before.replace(
+        "T00:00:00", f"T00:{int(time.time()) % 3600 // 60:02d}:{int(time.time()) % 60:02d}"
+    )
+    address_time, key = addr_key(city_id, street_id, building_name)
+    params = {
+        "after": after,
+        "before": unique_before,
+        "time": address_time,
+        "group": rows[0]["chergGpv"],
+    }
+    _, _, schedule = get("/a_gpv_g", params, key)
+    print(
+        f"  a_gpv_g dataJson keys per day: {[(m['dateGraph'], sorted(m['dataJson'])) for m in members(schedule)]}"
+    )
+    return 0
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["building"]:
+        sys.exit(probe_building(int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]))
     sys.exit(main())

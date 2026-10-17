@@ -1,7 +1,12 @@
 from collections.abc import Sequence
 
 from aiogram.filters.callback_data import CallbackData
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from poweron.core.domain.models import Subscription
@@ -11,6 +16,12 @@ from . import texts
 PAGE_SIZE = 8
 BUILDING_COLUMNS = 4
 BUILDING_PAGE_SIZE = 20
+MENU_ROWS = (
+    (texts.MENU_SCHEDULE, texts.MENU_NEXT),
+    (texts.MENU_LIST, texts.MENU_ADD),
+    (texts.MENU_REMOVE, texts.MENU_HELP),
+)
+MENU_LABELS = frozenset(label for row in MENU_ROWS for label in row)
 
 
 class Page(CallbackData, prefix="pg"):
@@ -26,8 +37,18 @@ class Pick(CallbackData, prefix="pk"):
 
 
 class DayChoice(CallbackData, prefix="day"):
+    """`subqueue` empty means the tracked queues."""
+
     subscription_id: int
     offset: int
+    subqueue: str = ""
+
+
+class QueueChoice(CallbackData, prefix="q"):
+    """`index` -1 means all queues of the building."""
+
+    index: int
+    generation: int
 
 
 class SubscriptionChoice(CallbackData, prefix="sub"):
@@ -72,13 +93,54 @@ def choice_keyboard(
     return builder.as_markup()
 
 
-def day_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
+def menu_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=label) for label in row] for row in MENU_ROWS],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def queue_keyboard(subqueues: Sequence[str], generation: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for index, queue in enumerate(subqueues):
+        builder.button(
+            text=texts.BUTTON_QUEUE.format(queue=_plain_label(queue)),
+            callback_data=QueueChoice(index=index, generation=generation),
+        )
+    builder.button(
+        text=texts.BUTTON_ALL_QUEUES, callback_data=QueueChoice(index=-1, generation=generation)
+    )
+    builder.button(text=texts.BUTTON_CANCEL, callback_data=Decision(action="add", accepted=False))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def day_keyboard(
+    subscription: Subscription, shown_offset: int | None = None, shown_subqueue: str = ""
+) -> InlineKeyboardMarkup:
+    """After a day is shown, the building's untracked queues get buttons for that same day."""
     builder = InlineKeyboardBuilder()
     for text, offset in ((texts.TODAY, 0), (texts.TOMORROW, 1)):
         builder.button(
-            text=text, callback_data=DayChoice(subscription_id=subscription_id, offset=offset)
+            text=text, callback_data=DayChoice(subscription_id=subscription.id, offset=offset)
         )
+    if shown_offset is not None:
+        for queue in subscription.subqueues:
+            if queue not in subscription.tracked_subqueues and queue != shown_subqueue:
+                builder.row(
+                    InlineKeyboardButton(
+                        text=texts.BUTTON_QUEUE.format(queue=_plain_label(queue)),
+                        callback_data=DayChoice(
+                            subscription_id=subscription.id, offset=shown_offset, subqueue=queue
+                        ).pack(),
+                    )
+                )
     return builder.as_markup()
+
+
+def _plain_label(cherg_gpv: str) -> str:
+    return cherg_gpv.split("#")[0]
 
 
 def subscription_keyboard(

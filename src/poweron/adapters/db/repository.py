@@ -1,11 +1,12 @@
 import logging
+from collections.abc import Sequence
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Row, and_, delete, event, func, or_, select, update
+from sqlalchemy import ColumnElement, Row, and_, delete, event, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
@@ -15,6 +16,7 @@ from poweron.adapters.db.tables import (
     identities,
     outbox,
     schedule_versions,
+    subscription_subqueues,
     subscriptions,
     users,
 )
@@ -123,10 +125,12 @@ class SqlRepository:
         city: City,
         street: Street,
         building: Building,
+        subqueues: Sequence[str],
+        tracked: Sequence[str],
         now: datetime,
     ) -> Subscription:
         async with self._engine.begin() as connection:
-            result = await connection.execute(
+            subscription_id = await connection.scalar(
                 subscriptions.insert()
                 .values(
                     user_id=user_id,
@@ -137,12 +141,23 @@ class SqlRepository:
                     street_name=street.name,
                     building_id=building.id,
                     building_name=building.name,
-                    cherg_gpv=building.cherg_gpv,
                     created_at=now,
                 )
-                .returning(*subscriptions.c)
+                .returning(subscriptions.c.id)
             )
-            return _subscription(result.one())
+            await connection.execute(
+                subscription_subqueues.insert(),
+                [
+                    {
+                        "subscription_id": subscription_id,
+                        "cherg_gpv": cherg_gpv,
+                        "notify": cherg_gpv in tracked,
+                    }
+                    for cherg_gpv in set(subqueues)
+                ],
+            )
+            (subscription,) = await _load(connection, subscriptions.c.id == subscription_id)
+            return subscription
 
     async def remove_subscription(self, user_id: int, subscription_id: int) -> bool:
         async with self._engine.begin() as connection:
@@ -155,23 +170,15 @@ class SqlRepository:
 
     async def user_subscriptions(self, user_id: int) -> list[Subscription]:
         async with self._engine.connect() as connection:
-            result = await connection.execute(
-                select(subscriptions)
-                .where(subscriptions.c.user_id == user_id)
-                .order_by(subscriptions.c.id)
-            )
-            return [_subscription(row) for row in result]
+            return await _load(connection, subscriptions.c.user_id == user_id)
 
     async def subscription(self, user_id: int, subscription_id: int) -> Subscription | None:
         async with self._engine.connect() as connection:
-            row = (
-                await connection.execute(
-                    select(subscriptions).where(
-                        subscriptions.c.id == subscription_id, subscriptions.c.user_id == user_id
-                    )
-                )
-            ).first()
-            return None if row is None else _subscription(row)
+            found = await _load(
+                connection,
+                and_(subscriptions.c.id == subscription_id, subscriptions.c.user_id == user_id),
+            )
+            return found[0] if found else None
 
     async def delete_user(self, user_id: int) -> None:
         async with self._engine.begin() as connection:
@@ -179,8 +186,7 @@ class SqlRepository:
 
     async def all_subscriptions(self) -> list[Subscription]:
         async with self._engine.connect() as connection:
-            result = await connection.execute(select(subscriptions).order_by(subscriptions.c.id))
-            return [_subscription(row) for row in result]
+            return await _load(connection)
 
     async def last_polled_at(self, cherg_gpv: str) -> datetime | None:
         async with self._engine.connect() as connection:
@@ -328,7 +334,25 @@ async def _enqueue(connection: AsyncConnection, message: OutboxMessage) -> None:
         )
 
 
-def _subscription(row: Row[Any]) -> Subscription:
+async def _load(
+    connection: AsyncConnection, condition: ColumnElement[bool] | None = None
+) -> list[Subscription]:
+    query = select(subscriptions).order_by(subscriptions.c.id)
+    if condition is not None:
+        query = query.where(condition)
+    rows = (await connection.execute(query)).all()
+    queues: dict[int, list[Row[Any]]] = {row.id: [] for row in rows}
+    queue_rows = await connection.execute(
+        select(subscription_subqueues)
+        .where(subscription_subqueues.c.subscription_id.in_(queues))
+        .order_by(subscription_subqueues.c.notify.desc(), subscription_subqueues.c.cherg_gpv)
+    )
+    for queue_row in queue_rows:
+        queues[queue_row.subscription_id].append(queue_row)
+    return [_subscription(row, queues[row.id]) for row in rows]
+
+
+def _subscription(row: Row[Any], queue_rows: list[Row[Any]]) -> Subscription:
     return Subscription(
         id=row.id,
         user_id=row.user_id,
@@ -337,7 +361,8 @@ def _subscription(row: Row[Any]) -> Subscription:
         city_name=row.city_name,
         street_name=row.street_name,
         building_id=row.building_id,
-        cherg_gpv=row.cherg_gpv,
+        subqueues=tuple(queue.cherg_gpv for queue in queue_rows),
+        tracked_subqueues=tuple(queue.cherg_gpv for queue in queue_rows if queue.notify),
         notify_on_update=row.notify_on_update,
         remind_before_off_min=row.remind_before_off_min,
         remind_before_on_min=row.remind_before_on_min,

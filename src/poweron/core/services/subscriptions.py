@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import datetime
 
 from poweron.core.domain.models import Building, City, Street, Subscription
@@ -25,11 +26,17 @@ class Subscriptions:
         city: City,
         street: Street,
         building: Building,
+        subqueues: Sequence[str],
+        tracked: Sequence[str],
         now: datetime,
     ) -> Subscription:
-        if building.cherg_gpv is None:
+        if not subqueues:
             raise NoScheduleForAddress(building.name)
-        return await self._repository.add_subscription(user_id, label, city, street, building, now)
+        if not tracked or not set(tracked) <= set(subqueues):
+            raise ValueError("tracked must be a non-empty subset of the building's subqueues")
+        return await self._repository.add_subscription(
+            user_id, label, city, street, building, subqueues, tracked, now
+        )
 
     async def remove(self, user_id: int, subscription_id: int) -> bool:
         return await self._repository.remove_subscription(user_id, subscription_id)
