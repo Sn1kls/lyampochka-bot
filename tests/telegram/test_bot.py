@@ -31,6 +31,11 @@ async def test_command_menu_matches_help() -> None:
     )
 
 
+def test_settings_is_in_the_command_menu_and_help() -> None:
+    assert ("settings", "налаштування сповіщень") in texts.COMMANDS
+    assert "/settings — налаштування сповіщень" in texts.HELP
+
+
 async def test_a_failing_command_menu_does_not_stop_the_bot() -> None:
     class FailingBot:
         async def set_my_commands(self, commands: list[BotCommand]) -> None:

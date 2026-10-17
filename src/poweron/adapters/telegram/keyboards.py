@@ -14,12 +14,19 @@ from poweron.core.domain.models import Subscription
 from . import texts
 
 PAGE_SIZE = 8
+REMINDER_MINUTES = (0, 15, 30, 60)
+SETTING_VALUES = {
+    "notify_on_update": (0, 1),
+    "remind_before_off_min": REMINDER_MINUTES,
+    "remind_before_on_min": REMINDER_MINUTES,
+}
 BUILDING_COLUMNS = 4
 BUILDING_PAGE_SIZE = 20
 MENU_ROWS = (
     (texts.MENU_SCHEDULE, texts.MENU_NEXT),
     (texts.MENU_LIST, texts.MENU_ADD),
-    (texts.MENU_REMOVE, texts.MENU_HELP),
+    (texts.MENU_SETTINGS, texts.MENU_REMOVE),
+    (texts.MENU_HELP,),
 )
 MENU_LABELS = frozenset(label for row in MENU_ROWS for label in row)
 
@@ -54,6 +61,14 @@ class QueueChoice(CallbackData, prefix="q"):
 class SubscriptionChoice(CallbackData, prefix="sub"):
     action: str
     subscription_id: int
+
+
+class SettingChange(CallbackData, prefix="set"):
+    """`field` is a `Subscriptions.update_settings` parameter; `value` is 0/1 for the push toggle."""
+
+    subscription_id: int
+    field: str
+    value: int
 
 
 class Decision(CallbackData, prefix="ok"):
@@ -160,4 +175,39 @@ def confirm_keyboard(action: str, accept_text: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=accept_text, callback_data=Decision(action=action, accepted=True))
     builder.button(text=texts.BUTTON_CANCEL, callback_data=Decision(action=action, accepted=False))
+    return builder.as_markup()
+
+
+def settings_keyboard(subscription: Subscription) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    toggle_text = (
+        texts.BUTTON_UPDATES_ON if subscription.notify_on_update else texts.BUTTON_UPDATES_OFF
+    )
+    builder.button(
+        text=toggle_text,
+        callback_data=SettingChange(
+            subscription_id=subscription.id,
+            field="notify_on_update",
+            value=int(not subscription.notify_on_update),
+        ),
+    )
+    for field, current, template in (
+        ("remind_before_off_min", subscription.remind_before_off_min, texts.BUTTON_REMINDER_OFF),
+        ("remind_before_on_min", subscription.remind_before_on_min, texts.BUTTON_REMINDER_ON),
+    ):
+        for minutes in REMINDER_MINUTES:
+            value = (
+                texts.BUTTON_REMINDER_MINUTES.format(minutes=minutes)
+                if minutes
+                else texts.BUTTON_REMINDER_NONE
+            )
+            builder.button(
+                text=(texts.BUTTON_REMINDER_SELECTED if minutes == current else template).format(
+                    value=value
+                ),
+                callback_data=SettingChange(
+                    subscription_id=subscription.id, field=field, value=minutes
+                ),
+            )
+    builder.adjust(1, len(REMINDER_MINUTES), len(REMINDER_MINUTES))
     return builder.as_markup()
