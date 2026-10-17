@@ -195,19 +195,24 @@ def settings_keyboard(subscription: Subscription) -> InlineKeyboardMarkup:
         ("remind_before_off_min", subscription.remind_before_off_min, texts.BUTTON_REMINDER_OFF),
         ("remind_before_on_min", subscription.remind_before_on_min, texts.BUTTON_REMINDER_ON),
     ):
-        for minutes in REMINDER_MINUTES:
-            value = (
-                texts.BUTTON_REMINDER_MINUTES.format(minutes=minutes)
-                if minutes
-                else texts.BUTTON_REMINDER_NONE
-            )
-            builder.button(
-                text=(texts.BUTTON_REMINDER_SELECTED if minutes == current else template).format(
-                    value=value
-                ),
-                callback_data=SettingChange(
-                    subscription_id=subscription.id, field=field, value=minutes
-                ),
-            )
-    builder.adjust(1, len(REMINDER_MINUTES), len(REMINDER_MINUTES))
+        builder.button(
+            text=template.format(value=_minutes_text(current)),
+            callback_data=SettingChange(
+                subscription_id=subscription.id, field=field, value=_next_minutes(current)
+            ),
+        )
+    builder.adjust(1)
     return builder.as_markup()
+
+
+def _minutes_text(minutes: int) -> str:
+    if not minutes:
+        return texts.BUTTON_REMINDER_NONE
+    return texts.BUTTON_REMINDER_MINUTES.format(minutes=minutes)
+
+
+def _next_minutes(current: int) -> int:
+    """Each press moves to the next option: без → 15 → 30 → 60 → без."""
+    if current not in REMINDER_MINUTES:
+        return REMINDER_MINUTES[0]
+    return REMINDER_MINUTES[(REMINDER_MINUTES.index(current) + 1) % len(REMINDER_MINUTES)]
