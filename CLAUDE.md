@@ -45,7 +45,7 @@ Ports and adapters (SPEC §3). Package root `src/poweron/`.
 
 - `core/` (domain + services + ports) imports only stdlib and pydantic. Never aiogram, httpx, SQLAlchemy, or anything in `adapters/`.
 - Client adapters (`adapters/telegram`, later `adapters/http_api`) call only `core.services`. Never the repository or the toe API directly.
-- Services take and return domain models and the internal `user_id`. Never `chat_id`, never aiogram objects.
+- Services take and return domain models and the internal `user_id`. Never `chat_id`, never aiogram objects. The one exception is `Subscriptions.register`, which maps an external identity and its delivery address to the internal `user_id`.
 - `core` emits structured events into the `outbox`; channel notifiers render them. No human-readable text in `core`.
 - `adapters/toe_api` is the only place that knows URLs, headers and raw JSON; validate everything with pydantic, raise `ApiSchemaError` on mismatch.
 - DB: SQLAlchemy 2.0 async + Alembic, portable SQL only (SQLite now, Postgres later by `DATABASE_URL`). Every schema change is a migration.
