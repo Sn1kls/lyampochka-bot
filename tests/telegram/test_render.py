@@ -10,6 +10,9 @@ from poweron.adapters.telegram.render import (
     render_list,
     render_next,
     render_queues,
+    render_reminder,
+    render_settings,
+    render_subqueues_changed,
     render_update,
     subqueue_label,
 )
@@ -331,3 +334,106 @@ def test_viewing_one_untracked_queue_shows_only_that_queue() -> None:
 
     assert "Підчерга 2.2" in text
     assert "4.1" not in text
+
+
+def reminder_payload(**changes: object) -> dict[str, object]:
+    return {
+        "subscription_id": 1,
+        "label": "Дім <&>",
+        "cherg_gpv": "4.1#7",
+        "queue_count": 1,
+        "minutes": 15,
+        "earliest": "2026-10-17T07:00:00+00:00",
+        "latest": "2026-10-17T07:30:00+00:00",
+        **changes,
+    }
+
+
+@pytest.mark.parametrize(
+    ("payload", "power_on", "expected"),
+    [
+        (
+            reminder_payload(),
+            False,
+            "⏰ <b>Дім &lt;&amp;&gt;</b>: за 15 хв можуть вимкнути світло (з 10:00, точно — о 10:30)",
+        ),
+        (
+            reminder_payload(latest="2026-10-17T07:00:00+00:00"),
+            False,
+            "⏰ <b>Дім &lt;&amp;&gt;</b>: за 15 хв вимкнуть світло (о 10:00)",
+        ),
+        (
+            reminder_payload(latest=None),
+            False,
+            "⏰ <b>Дім &lt;&amp;&gt;</b>: за 15 хв можливе вимкнення з 10:00",
+        ),
+        (
+            reminder_payload(minutes=30),
+            True,
+            "💡 <b>Дім &lt;&amp;&gt;</b>: за 30 хв мають дати світло (з 10:00, точно — о 10:30)",
+        ),
+        (
+            reminder_payload(latest="2026-10-17T07:00:00+00:00"),
+            True,
+            "💡 <b>Дім &lt;&amp;&gt;</b>: за 15 хв дадуть світло (о 10:00)",
+        ),
+        (
+            reminder_payload(latest=None),
+            True,
+            "💡 <b>Дім &lt;&amp;&gt;</b>: за 15 хв можливе повернення світла з 10:00",
+        ),
+        (
+            reminder_payload(queue_count=2),
+            False,
+            "⏰ <b>Дім &lt;&amp;&gt;</b> (черга 4.1): за 15 хв можуть вимкнути світло "
+            "(з 10:00, точно — о 10:30)",
+        ),
+        (
+            reminder_payload(queue_count=2, latest="2026-10-17T07:00:00+00:00"),
+            True,
+            "💡 <b>Дім &lt;&amp;&gt;</b> (черга 4.1): за 15 хв дадуть світло (о 10:00)",
+        ),
+    ],
+)
+def test_render_reminder(payload: dict[str, object], power_on: bool, expected: str) -> None:
+    assert render_reminder(payload, power_on=power_on) == expected
+
+
+def test_render_subqueues_changed_lists_queues_and_points_to_settings() -> None:
+    payload = {
+        "subscription_id": 1,
+        "label": "Дім <&>",
+        "previous": ["4.1#7"],
+        "current": ["2.2#3", "4.1#7"],
+        "tracked": ["4.1#7"],
+    }
+
+    assert render_subqueues_changed(payload) == "\n".join(
+        [
+            "🔄 Для <b>Дім &lt;&amp;&gt;</b> змінилися черги.",
+            "Було: 4.1",
+            "Стало: 2.2, 4.1",
+            "Стежу за: 4.1",
+            "",
+            "Перевір, чи все гаразд, у /settings",
+        ]
+    )
+
+
+def test_render_subqueues_changed_shows_a_dash_for_no_queues() -> None:
+    payload = {"label": "Дім", "previous": ["4.1"], "current": [], "tracked": []}
+
+    assert "Стало: —\nСтежу за: —" in render_subqueues_changed(payload)
+
+
+def test_render_settings_shows_each_setting() -> None:
+    subscription = replace(SUBSCRIPTION, notify_on_update=False, remind_before_off_min=15)
+
+    assert render_settings(subscription) == "\n".join(
+        [
+            "⚙️ Налаштування для <b>Дім &lt;&amp;&gt;</b>",
+            "Пуші про оновлення графіка: вимкнено",
+            "⏰ Нагадати перед вимкненням: за 15 хв",
+            "💡 Нагадати перед поверненням світла: не треба",
+        ]
+    )

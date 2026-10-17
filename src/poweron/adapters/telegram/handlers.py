@@ -36,6 +36,7 @@ from .render import (
     render_list,
     render_next,
     render_no_schedule_for_address,
+    render_settings,
     subqueue_label,
 )
 
@@ -168,6 +169,17 @@ async def remove(message: Message, user_id: int, subscriptions: Subscriptions) -
     )
 
 
+@router.message(Command("settings"))
+@router.message(F.text == texts.MENU_SETTINGS)
+async def settings(message: Message, user_id: int, subscriptions: Subscriptions) -> None:
+    async def show_settings(subscription: Subscription) -> None:
+        await _respond(
+            message, render_settings(subscription), keyboards.settings_keyboard(subscription)
+        )
+
+    await _choose_subscription(message, user_id, subscriptions, "settings", show_settings)
+
+
 @router.message(Command("forget"))
 async def forget(message: Message) -> None:
     await message.answer(
@@ -214,12 +226,42 @@ async def choose_subscription(
         await _respond(callback, texts.CHOOSE_DAY, keyboards.day_keyboard(subscription))
     elif callback_data.action == "next":
         await _respond(callback, await _next_text(schedules, subscription))
+    elif callback_data.action == "settings":
+        await _respond(
+            callback, render_settings(subscription), keyboards.settings_keyboard(subscription)
+        )
     elif callback_data.action == "remove":
         removed = await subscriptions.remove(user_id, subscription.id)
         if removed:
             await _finish(callback, texts.REMOVED, keyboards.menu_keyboard())
         else:
             await _respond(callback, texts.ADDRESS_GONE)
+
+
+@router.callback_query(keyboards.SettingChange.filter())
+async def change_setting(
+    callback: CallbackQuery,
+    callback_data: keyboards.SettingChange,
+    user_id: int,
+    subscriptions: Subscriptions,
+) -> None:
+    if callback_data.value not in keyboards.SETTING_VALUES.get(callback_data.field, ()):
+        await callback.answer(texts.STALE_BUTTON, show_alert=True)
+        return
+    changes: dict[str, Any] = {
+        callback_data.field: bool(callback_data.value)
+        if callback_data.field == "notify_on_update"
+        else callback_data.value
+    }
+    subscription = await subscriptions.update_settings(
+        user_id, callback_data.subscription_id, **changes
+    )
+    if subscription is None:
+        await _respond(callback, texts.ADDRESS_GONE)
+    else:
+        await _respond(
+            callback, render_settings(subscription), keyboards.settings_keyboard(subscription)
+        )
 
 
 @router.callback_query(keyboards.DayChoice.filter())

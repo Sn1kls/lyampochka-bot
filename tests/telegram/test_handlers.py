@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -18,7 +19,7 @@ from poweron.adapters.db.repository import SqlRepository
 from poweron.adapters.telegram import keyboards, texts
 from poweron.adapters.telegram.bot import build_dispatcher
 from poweron.core.domain.diff import data_hash
-from poweron.core.domain.models import Building, City, ScheduleVersion, Street
+from poweron.core.domain.models import Building, City, ScheduleVersion, Street, Subscription
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.subscriptions import Subscriptions
@@ -75,9 +76,39 @@ class RecordingSession(BaseSession):
         yield b""
 
 
+class SettingsSubscriptions(Subscriptions):
+    """Core's update_settings is not implemented in this worktree; this keeps changes in memory."""
+
+    def __init__(self, repository: SqlRepository) -> None:
+        super().__init__(repository)
+        self.stored: dict[int, dict[str, Any]] = {}
+
+    async def update_settings(
+        self,
+        user_id: int,
+        subscription_id: int,
+        *,
+        notify_on_update: bool | None = None,
+        remind_before_off_min: int | None = None,
+        remind_before_on_min: int | None = None,
+    ) -> Subscription | None:
+        subscription = await self.get(user_id, subscription_id)
+        if subscription is None:
+            return None
+        given = {
+            "notify_on_update": notify_on_update,
+            "remind_before_off_min": remind_before_off_min,
+            "remind_before_on_min": remind_before_on_min,
+        }
+        self.stored.setdefault(subscription_id, {}).update(
+            {name: value for name, value in given.items() if value is not None}
+        )
+        return replace(subscription, **self.stored[subscription_id])
+
+
 class Chat:
     def __init__(self, repository: SqlRepository) -> None:
-        self.subscriptions = Subscriptions(repository)
+        self.subscriptions = SettingsSubscriptions(repository)
         self.session = RecordingSession()
         self.bot = Bot("123:abc", session=self.session)
         self.dispatcher: Dispatcher = build_dispatcher(
@@ -278,7 +309,8 @@ async def test_start_and_a_finished_add_show_the_phone_menu(chat: Chat) -> None:
     assert [[button.text for button in row] for row in markup.keyboard] == [
         ["📅 Графік", "⏭ Що далі"],
         ["📋 Мої адреси", "➕ Додати адресу"],
-        ["🗑 Видалити адресу", "❓ Допомога"],
+        ["⚙️ Налаштування", "🗑 Видалити адресу"],
+        ["❓ Допомога"],
     ]
 
     await add_address(chat, "5")
@@ -317,6 +349,7 @@ async def test_remove_and_cancelled_forget_show_the_menu_and_forget_removes_it(
         (texts.MENU_NEXT, "/next"),
         (texts.MENU_LIST, "/list"),
         (texts.MENU_ADD, "/add"),
+        (texts.MENU_SETTINGS, "/settings"),
         (texts.MENU_REMOVE, "/remove"),
         (texts.MENU_HELP, "/help"),
     ],
@@ -334,13 +367,14 @@ async def test_each_menu_button_runs_the_command_handler(
     assert by_button == by_command
 
 
-async def test_menu_button_in_the_middle_of_the_wizard_leaves_it(chat: Chat) -> None:
+@pytest.mark.parametrize("button", [texts.MENU_SCHEDULE, texts.MENU_SETTINGS])
+async def test_menu_button_in_the_middle_of_the_wizard_leaves_it(chat: Chat, button: str) -> None:
     await chat.say("/start")
     await chat.say("/add")
     await chat.say("бережани")
     assert chat.sent_texts()[-1] == texts.ASK_STREET.format(city="Бережани")
 
-    await chat.say(texts.MENU_SCHEDULE)
+    await chat.say(button)
     assert chat.sent_texts()[-1] == texts.NO_SUBSCRIPTIONS
 
     sent_before = len(chat.sent_texts())
@@ -397,3 +431,96 @@ async def test_untracked_queue_can_be_viewed_with_its_button(
     await chat.press_button("Черга 4.1")
     assert "Підчерга 4.1" in chat.edited_texts()[-1]
     assert "Підчерга 2.2" not in chat.edited_texts()[-1]
+
+
+def button_texts(markup: Any) -> list[list[str]]:
+    return [[button.text for button in row] for row in markup.inline_keyboard]
+
+
+async def test_settings_shows_the_state_and_each_press_edits_the_same_message(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.say("/settings")
+
+    assert chat.sent_texts()[-1] == "\n".join(
+        [
+            "⚙️ Налаштування для <b>Дім</b>",
+            "Пуші про оновлення графіка: увімкнено",
+            "⏰ Нагадати перед вимкненням: за 30 хв",
+            "💡 Нагадати перед поверненням світла: не треба",
+        ]
+    )
+    assert button_texts(chat.last_reply_markup()) == [
+        ["✅ Пуші про оновлення"],
+        ["⏰ без", "⏰ 15 хв", "✅ 30 хв", "⏰ 60 хв"],
+        ["✅ без", "💡 15 хв", "💡 30 хв", "💡 60 хв"],
+    ]
+
+    await chat.press_button("✅ Пуші про оновлення")
+    await chat.press_button("⏰ 15 хв")
+    await chat.press_button("💡 60 хв")
+
+    assert chat.subscriptions.stored == {
+        1: {"notify_on_update": False, "remind_before_off_min": 15, "remind_before_on_min": 60}
+    }
+    assert chat.edited_texts()[-1].splitlines()[1:] == [
+        "Пуші про оновлення графіка: вимкнено",
+        "⏰ Нагадати перед вимкненням: за 15 хв",
+        "💡 Нагадати перед поверненням світла: за 60 хв",
+    ]
+    edited_markup = [call for call in chat.session.calls if isinstance(call, EditMessageText)][
+        -1
+    ].reply_markup
+    assert button_texts(edited_markup) == [
+        ["🚫 Пуші про оновлення"],
+        ["⏰ без", "✅ 15 хв", "⏰ 30 хв", "⏰ 60 хв"],
+        ["💡 без", "💡 15 хв", "💡 30 хв", "✅ 60 хв"],
+    ]
+
+
+async def test_settings_of_an_address_chosen_from_several(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.press(keyboards.SubscriptionChoice(action="settings", subscription_id=1))
+
+    assert chat.edited_texts()[-1].startswith("⚙️ Налаштування для <b>Дім</b>")
+
+
+async def test_setting_of_a_missing_address_is_reported_and_stores_nothing(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.press(
+        keyboards.SettingChange(subscription_id=99, field="remind_before_off_min", value=15)
+    )
+
+    assert chat.edited_texts()[-1] == texts.ADDRESS_GONE
+    assert chat.subscriptions.stored == {}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("remind_before_off_min", 45), ("notify_on_update", 2), ("label", 1)],
+)
+async def test_unknown_setting_is_a_stale_button(chat: Chat, field: str, value: int) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.press(keyboards.SettingChange(subscription_id=1, field=field, value=value))
+
+    assert chat.alerts() == [texts.STALE_BUTTON]
+    assert chat.subscriptions.stored == {}
+
+
+async def test_pressing_the_same_setting_twice_ignores_the_unmodified_message(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+    chat.session.errors[EditMessageText] = TelegramBadRequest(
+        EditMessageText(text="x"), "Bad Request: message is not modified"
+    )
+
+    await chat.press(
+        keyboards.SettingChange(subscription_id=1, field="remind_before_on_min", value=0)
+    )
