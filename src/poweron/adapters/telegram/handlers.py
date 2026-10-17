@@ -292,7 +292,9 @@ def _choice_label(item: City | Street | Building) -> str:
 @router.message(AddFlow.city, F.text)
 async def search_city(message: Message, state: FSMContext, catalog: Catalog) -> None:
     cities = await catalog.find_cities(message.text or "", _now())
-    if cities:
+    if len(cities) == 1:
+        await _choose_city(message, state, asdict(cities[0]))
+    elif cities:
         await _offer(message, state, "city", cities, texts.CHOOSE_CITY)
     else:
         await message.answer(texts.NOTHING_FOUND)
@@ -306,16 +308,24 @@ async def pick_city(
     if picked is None:
         return
     _, city = picked
+    await _choose_city(callback, state, city)
+
+
+async def _choose_city(
+    event: Message | CallbackQuery, state: FSMContext, city: dict[str, Any]
+) -> None:
     await state.update_data(city=city)
     await state.set_state(AddFlow.street)
-    await _respond(callback, texts.ASK_STREET.format(city=escape(city["name"])))
+    await _respond(event, texts.ASK_STREET.format(city=escape(city["name"])))
 
 
 @router.message(AddFlow.street, F.text)
 async def search_street(message: Message, state: FSMContext, catalog: Catalog) -> None:
     city = (await state.get_data())["city"]
     streets = await catalog.find_streets(city["id"], message.text or "", _now())
-    if streets:
+    if len(streets) == 1:
+        await _choose_street(message, state, catalog, city, asdict(streets[0]))
+    elif streets:
         await _offer(message, state, "street", streets, texts.CHOOSE_STREET)
     else:
         await message.answer(texts.NOTHING_FOUND)
@@ -332,13 +342,23 @@ async def pick_street(
     if picked is None:
         return
     data, street = picked
-    buildings = await catalog.buildings(data["city"]["id"], street["id"], _now())
+    await _choose_street(callback, state, catalog, data["city"], street)
+
+
+async def _choose_street(
+    event: Message | CallbackQuery,
+    state: FSMContext,
+    catalog: Catalog,
+    city: dict[str, Any],
+    street: dict[str, Any],
+) -> None:
+    buildings = await catalog.buildings(city["id"], street["id"], _now())
     if not buildings:
-        await _respond(callback, texts.NO_BUILDINGS)
+        await _respond(event, texts.NO_BUILDINGS)
         return
     await state.update_data(street=street)
     await state.set_state(AddFlow.building)
-    await _offer(callback, state, "building", buildings, texts.CHOOSE_BUILDING)
+    await _offer(event, state, "building", buildings, texts.CHOOSE_BUILDING)
 
 
 @router.callback_query(AddFlow.building, keyboards.Pick.filter(F.kind == "building"))

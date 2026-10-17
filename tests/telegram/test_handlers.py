@@ -22,6 +22,7 @@ CITIES = [
     City(1, "Тернопіль", None),
     City(2, "Нова Тернопільська", None),
     City(3, "Бережани", None),
+    City(4, "Бережанка", None),
 ]
 
 
@@ -215,3 +216,9 @@ async def test_other_telegram_errors_are_not_swallowed(chat: Chat) -> None:
 
     with pytest.raises(TelegramBadRequest):
         await chat.press(keyboards.Pick(kind="city", index=0, generation=1))
+
+
+async def test_a_single_search_result_is_chosen_without_a_button(chat: Chat) -> None:
+    await start_city_search(chat, "бережани")
+
+    assert chat.sent_texts()[-1] == texts.ASK_STREET.format(city="Бережани")
