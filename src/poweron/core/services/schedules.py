@@ -35,28 +35,45 @@ class Schedules:
             checked_at=version.fetched_at,
         )
 
+    async def events(
+        self, subscription: Subscription, now: datetime
+    ) -> list[tuple[str, NextEvent]]:
+        """Every change ahead (today and tomorrow) per tracked subqueue, ordered by `earliest`."""
+        events = [
+            (queue, event)
+            for queue in subscription.tracked_subqueues
+            for event in await self.queue_events(queue, now)
+        ]
+        return sorted(events, key=lambda queue_event: queue_event[1].earliest)
+
     async def next_event(
         self, subscription: Subscription, now: datetime
     ) -> list[tuple[str, NextEvent]]:
         """Per tracked subqueue that has one: the next change between power and outage."""
-        events = [
-            (queue, await self._next_event(queue, now)) for queue in subscription.tracked_subqueues
-        ]
-        return [(queue, event) for queue, event in events if event is not None]
+        first: dict[str, NextEvent] = {}
+        for queue, event in await self.events(subscription, now):
+            first.setdefault(queue, event)
+        return [(queue, first[queue]) for queue in subscription.tracked_subqueues if queue in first]
 
-    async def _next_event(self, cherg_gpv: str, now: datetime) -> NextEvent | None:
-        """Switching counts as outage; unknown is skipped."""
+    async def queue_events(self, cherg_gpv: str, now: datetime) -> list[NextEvent]:
+        """Switching counts as outage; unknown is skipped; power returns only after a sure OFF."""
         today = now.astimezone(KYIV).date()
         views = [await self._view(cherg_gpv, day) for day in (today, today + timedelta(days=1))]
         intervals = merge(interval for view in views if view for interval in view.intervals)
         baseline = None
+        had_sure_outage = False
+        events = []
         for index, interval in enumerate(intervals):
             is_outage = _is_outage(interval.state)
             if interval.start <= now < interval.end:
                 baseline = is_outage
             elif interval.start > now and is_outage is not None and is_outage != baseline:
-                return _event(intervals, index, now)
-        return None
+                if is_outage or had_sure_outage:
+                    events.append(_event(intervals, index, now))
+                baseline = is_outage
+            if is_outage is not None:
+                had_sure_outage = is_outage and (had_sure_outage or interval.state is SlotState.OFF)
+        return events
 
 
 def _event(intervals: list[Interval], index: int, now: datetime) -> NextEvent:

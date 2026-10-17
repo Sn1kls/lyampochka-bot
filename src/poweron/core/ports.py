@@ -89,6 +89,33 @@ class Repository(Protocol):
 
     async def all_subscriptions(self) -> list[Subscription]: ...
 
+    async def update_settings(
+        self, user_id: int, subscription_id: int, changes: Mapping[str, Any]
+    ) -> None:
+        """Set the given settings columns on the subscription, only if it belongs to `user_id`."""
+        ...
+
+    async def stale_subscriptions(self, checked_before: datetime) -> list[Subscription]:
+        """Subscriptions whose subqueues were never checked or not since `checked_before`."""
+        ...
+
+    async def mark_checked(self, subscription_id: int, now: datetime) -> None: ...
+
+    async def replace_subqueues(
+        self,
+        subscription_id: int,
+        subqueues: Sequence[str],
+        tracked: Sequence[str],
+        now: datetime,
+        messages: list[OutboxMessage],
+    ) -> None:
+        """Swap the stored queues, mark the subscription checked and enqueue messages atomically."""
+        ...
+
+    async def enqueue_messages(self, messages: list[OutboxMessage]) -> None:
+        """Enqueue messages, skipping those whose dedupe key is already stored."""
+        ...
+
     async def last_polled_at(self, cherg_gpv: str) -> datetime | None: ...
 
     async def latest_version(self, cherg_gpv: str, day: date) -> ScheduleVersion | None: ...

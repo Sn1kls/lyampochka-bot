@@ -12,6 +12,7 @@ COMMANDS = (
     ("next", "коли вимкнуть чи увімкнуть світло"),
     ("add", "додати адресу"),
     ("list", "мої адреси"),
+    ("settings", "налаштування сповіщень"),
     ("remove", "видалити адресу"),
     ("forget", "стерти всі мої дані"),
     ("help", "що я вмію"),
@@ -69,6 +70,7 @@ MENU_SCHEDULE = "📅 Графік"
 MENU_NEXT = "⏭ Що далі"
 MENU_LIST = "📋 Мої адреси"
 MENU_ADD = "➕ Додати адресу"
+MENU_SETTINGS = "⚙️ Налаштування"
 MENU_REMOVE = "🗑 Видалити адресу"
 MENU_HELP = "❓ Допомога"
 
@@ -120,6 +122,40 @@ UPDATE_CHANGED_DAY = "Зміни на {date}:"
 UPDATE_ADDED = "Додано:"
 UPDATE_REMOVED = "Прибрано:"
 UPDATE_LINK = f'<a href="{SITE_URL}">poweron.toe.com.ua</a>'
+
+REMINDER_OFF_WINDOW = "⏰ <b>{label}</b>{queue}: за {minutes} хв можуть вимкнути світло (з {earliest}, точно — о {latest})"
+REMINDER_OFF_EXACT = "⏰ <b>{label}</b>{queue}: за {minutes} хв вимкнуть світло (о {latest})"
+REMINDER_OFF_POSSIBLE = "⏰ <b>{label}</b>{queue}: за {minutes} хв можливе вимкнення з {earliest}"
+REMINDER_ON_WINDOW = (
+    "💡 <b>{label}</b>{queue}: за {minutes} хв мають дати світло (з {earliest}, точно — о {latest})"
+)
+REMINDER_ON_EXACT = "💡 <b>{label}</b>{queue}: за {minutes} хв дадуть світло (о {latest})"
+REMINDER_ON_POSSIBLE = (
+    "💡 <b>{label}</b>{queue}: за {minutes} хв можливе повернення світла з {earliest}"
+)
+
+SUBQUEUES_CHANGED = (
+    "🔄 Для <b>{label}</b> змінилися черги.\n"
+    "Було: {previous}\nСтало: {current}\nСтежу за: {tracked}\n\n"
+    "Перевір, чи все гаразд, у /settings"
+)
+SUBQUEUES_GONE = (
+    "⚠️ За даними обленерго, графіки відключень для <b>{label}</b>, схоже, більше не діють "
+    "на цю адресу.\nМожливо, це збій у даних, тож нічого не змінюю — перевір на "
+    f"{UPDATE_LINK}"
+)
+
+SETTINGS_TITLE = "⚙️ Налаштування для <b>{label}</b>"
+SETTINGS_UPDATES = "Пуші про оновлення графіка: {state}"
+SETTINGS_REMINDER_OFF = "⏰ Нагадати перед вимкненням: {when}"
+SETTINGS_REMINDER_ON = "💡 Нагадати перед поверненням світла: {when}"
+SETTINGS_ENABLED = "увімкнено"
+SETTINGS_DISABLED = "вимкнено"
+BUTTON_UPDATES_ON = "✅ Пуші про оновлення"
+BUTTON_UPDATES_OFF = "🚫 Пуші про оновлення"
+BUTTON_REMINDER_OFF = "⏰ Нагадати до вимкнення: {value}"
+BUTTON_REMINDER_ON = "💡 Нагадати до повернення: {value}"
+REMINDER_NONE = "без"
 
 DURATION_HOURS = "{hours} год"
 DURATION_MINUTES = "{minutes} хв"

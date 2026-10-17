@@ -187,6 +187,66 @@ def render_update(payload: Mapping[str, Any]) -> str:
     return "\n\n".join(parts)
 
 
+def render_reminder(payload: Mapping[str, Any], *, power_on: bool) -> str:
+    earliest = datetime.fromisoformat(payload["earliest"]).astimezone(KYIV)
+    latest = (
+        None
+        if payload["latest"] is None
+        else datetime.fromisoformat(payload["latest"]).astimezone(KYIV)
+    )
+    if latest is None:
+        template = texts.REMINDER_ON_POSSIBLE if power_on else texts.REMINDER_OFF_POSSIBLE
+    elif latest == earliest:
+        template = texts.REMINDER_ON_EXACT if power_on else texts.REMINDER_OFF_EXACT
+    else:
+        template = texts.REMINDER_ON_WINDOW if power_on else texts.REMINDER_OFF_WINDOW
+    queue = (
+        texts.UPDATE_QUEUE.format(queue=subqueue_label(payload["cherg_gpv"]))
+        if payload["queue_count"] > 1
+        else ""
+    )
+    return template.format(
+        label=escape(payload["label"]),
+        queue=queue,
+        minutes=payload["minutes"],
+        earliest=f"{earliest:%H:%M}",
+        latest=f"{latest:%H:%M}" if latest else "",
+    )
+
+
+def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
+    if not payload["current"]:
+        return texts.SUBQUEUES_GONE.format(label=escape(payload["label"]))
+    return texts.SUBQUEUES_CHANGED.format(
+        label=escape(payload["label"]),
+        previous=_queue_list(payload["previous"]),
+        current=_queue_list(payload["current"]),
+        tracked=_queue_list(payload["tracked"]),
+    )
+
+
+def _queue_list(subqueues: Sequence[str]) -> str:
+    return ", ".join(subqueue_label(queue) for queue in subqueues)
+
+
+def minutes_text(minutes: int) -> str:
+    return texts.DURATION_MINUTES.format(minutes=minutes) if minutes else texts.REMINDER_NONE
+
+
+def render_settings(subscription: Subscription) -> str:
+    updates = texts.SETTINGS_ENABLED if subscription.notify_on_update else texts.SETTINGS_DISABLED
+    return "\n".join(
+        [
+            texts.SETTINGS_TITLE.format(label=escape(subscription.label)),
+            texts.SETTINGS_UPDATES.format(state=updates),
+            texts.SETTINGS_REMINDER_OFF.format(
+                when=minutes_text(subscription.remind_before_off_min)
+            ),
+            texts.SETTINGS_REMINDER_ON.format(when=minutes_text(subscription.remind_before_on_min)),
+        ]
+    )
+
+
 def _intervals(raw_intervals: Sequence[Mapping[str, str]]) -> list[Interval]:
     return [
         Interval(

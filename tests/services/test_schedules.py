@@ -187,6 +187,26 @@ async def test_switching_only_block_has_no_guaranteed_outage(
     assert event == NextEvent(False, kyiv(TODAY, 20), None)
 
 
+async def test_switching_between_power_is_a_possible_outage_but_no_power_on_event(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    await save(repository, day_schedule(outages={"10:00": "10", "10:30": "10"}))
+
+    events = await schedules.events(subscription, kyiv(TODAY, 9))
+
+    assert events == [("4.1", NextEvent(False, kyiv(TODAY, 10), None))]
+
+
+async def test_power_on_follows_switching_that_came_after_an_outage(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    await save(repository, day_schedule(outages={"09:00": "1", "09:30": "1", "10:00": "10"}))
+
+    event = await first_event(schedules, subscription, kyiv(TODAY, 10, 10))
+
+    assert event == NextEvent(True, kyiv(TODAY, 10, 10), kyiv(TODAY, 10, 30))
+
+
 @pytest.fixture
 async def two_queues(repository: SqlRepository) -> Subscription:
     subscriptions = Subscriptions(repository)
@@ -217,3 +237,32 @@ async def test_next_event_is_per_tracked_queue_that_has_one(
     events = await schedules.next_event(two_queues, kyiv(TODAY, 18))
 
     assert events == [("4.1", NextEvent(False, kyiv(TODAY, 21), kyiv(TODAY, 21)))]
+
+
+async def test_events_list_every_change_of_both_days_ordered_by_earliest(
+    repository: SqlRepository, schedules: Schedules
+) -> None:
+    subscriptions = Subscriptions(repository)
+    user_id = await subscriptions.register("telegram", "3", "telegram", "3")
+    building = Building(3, "3", "4.1")
+    both = await subscriptions.add(
+        user_id, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["2.2", "4.1"], NOW
+    )
+    await save(repository, day_schedule(cherg_gpv="2.2", outages={"19:00": "1"}))
+    await save(repository, day_schedule(cherg_gpv="4.1", outages={"20:00": "1"}))
+    await save(repository, day_schedule(TOMORROW, cherg_gpv="4.1", outages={"01:00": "1"}))
+
+    events = await schedules.events(both, kyiv(TODAY, 18))
+
+    assert events == [
+        ("2.2", NextEvent(False, kyiv(TODAY, 19), kyiv(TODAY, 19))),
+        ("2.2", NextEvent(True, kyiv(TODAY, 19, 30), kyiv(TODAY, 19, 30))),
+        ("4.1", NextEvent(False, kyiv(TODAY, 20), kyiv(TODAY, 20))),
+        ("4.1", NextEvent(True, kyiv(TODAY, 20, 30), kyiv(TODAY, 20, 30))),
+        ("4.1", NextEvent(False, kyiv(TOMORROW, 1), kyiv(TOMORROW, 1))),
+        ("4.1", NextEvent(True, kyiv(TOMORROW, 1, 30), kyiv(TOMORROW, 1, 30))),
+    ]
+    assert await schedules.next_event(both, kyiv(TODAY, 18)) == [
+        ("2.2", events[0][1]),
+        ("4.1", events[2][1]),
+    ]

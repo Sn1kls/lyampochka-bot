@@ -1,6 +1,16 @@
+from dataclasses import replace
+
 from aiogram.types import InlineKeyboardMarkup
 
-from poweron.adapters.telegram.keyboards import Decision, Page, Pick, choice_keyboard
+from poweron.adapters.telegram.keyboards import (
+    Decision,
+    Page,
+    Pick,
+    SettingChange,
+    choice_keyboard,
+    settings_keyboard,
+)
+from tests.telegram.test_render import SUBSCRIPTION
 
 LABELS = [f"Item {number}" for number in range(20)]
 
@@ -49,3 +59,30 @@ def test_buildings_are_a_grid_of_four_with_twenty_per_page() -> None:
 
     assert rows[:5] == [numbers[start : start + 4] for start in range(0, 20, 4)]
     assert rows[5:] == [["▶️"], ["Скасувати"]]
+
+
+def test_settings_are_three_labelled_buttons_that_cycle_the_minutes() -> None:
+    subscription = replace(
+        SUBSCRIPTION, notify_on_update=True, remind_before_off_min=30, remind_before_on_min=0
+    )
+
+    markup = settings_keyboard(subscription)
+
+    assert texts_of(markup) == [
+        ["✅ Пуші про оновлення"],
+        ["⏰ Нагадати до вимкнення: 30 хв"],
+        ["💡 Нагадати до повернення: без"],
+    ]
+    presses = [SettingChange.unpack(row[0].callback_data or "") for row in markup.inline_keyboard]
+    assert [(press.field, press.value) for press in presses] == [
+        ("notify_on_update", 0),
+        ("remind_before_off_min", 60),
+        ("remind_before_on_min", 15),
+    ]
+
+
+def test_the_longest_reminder_wraps_around_to_none() -> None:
+    markup = settings_keyboard(replace(SUBSCRIPTION, remind_before_off_min=60))
+
+    press = SettingChange.unpack(markup.inline_keyboard[1][0].callback_data or "")
+    assert press.value == 0

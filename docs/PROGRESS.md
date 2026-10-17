@@ -69,3 +69,24 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Known limits: a building in two queues costs two API calls per poll (one call returns both); `poll_new` does a few DB reads every 10 s; `building-groups` is not cached.
 - Deferred: `/settings`, reminders, `resolve_groups` (Phase 4); circuit breaker, admin alerts, graceful shutdown (Phase 6); FSM state lives in memory, so a restart drops an unfinished `/add`.
 - Next step: `/phase 4`.
+
+## 2026-10-17 — phase 4 (reminders, settings, subqueue re-check)
+
+- Done:
+  - `Reminders.tick` (every 60 s): "за N хв" reminders before outages and before power returns, for tracked queues only, computed from the latest stored versions. N is the real time left.
+  - `Schedules.events`: every event ahead over two days; `/next` uses it.
+  - `/settings` and the «⚙️ Налаштування» button: three labelled buttons that cycle — update pushes ✅/🚫, before outage, before power returns (без → 15 → 30 → 60).
+  - `SubqueueChecker.check` (hourly over subscriptions not checked for 24 h): one `building-groups` call per building. A changed queue set is replaced atomically together with a «черги змінилися» message.
+  - Renderers for the new message kinds. 226 tests; `make check` green.
+- Done when: in Docker, the owner set a 60-min reminder; a simulated 22:00 outage produced the update pushes and «⏰ за 33 хв вимкнуть світло (о 22:00)» for both queues, and the real poll then restored the schedule with a push.
+- Work split: contracts, then two Sonnet agents in worktrees (core and telegram), four reviews (code, standards, spec, security: no findings), then one agent applied 11 fixes.
+- Decisions:
+  - The reminder fires inside `[earliest − N, earliest)`, never after the event started. Its dedupe key is `remind:{sub}:{queue}:{earliest}:{kind}`.
+  - A block of switching only (no OFF) is a possible outage with no "power returns" event.
+  - If a building returns no queues, the stored ones are kept and the user is told once.
+  - The `subqueues_changed` dedupe key is subscription + previous>current.
+  - New subscriptions are marked as checked at `/add`.
+  - Each subscription and each building is isolated, so one failure does not stop the rest.
+- Open questions: none.
+- Deferred to phase 6: circuit breaker, admin alerts, graceful shutdown, `/status`.
+- Next step: phase 5 (planned works, optional) or phase 6 (deploy).

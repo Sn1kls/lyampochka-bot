@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -142,20 +142,11 @@ class SqlRepository:
                     building_id=building.id,
                     building_name=building.name,
                     created_at=now,
+                    cherg_checked_at=now,
                 )
                 .returning(subscriptions.c.id)
             )
-            await connection.execute(
-                subscription_subqueues.insert(),
-                [
-                    {
-                        "subscription_id": subscription_id,
-                        "cherg_gpv": cherg_gpv,
-                        "notify": cherg_gpv in tracked,
-                    }
-                    for cherg_gpv in set(subqueues)
-                ],
-            )
+            await _insert_subqueues(connection, subscription_id, subqueues, tracked)
             (subscription,) = await _load(connection, subscriptions.c.id == subscription_id)
             return subscription
 
@@ -187,6 +178,56 @@ class SqlRepository:
     async def all_subscriptions(self) -> list[Subscription]:
         async with self._engine.connect() as connection:
             return await _load(connection)
+
+    async def update_settings(
+        self, user_id: int, subscription_id: int, changes: Mapping[str, Any]
+    ) -> None:
+        if not changes:
+            return
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                update(subscriptions)
+                .where(subscriptions.c.id == subscription_id, subscriptions.c.user_id == user_id)
+                .values(**changes)
+            )
+
+    async def stale_subscriptions(self, checked_before: datetime) -> list[Subscription]:
+        async with self._engine.connect() as connection:
+            return await _load(
+                connection,
+                or_(
+                    subscriptions.c.cherg_checked_at.is_(None),
+                    subscriptions.c.cherg_checked_at < checked_before,
+                ),
+            )
+
+    async def mark_checked(self, subscription_id: int, now: datetime) -> None:
+        async with self._engine.begin() as connection:
+            await _set_checked(connection, subscription_id, now)
+
+    async def replace_subqueues(
+        self,
+        subscription_id: int,
+        subqueues: Sequence[str],
+        tracked: Sequence[str],
+        now: datetime,
+        messages: list[OutboxMessage],
+    ) -> None:
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                delete(subscription_subqueues).where(
+                    subscription_subqueues.c.subscription_id == subscription_id
+                )
+            )
+            await _insert_subqueues(connection, subscription_id, subqueues, tracked)
+            await _set_checked(connection, subscription_id, now)
+            for message in messages:
+                await _enqueue(connection, message)
+
+    async def enqueue_messages(self, messages: list[OutboxMessage]) -> None:
+        async with self._engine.begin() as connection:
+            for message in messages:
+                await _enqueue(connection, message)
 
     async def last_polled_at(self, cherg_gpv: str) -> datetime | None:
         async with self._engine.connect() as connection:
@@ -317,6 +358,33 @@ class SqlRepository:
                 .values(value=value, fetched_at=now)
             )
             return result.rowcount > 0
+
+
+async def _set_checked(connection: AsyncConnection, subscription_id: int, now: datetime) -> None:
+    await connection.execute(
+        update(subscriptions)
+        .where(subscriptions.c.id == subscription_id)
+        .values(cherg_checked_at=now)
+    )
+
+
+async def _insert_subqueues(
+    connection: AsyncConnection,
+    subscription_id: int,
+    subqueues: Sequence[str],
+    tracked: Sequence[str],
+) -> None:
+    await connection.execute(
+        subscription_subqueues.insert(),
+        [
+            {
+                "subscription_id": subscription_id,
+                "cherg_gpv": cherg_gpv,
+                "notify": cherg_gpv in tracked,
+            }
+            for cherg_gpv in set(subqueues)
+        ],
+    )
 
 
 async def _enqueue(connection: AsyncConnection, message: OutboxMessage) -> None:
