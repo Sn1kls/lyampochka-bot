@@ -35,3 +35,19 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Open questions: should bot texts be bilingual (English + Ukrainian)? SPEC lists multilingual as a non-goal (Phase 3).
 - Notes for later: `DaySchedule.created_at` must be shown without tz conversion (Phase 3); `DaySchedule` is frozen but holds a dict, so don't hash it (Phase 2 uses `data_hash`); a non-string slot value fails the whole response with `ApiSchemaError`.
 - Next step: `/phase 2`.
+
+## 2026-10-17 — phase 2 (storage, polling, outbox)
+
+- Done: SQLAlchemy 2.1 async tables + Alembic initial migration (users, identities, delivery_targets, subscriptions, schedule_versions, outbox), `SqlRepository`; `core/domain/diff.py` (`data_hash`, outage diff with added/removed, structured payload); services `Subscriptions` (register, add, remove), `Polling`, `Notifications`; `worker/runner.py` (poll every `POLL_INTERVAL` ± 20 s, dispatch every 5 s). 52 tests; `make check` green (mypy now on all of `src`, 3 import contracts).
+- Done when: `test_new_version_reaches_each_subscriber_exactly_once` — new version → one outbox row per subscriber → dispatch → repeated cycle and restart without duplicates — passes on real SQLite migrated by Alembic.
+- Decisions:
+  - Plain asyncio loops instead of APScheduler (no extra dependency); the clock is passed as `now` instead of a `Clock` port.
+  - Version + its outbox rows are saved in one transaction. An unchanged poll touches `fetched_at`, which gives the last successful poll per subqueue (§9, `/status`).
+  - A change is announced only to subscriptions created before the previous poll of that subqueue, so a first load is never an update, even on an abandoned subqueue with stale versions.
+  - `dedupe_key` = subscription + day + previous poll time + new hash: a repeated or parallel poll dedupes, a real A→B→A→B flip-back is announced again.
+  - Outbox row per subscription; retries with 30 s × 2ⁿ backoff, max 5 attempts, then logged as given up; blocked target → `is_active = false`; channel without a notifier is skipped.
+  - `UtcDateTime` column type keeps datetimes aware on SQLite and rejects naive ones; SQLite foreign keys are switched on.
+  - Security review (PII now stored): no findings. For Phase 3: refuse rebinding a delivery target to a different user.
+- Deferred: schedules service, `config.py`, `__main__`, `catalog_cache` (Phase 3); `resolve_groups` / `cherg_checked_at` (Phase 4); circuit breaker, admin alerts, graceful shutdown (Phase 6).
+- Known limits: delivery is at-least-once (a failure on one of several targets resends to all; only one channel exists now); dispatch is N+1 per message (fine at personal scale); a subscriber gets one push per changed day; `run_migrations` must be called before the event loop starts (Phase 3 `__main__`).
+- Next step: `/phase 3`.

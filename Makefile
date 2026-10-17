@@ -7,7 +7,7 @@ lint:
 	uv run ruff check .
 
 typecheck:
-	uv run mypy src/poweron/core src/poweron/adapters/toe_api
+	uv run mypy src
 
 layers:
 	uv run lint-imports
