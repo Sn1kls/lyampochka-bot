@@ -76,14 +76,27 @@ def render_no_schedule_for_address(city_name: str, street_name: str, building_na
 
 
 def render_day(
-    subscription: Subscription, views: Sequence[DayView], day: date, now: datetime
+    subscription: Subscription,
+    views: Sequence[DayView],
+    day: date,
+    now: datetime,
+    queues: Sequence[str] | None = None,
 ) -> str:
+    """One block per queue in `queues` (default: the tracked ones), even if it has no data yet."""
     today = now.astimezone(KYIV).date()
     title = texts.DAY_TITLE.format(label=escape(subscription.label), day=_day_name(day, today))
-    if not views:
-        missing = texts.NO_SCHEDULE_TODAY if day <= today else texts.NO_SCHEDULE_TOMORROW
+    missing = texts.NO_SCHEDULE_TODAY if day <= today else texts.NO_SCHEDULE_TOMORROW
+    by_queue = {view.cherg_gpv: view for view in views}
+    shown = list(queues or subscription.tracked_subqueues)
+    if not views and len(subscription.subqueues) <= 1:
         return "\n\n".join([title, missing, texts.NOTE])
-    blocks = [_queue_block(view, day, now) for view in views]
+    not_loaded = texts.QUEUE_NOT_LOADED if day <= today else texts.NO_SCHEDULE_TOMORROW
+    blocks = [
+        _queue_block(by_queue[queue], day, now)
+        if queue in by_queue
+        else [texts.SUBQUEUE.format(subqueue=subqueue_label(queue)), not_loaded]
+        for queue in shown
+    ]
     if len(blocks) == 1:
         header, *rest = blocks[0]
         return "\n\n".join([f"{title}\n{header}", *rest, texts.NOTE])

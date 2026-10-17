@@ -239,7 +239,9 @@ async def show_day(
     views = await schedules.day(subscription, day, callback_data.subqueue or None)
     await _respond(
         callback,
-        render_day(subscription, views, day, now),
+        render_day(
+            subscription, views, day, now, _viewed_queues(subscription, callback_data.subqueue)
+        ),
         keyboards.day_keyboard(subscription, callback_data.offset, callback_data.subqueue),
     )
 
@@ -533,3 +535,7 @@ async def save(
 @router.callback_query()
 async def stale_button(callback: CallbackQuery) -> None:
     await callback.answer(texts.STALE_BUTTON, show_alert=True)
+
+
+def _viewed_queues(subscription: Subscription, subqueue: str | None) -> list[str] | None:
+    return [subqueue] if subqueue and subqueue in subscription.subqueues else None

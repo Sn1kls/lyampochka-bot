@@ -311,3 +311,23 @@ def test_day_with_only_switching_is_not_a_zero_outage() -> None:
 
     assert texts.ONLY_SWITCHING.format(duration="30 хв") in text
     assert "Разом без світла" not in text
+
+
+def test_a_tracked_queue_without_data_yet_is_shown_not_dropped() -> None:
+    subscription = replace(SUBSCRIPTION, subqueues=("2.2", "4.1"), tracked_subqueues=("2.2", "4.1"))
+    slots = {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
+    only_second = DayView("4.1", DAY, parse_slots(slots, DAY), PUBLISHED, PUBLISHED)
+
+    text = render_day(subscription, [only_second], DAY, NOW)
+
+    assert f"Підчерга 2.2\n{texts.QUEUE_NOT_LOADED}" in text
+    assert text.index("Підчерга 2.2") < text.index("Підчерга 4.1")
+
+
+def test_viewing_one_untracked_queue_shows_only_that_queue() -> None:
+    subscription = replace(SUBSCRIPTION, subqueues=("4.1", "2.2"), tracked_subqueues=("4.1",))
+
+    text = render_day(subscription, [], DAY, NOW, queues=["2.2"])
+
+    assert "Підчерга 2.2" in text
+    assert "4.1" not in text
