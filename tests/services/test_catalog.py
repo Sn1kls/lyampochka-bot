@@ -6,7 +6,7 @@ import pytest
 from poweron.adapters.db.repository import SqlRepository
 from poweron.core.domain.models import Building, City, Street
 from poweron.core.ports import SourceUnavailable
-from poweron.core.services.catalog import Catalog, find_building
+from poweron.core.services.catalog import Catalog, find_by_name
 from tests.services.conftest import NOW
 
 TERNOPIL = City(id=1, name="Тернопіль", otg_name="Тернопільська")
@@ -178,6 +178,11 @@ async def test_source_error_without_cache_is_raised(
         ("", None),
     ],
 )
-def test_find_building_matches_the_normalised_name_exactly(text: str, expected: int | None) -> None:
-    found = find_building(BUILDINGS, text)
+def test_find_by_name_matches_the_normalised_name_exactly(text: str, expected: int | None) -> None:
+    found = find_by_name(BUILDINGS, text)
     assert (found.id if found else None) == expected
+
+
+def test_find_by_name_refuses_an_ambiguous_name() -> None:
+    twins = [City(1, "Іванівка", "Теребовлянська"), City(2, "Іванівка", "Бучацька")]
+    assert find_by_name(twins, "іванівка") is None

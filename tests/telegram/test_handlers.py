@@ -222,3 +222,9 @@ async def test_a_single_search_result_is_chosen_without_a_button(chat: Chat) -> 
     await start_city_search(chat, "бережани")
 
     assert chat.sent_texts()[-1] == texts.ASK_STREET.format(city="Бережани")
+
+
+async def test_a_partial_single_match_still_asks_to_confirm(chat: Chat) -> None:
+    await start_city_search(chat, "ережани")
+
+    assert chat.sent_texts()[-1] == texts.CHOOSE_CITY

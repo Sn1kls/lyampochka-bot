@@ -68,9 +68,11 @@ class Catalog:
         return items
 
 
-def find_building(buildings: list[Building], text: str) -> Building | None:
+def find_by_name[Item: (City, Street, Building)](items: list[Item], text: str) -> Item | None:
+    """The item whose name is exactly what the user typed, if there is exactly one."""
     wanted = _normalise(text)
-    return next((item for item in buildings if _normalise(item.name) == wanted), None)
+    matches = [item for item in items if _normalise(item.name) == wanted]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _normalise(text: str) -> str:

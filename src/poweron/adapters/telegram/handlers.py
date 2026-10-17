@@ -14,7 +14,7 @@ from aiogram.types import CallbackQuery, ErrorEvent, InlineKeyboardMarkup, Messa
 
 from poweron.core.domain.models import KYIV, Building, City, Street, Subscription
 from poweron.core.ports import SourceError
-from poweron.core.services.catalog import Catalog, find_building
+from poweron.core.services.catalog import Catalog, find_by_name
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.subscriptions import Subscriptions
 
@@ -292,8 +292,9 @@ def _choice_label(item: City | Street | Building) -> str:
 @router.message(AddFlow.city, F.text)
 async def search_city(message: Message, state: FSMContext, catalog: Catalog) -> None:
     cities = await catalog.find_cities(message.text or "", _now())
-    if len(cities) == 1:
-        await _choose_city(message, state, asdict(cities[0]))
+    exact = find_by_name(cities, message.text or "")
+    if exact is not None:
+        await _choose_city(message, state, asdict(exact))
     elif cities:
         await _offer(message, state, "city", cities, texts.CHOOSE_CITY)
     else:
@@ -323,8 +324,9 @@ async def _choose_city(
 async def search_street(message: Message, state: FSMContext, catalog: Catalog) -> None:
     city = (await state.get_data())["city"]
     streets = await catalog.find_streets(city["id"], message.text or "", _now())
-    if len(streets) == 1:
-        await _choose_street(message, state, catalog, city, asdict(streets[0]))
+    exact = find_by_name(streets, message.text or "")
+    if exact is not None:
+        await _choose_street(message, state, catalog, city, asdict(exact))
     elif streets:
         await _offer(message, state, "street", streets, texts.CHOOSE_STREET)
     else:
@@ -358,7 +360,8 @@ async def _choose_street(
         return
     await state.update_data(street=street)
     await state.set_state(AddFlow.building)
-    await _offer(event, state, "building", buildings, texts.CHOOSE_BUILDING)
+    prompt = texts.CHOOSE_BUILDING.format(street=escape(street["name"]))
+    await _offer(event, state, "building", buildings, prompt)
 
 
 @router.callback_query(AddFlow.building, keyboards.Pick.filter(F.kind == "building"))
@@ -373,7 +376,7 @@ async def pick_building(
 @router.message(AddFlow.building, F.text)
 async def type_building(message: Message, state: FSMContext) -> None:
     buildings = [Building(**raw) for raw in (await state.get_data())["options"]]
-    building = find_building(buildings, message.text or "")
+    building = find_by_name(buildings, message.text or "")
     if building is None:
         await message.answer(texts.BUILDING_NOT_FOUND)
         return
