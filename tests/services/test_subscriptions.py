@@ -1,0 +1,84 @@
+import pytest
+
+from poweron.adapters.db.repository import SqlRepository
+from poweron.core.domain.diff import data_hash
+from poweron.core.domain.models import (
+    Building,
+    City,
+    MessageKind,
+    OutboxMessage,
+    ScheduleVersion,
+    Street,
+)
+from poweron.core.services.subscriptions import Subscriptions
+from tests.services.conftest import NOW
+
+TERNOPIL = City(id=1032, name="Тернопіль", otg_name=None)
+SADOVA = Street(id=9985, name="вул. Садова")
+
+
+@pytest.fixture
+def subscriptions(repository: SqlRepository) -> Subscriptions:
+    return Subscriptions(repository)
+
+
+async def test_of_user_and_get_are_scoped_to_the_user(subscriptions: Subscriptions) -> None:
+    alice = await subscriptions.register("telegram", "1", "telegram", "1")
+    bob = await subscriptions.register("telegram", "2", "telegram", "2")
+    home = await subscriptions.add(alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), NOW)
+    await subscriptions.add(bob, "Робота", TERNOPIL, SADOVA, Building(2, "2", "1.2"), NOW)
+
+    assert await subscriptions.of_user(alice) == [home]
+    assert await subscriptions.get(alice, home.id) == home
+    assert await subscriptions.get(bob, home.id) is None
+    assert await subscriptions.get(alice, home.id + 100) is None
+
+
+async def test_forget_removes_everything_of_the_user_only(
+    repository: SqlRepository, subscriptions: Subscriptions
+) -> None:
+    alice = await subscriptions.register("telegram", "1", "telegram", "1")
+    bob = await subscriptions.register("telegram", "2", "telegram", "2")
+    await subscriptions.add(alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), NOW)
+    bobs = await subscriptions.add(bob, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), NOW)
+    slots = {"00:00": "0"}
+    version = ScheduleVersion("4.1", NOW.date(), NOW, data_hash(slots), slots, NOW)
+    await repository.save_version(
+        version,
+        [
+            OutboxMessage(alice, MessageKind.SCHEDULE_UPDATED, {}, "alice"),
+            OutboxMessage(bob, MessageKind.SCHEDULE_UPDATED, {}, "bob"),
+        ],
+    )
+
+    await subscriptions.forget(alice)
+
+    assert await subscriptions.of_user(alice) == []
+    assert await repository.delivery_targets(alice) == []
+    assert [item.message.dedupe_key for item in await repository.due_messages(NOW, 10, 5)] == [
+        "bob"
+    ]
+    assert await subscriptions.of_user(bob) == [bobs]
+    assert len(await repository.delivery_targets(bob)) == 1
+
+
+async def test_register_does_not_rebind_a_target_of_another_user(
+    repository: SqlRepository, subscriptions: Subscriptions
+) -> None:
+    alice = await subscriptions.register("telegram", "1", "telegram", "chat-1")
+    mallory = await subscriptions.register("telegram", "2", "telegram", "chat-1")
+
+    assert mallory != alice
+    assert [target.address for target in await repository.delivery_targets(alice)] == ["chat-1"]
+    assert await repository.delivery_targets(mallory) == []
+
+
+async def test_register_reactivates_the_own_target(
+    repository: SqlRepository, subscriptions: Subscriptions
+) -> None:
+    alice = await subscriptions.register("telegram", "1", "telegram", "chat-1")
+    (target,) = await repository.delivery_targets(alice)
+    await repository.deactivate_target(target.id)
+
+    assert await subscriptions.register("telegram", "1", "telegram", "chat-1") == alice
+    assert len(await repository.delivery_targets(alice)) == 1

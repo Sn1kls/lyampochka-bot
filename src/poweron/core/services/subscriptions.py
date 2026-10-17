@@ -32,10 +32,10 @@ class Subscriptions:
         return await self._repository.remove_subscription(user_id, subscription_id)
 
     async def of_user(self, user_id: int) -> list[Subscription]:
-        raise NotImplementedError
+        return await self._repository.user_subscriptions(user_id)
 
     async def get(self, user_id: int, subscription_id: int) -> Subscription | None:
-        raise NotImplementedError
+        return await self._repository.subscription(user_id, subscription_id)
 
     async def forget(self, user_id: int) -> None:
-        raise NotImplementedError
+        await self._repository.delete_user(user_id)

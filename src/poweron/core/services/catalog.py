@@ -1,7 +1,14 @@
-from datetime import datetime
+import re
+from collections.abc import Awaitable, Callable
+from dataclasses import asdict
+from datetime import datetime, timedelta
 
 from poweron.core.domain.models import Building, City, Street
-from poweron.core.ports import CatalogSource, Repository
+from poweron.core.ports import CatalogSource, Repository, SourceError
+
+CACHE_TTL = timedelta(hours=24)
+APOSTROPHES = str.maketrans({"ʼ": "'", "’": "'", "‘": "'", "`": "'"})
+TYPE_PREFIX = re.compile(r"^(вул|просп|пров|бул|пл|м|с|смт|буд)\.?\s+")
 
 
 class Catalog:
@@ -10,14 +17,58 @@ class Catalog:
         self._source = source
 
     async def find_cities(self, query: str, now: datetime) -> list[City]:
-        raise NotImplementedError
+        cities = await self._cached("cities", City, self._source.cities, now)
+        return _search(cities, query)
 
     async def find_streets(self, city_id: int, query: str, now: datetime) -> list[Street]:
-        raise NotImplementedError
+        streets = await self._cached(
+            f"streets:{city_id}", Street, lambda: self._source.streets(city_id), now
+        )
+        return _search(streets, query)
 
     async def buildings(self, city_id: int, street_id: int, now: datetime) -> list[Building]:
-        raise NotImplementedError
+        return await self._cached(
+            f"buildings:{city_id}:{street_id}",
+            Building,
+            lambda: self._source.buildings(city_id, street_id),
+            now,
+        )
+
+    async def _cached[Item: (City, Street, Building)](
+        self,
+        key: str,
+        item_type: Callable[..., Item],
+        fetch: Callable[[], Awaitable[list[Item]]],
+        now: datetime,
+    ) -> list[Item]:
+        cached = await self._repository.cached_catalog(key)
+        if cached is not None and now - cached[1] < CACHE_TTL:
+            return [item_type(**fields) for fields in cached[0]]
+        try:
+            items = await fetch()
+        except SourceError:
+            if cached is None:
+                raise
+            return [item_type(**fields) for fields in cached[0]]
+        await self._repository.store_catalog(key, [asdict(item) for item in items], now)
+        return items
 
 
 def find_building(buildings: list[Building], text: str) -> Building | None:
-    raise NotImplementedError
+    wanted = _normalise(text)
+    return next((item for item in buildings if _normalise(item.name) == wanted), None)
+
+
+def _normalise(text: str) -> str:
+    text = text.casefold().replace("ё", "е").translate(APOSTROPHES)
+    return TYPE_PREFIX.sub("", " ".join(text.split()))
+
+
+def _search[Item: (City, Street)](items: list[Item], query: str) -> list[Item]:
+    wanted = _normalise(query)
+    if not wanted:
+        return []
+    matches = [(_normalise(item.name), item) for item in items]
+    matches = [match for match in matches if wanted in match[0]]
+    matches.sort(key=lambda match: (not match[0].startswith(wanted), match[0]))
+    return [item for _, item in matches]

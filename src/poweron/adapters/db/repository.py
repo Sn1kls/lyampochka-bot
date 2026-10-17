@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,7 @@ from sqlalchemy import Row, and_, delete, event, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from poweron.adapters.db.tables import (
+    catalog_cache,
     delivery_targets,
     identities,
     outbox,
@@ -27,6 +29,8 @@ from poweron.core.domain.models import (
     Street,
     Subscription,
 )
+
+logger = logging.getLogger(__name__)
 
 MIGRATIONS = Path(__file__).parent / "migrations"
 
@@ -75,22 +79,30 @@ class SqlRepository:
                         user_id=user_id, provider=provider, external_id=external_id
                     )
                 )
-            target = await connection.scalar(
-                select(delivery_targets.c.id).where(
-                    delivery_targets.c.channel == channel, delivery_targets.c.address == address
+            target = (
+                await connection.execute(
+                    select(delivery_targets.c.id, delivery_targets.c.user_id).where(
+                        delivery_targets.c.channel == channel,
+                        delivery_targets.c.address == address,
+                    )
                 )
-            )
+            ).first()
             if target is None:
                 await connection.execute(
                     delivery_targets.insert().values(
                         user_id=user_id, channel=channel, address=address
                     )
                 )
-            else:
+            elif target.user_id == user_id:
                 await connection.execute(
                     update(delivery_targets)
-                    .where(delivery_targets.c.id == target)
-                    .values(user_id=user_id, is_active=True)
+                    .where(delivery_targets.c.id == target.id)
+                    .values(is_active=True)
+                )
+            else:
+                logger.warning(
+                    "delivery target on channel %s already belongs to another user; not rebinding",
+                    channel,
                 )
             return int(user_id)
 
@@ -130,6 +142,30 @@ class SqlRepository:
                 )
             )
             return result.rowcount > 0
+
+    async def user_subscriptions(self, user_id: int) -> list[Subscription]:
+        async with self._engine.connect() as connection:
+            result = await connection.execute(
+                select(subscriptions)
+                .where(subscriptions.c.user_id == user_id)
+                .order_by(subscriptions.c.id)
+            )
+            return [_subscription(row) for row in result]
+
+    async def subscription(self, user_id: int, subscription_id: int) -> Subscription | None:
+        async with self._engine.connect() as connection:
+            row = (
+                await connection.execute(
+                    select(subscriptions).where(
+                        subscriptions.c.id == subscription_id, subscriptions.c.user_id == user_id
+                    )
+                )
+            ).first()
+            return None if row is None else _subscription(row)
+
+    async def delete_user(self, user_id: int) -> None:
+        async with self._engine.begin() as connection:
+            await connection.execute(delete(users).where(users.c.id == user_id))
 
     async def all_subscriptions(self) -> list[Subscription]:
         async with self._engine.connect() as connection:
@@ -238,6 +274,27 @@ class SqlRepository:
                     next_attempt_at=retry_at,
                 )
             )
+
+    async def cached_catalog(self, key: str) -> tuple[Any, datetime] | None:
+        async with self._engine.connect() as connection:
+            row = (
+                await connection.execute(select(catalog_cache).where(catalog_cache.c.key == key))
+            ).first()
+            return None if row is None else (row.value, row.fetched_at)
+
+    async def store_catalog(self, key: str, value: Any, now: datetime) -> None:
+        async with self._engine.begin() as connection:
+            exists = await connection.scalar(select(func.count()).where(catalog_cache.c.key == key))
+            if exists:
+                await connection.execute(
+                    update(catalog_cache)
+                    .where(catalog_cache.c.key == key)
+                    .values(value=value, fetched_at=now)
+                )
+            else:
+                await connection.execute(
+                    catalog_cache.insert().values(key=key, value=value, fetched_at=now)
+                )
 
 
 async def _enqueue(connection: AsyncConnection, message: OutboxMessage) -> None:

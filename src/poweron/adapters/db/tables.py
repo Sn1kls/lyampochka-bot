@@ -127,3 +127,11 @@ outbox = Table(
     Column("next_attempt_at", UtcDateTime),
     Index("ix_outbox_pending", "sent_at", "next_attempt_at"),
 )
+
+catalog_cache = Table(
+    "catalog_cache",
+    metadata,
+    Column("key", String(128), primary_key=True),
+    Column("value", JSON, nullable=False),
+    Column("fetched_at", UtcDateTime, nullable=False),
+)
