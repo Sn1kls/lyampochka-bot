@@ -1,0 +1,7 @@
+{
+  "@context": "/api/contexts/ActualGpvGraph",
+  "@id": "/api/actual_gpv_graphs/custom",
+  "@type": "hydra:Collection",
+  "hydra:member": [],
+  "hydra:totalItems": 0
+}

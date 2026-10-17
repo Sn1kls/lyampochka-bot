@@ -1,0 +1,209 @@
+{
+  "filters": {
+    "cityId": 1032,
+    "streetId": 9985,
+    "otgId": null
+  },
+  "buildingNames": [
+    {
+      "id": 358136,
+      "buildingName": "1",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 349091,
+      "buildingName": "2",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 357820,
+      "buildingName": "2-А",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 167635,
+      "buildingName": "3",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 357960,
+      "buildingName": "4",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 346602,
+      "buildingName": "4-А",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 358619,
+      "buildingName": "5",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 352879,
+      "buildingName": "6",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 359420,
+      "buildingName": "7",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 350965,
+      "buildingName": "8-А",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 360288,
+      "buildingName": "9",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 352790,
+      "buildingName": "10",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 360449,
+      "buildingName": "11",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 348560,
+      "buildingName": "12",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 360566,
+      "buildingName": "13",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 360745,
+      "buildingName": "15",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 361619,
+      "buildingName": "17",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 362195,
+      "buildingName": "19",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 362341,
+      "buildingName": "21",
+      "chergGpv": "4.1",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    },
+    {
+      "id": 350657,
+      "buildingName": "23",
+      "chergGpv": "Не входить",
+      "chergGav": "Не входить",
+      "chergAchr": "Не входить",
+      "chergGvsp": "Не входить",
+      "chergSgav": "",
+      "disconnectionTask": null
+    }
+  ]
+}
