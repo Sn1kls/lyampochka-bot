@@ -28,6 +28,8 @@ make fmt                     # ruff format + ruff check --fix
 uv run python -m poweron all # bot + worker in one process (needs .env); also `bot` / `worker`
 uv run alembic upgrade head  # apply DB migrations
 uv run python scripts/probe.py  # Phase 0 live API probe
+make up / make logs / make down # run in Docker (compose.yaml, SQLite in the `data` volume)
+make simulate                # fake a schedule change in the running container to test the push
 ```
 
 Package manager is uv only, never pip. Python 3.14 (fallback 3.13, see SPEC §10).
@@ -53,6 +55,7 @@ Ports and adapters (SPEC §3). Package root `src/poweron/`.
 - Times: store UTC, display Europe/Kyiv. Use `zoneinfo`, never naive datetimes.
 - Schedule cache is keyed by subqueue (`cherg_gpv`), never by user.
 - Do not build the HTTP API or mobile pieces until the owner asks; just don't block them.
+- Any LLM/RAG feature gets a prompt-injection review: user and API text is data, never instructions; model output is never executed or fed to tools unchecked; no other users' data or secrets in prompts; adversarial-input tests.
 
 ## Git
 

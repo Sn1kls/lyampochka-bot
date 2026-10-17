@@ -116,6 +116,20 @@ Each line is a separate cache-miss request (unique URL) for Ternopil, vul. Sadov
   here. Like the site, decide from `building-names`: `chergGpv` in (`"Не входить"`, `""`, missing) →
   «за вашою адресою графіки не застосовуються». The site shows exactly this text for that case.
 
+## Buildings in several subqueues
+
+Verified live 2026-10-17. Some buildings have two sources of power supply and belong to several subqueues
+(the site says «будинок має два джерела електропостачання»). For a building in Ternopil:
+
+- `GET /pw-accounts/building-names?cityId=&streetId=` lists the row with only **one** `chergGpv` (`"4.1"`).
+- `GET /pw-accounts/building-groups?cityId=&streetId=&buildingNames=<name>` returns
+  `{"buildingGroups": [{"chergGpv": "2.2"}, {"chergGpv": "4.1"}]}` — all of its subqueues. The site builds its
+  list of queues from this endpoint.
+- `/a_gpv_g` for that address returns `dataJson` with **both** keys, `"2.2"` and `"4.1"`.
+
+So the bot asks `building-groups` when a building is added, polls every subqueue of every subscription, and lets
+the user choose which of them to get pushes for (the others can still be viewed).
+
 ## Catalog endpoints
 
 - `/pw_cities?pagination=false` → plain JSON array, 1301 items `{id, name, codeOtg, otg:{name}}`. Ternopil `id=1032`.

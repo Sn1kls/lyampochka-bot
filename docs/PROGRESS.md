@@ -51,3 +51,21 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Deferred: schedules service, `config.py`, `__main__`, `catalog_cache` (Phase 3); `resolve_groups` / `cherg_checked_at` (Phase 4); circuit breaker, admin alerts, graceful shutdown (Phase 6).
 - Known limits: delivery is at-least-once (a failure on one of several targets resends to all; only one channel exists now); dispatch is N+1 per message (fine at personal scale); a subscriber gets one push per changed day; `run_migrations` must be called before the event loop starts (Phase 3 `__main__`).
 - Next step: `/phase 3`.
+
+## 2026-10-17 — phase 3 (Telegram bot)
+
+- Done: `adapters/telegram` (texts, render, keyboards, `/add` FSM wizard, `/start /help /list /schedule /next /remove /forget`, `TelegramNotifier`, command menu, persistent phone keyboard), services `Catalog` (24 h cache in `catalog_cache`, normalised search), `Schedules`, `Subscriptions` (find/register/add/remove/forget), `config.py` (pydantic-settings), `__main__` (`bot | worker | all`), Docker (`Dockerfile`, `compose.yaml`, `make up/logs/down/simulate`), `scripts/simulate_update.py`. ~170 tests; `make check` green.
+- Done when: the owner added their address, saw the schedule of both their queues in Telegram, and received the push after `make simulate` (bot running in Docker).
+- Work split: contracts first, then Sonnet agents in parallel worktrees (core + telegram), review fixes by agents, integration and verification by me.
+- Decisions:
+  - Registration only on `/start`; other commands ask for `/start` (respects `/forget`). A delivery target is never rebound to another user.
+  - Wizard buttons carry a search generation, so a button from an older list is rejected. Auto-pick happens only on an exact, unique name; a partial single match is still a button.
+  - Switching slots: `/next` shows the window (`можуть вимкнути з 10:30, точно — о 11:00`), the day total shows `3 год (до 4 год з перемиканнями)`.
+  - Buildings in several subqueues (found during acceptance, see api-notes): queues come from `building-groups`; the user picks which to track at `/add`; pushes and `/next` cover tracked queues; the others stay viewable from `/schedule`. Table `subscription_subqueues(…, notify)`.
+  - New subqueues are polled within ~10 s (`poll_new`), an empty one at most every 5 min.
+  - Informal "ти" in texts; `dateCreate` shown as is; httpx INFO logs off (URLs carry addresses).
+  - Container memory limit 512 MB instead of SPEC's ~256 MB: aiogram alone takes ~120 MB, the bot idles at ~200 MB.
+- Owner decision: texts stay Ukrainian only for now; English comes later as a separate step.
+- Known limits: a building in two queues costs two API calls per poll (one call returns both); `poll_new` does a few DB reads every 10 s; `building-groups` is not cached.
+- Deferred: `/settings`, reminders, `resolve_groups` (Phase 4); circuit breaker, admin alerts, graceful shutdown (Phase 6); FSM state lives in memory, so a restart drops an unfinished `/add`.
+- Next step: `/phase 4`.

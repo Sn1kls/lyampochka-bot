@@ -1,6 +1,7 @@
+import asyncio
 import logging
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from poweron.core.domain.diff import ScheduleChange, data_hash, schedule_change
 from poweron.core.domain.models import (
@@ -14,18 +15,48 @@ from poweron.core.ports import Repository, ScheduleSource, SourceError
 
 logger = logging.getLogger(__name__)
 
+NEW_SUBQUEUE_RETRY = timedelta(minutes=5)
+
 
 class Polling:
     def __init__(self, repository: Repository, source: ScheduleSource) -> None:
         self._repository = repository
         self._source = source
+        self._new_attempts: dict[str, datetime] = {}
+        self._lock = asyncio.Lock()
 
     async def poll(self, now: datetime) -> None:
         """Fetch every subscribed subqueue once and store new versions with their messages."""
+        async with self._lock:
+            await self._poll_each(await self._by_subqueue(), now)
+
+    async def poll_new(self, now: datetime) -> None:
+        """Fetch only the subscribed subqueues that have no stored version yet.
+
+        A subqueue the source has nothing for is retried only after NEW_SUBQUEUE_RETRY,
+        so a frequent caller does not hammer the API.
+        """
+        # Shares the lock with poll() so a subqueue is never fetched twice at once.
+        async with self._lock:
+            never_polled = {
+                cherg_gpv: subscribers
+                for cherg_gpv, subscribers in (await self._by_subqueue()).items()
+                if await self._repository.last_polled_at(cherg_gpv) is None
+                and now - self._new_attempts.get(cherg_gpv, datetime.min.replace(tzinfo=UTC))
+                >= NEW_SUBQUEUE_RETRY
+            }
+            self._new_attempts.update(dict.fromkeys(never_polled, now))
+            await self._poll_each(never_polled, now)
+
+    async def _by_subqueue(self) -> dict[str, list[Subscription]]:
+        """Every queue of a building is fetched, so that the untracked ones can be viewed too."""
         by_subqueue: dict[str, list[Subscription]] = defaultdict(list)
         for subscription in await self._repository.all_subscriptions():
-            by_subqueue[subscription.cherg_gpv].append(subscription)
+            for cherg_gpv in subscription.subqueues:
+                by_subqueue[cherg_gpv].append(subscription)
+        return by_subqueue
 
+    async def _poll_each(self, by_subqueue: dict[str, list[Subscription]], now: datetime) -> None:
         for cherg_gpv, subscribers in by_subqueue.items():
             try:
                 await self._poll_subqueue(cherg_gpv, subscribers, now)
@@ -45,6 +76,7 @@ class Polling:
             subscription
             for subscription in subscribers
             if subscription.notify_on_update
+            and cherg_gpv in subscription.tracked_subqueues
             and last_polled_at is not None
             and subscription.created_at <= last_polled_at
         ]
@@ -86,8 +118,13 @@ def _messages(
         OutboxMessage(
             user_id=subscription.user_id,
             kind=MessageKind.SCHEDULE_UPDATED,
-            payload=payload | {"subscription_id": subscription.id, "label": subscription.label},
-            dedupe_key=f"update:{subscription.id}:{change.day}:{transition}",
+            payload=payload
+            | {
+                "subscription_id": subscription.id,
+                "label": subscription.label,
+                "queue_count": len(subscription.tracked_subqueues),
+            },
+            dedupe_key=f"update:{subscription.id}:{change.cherg_gpv}:{change.day}:{transition}",
         )
         for subscription in recipients
     ]

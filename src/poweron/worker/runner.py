@@ -10,6 +10,7 @@ from poweron.core.services.polling import Polling
 logger = logging.getLogger(__name__)
 
 DISPATCH_INTERVAL = 5.0
+NEW_SUBQUEUE_INTERVAL = 10.0
 POLL_JITTER = 20.0
 MIN_DELAY = 1.0
 
@@ -18,6 +19,9 @@ async def run_worker(polling: Polling, notifications: Notifications, poll_interv
     async with asyncio.TaskGroup() as group:
         group.create_task(
             repeat(lambda: polling.poll(datetime.now(UTC)), poll_interval, POLL_JITTER)
+        )
+        group.create_task(
+            repeat(lambda: polling.poll_new(datetime.now(UTC)), NEW_SUBQUEUE_INTERVAL)
         )
         group.create_task(
             repeat(lambda: notifications.dispatch(datetime.now(UTC)), DISPATCH_INTERVAL)

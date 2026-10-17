@@ -90,12 +90,23 @@ subscriptions = Table(
     Column("street_name", String(128), nullable=False),
     Column("building_id", Integer, nullable=False),
     Column("building_name", String(64), nullable=False),
-    Column("cherg_gpv", String(32), nullable=False, index=True),
     Column("notify_on_update", Boolean, nullable=False, default=True),
     Column("remind_before_off_min", Integer, nullable=False, default=30),
     Column("remind_before_on_min", Integer, nullable=False, default=0),
     Column("created_at", UtcDateTime, nullable=False, default=utc_now),
     Column("cherg_checked_at", UtcDateTime),
+)
+
+subscription_subqueues = Table(
+    "subscription_subqueues",
+    metadata,
+    Column(
+        "subscription_id",
+        ForeignKey("subscriptions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("cherg_gpv", String(32), primary_key=True),
+    Column("notify", Boolean, nullable=False, default=True),
 )
 
 schedule_versions = Table(
@@ -126,4 +137,12 @@ outbox = Table(
     Column("last_error", Text),
     Column("next_attempt_at", UtcDateTime),
     Index("ix_outbox_pending", "sent_at", "next_attempt_at"),
+)
+
+catalog_cache = Table(
+    "catalog_cache",
+    metadata,
+    Column("key", String(128), primary_key=True),
+    Column("value", JSON, nullable=False),
+    Column("fetched_at", UtcDateTime, nullable=False),
 )

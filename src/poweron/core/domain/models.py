@@ -73,7 +73,8 @@ class Subscription:
     city_name: str
     street_name: str
     building_id: int
-    cherg_gpv: str
+    subqueues: tuple[str, ...]  # every queue of the building, tracked ones first
+    tracked_subqueues: tuple[str, ...]
     notify_on_update: bool
     remind_before_off_min: int
     remind_before_on_min: int
@@ -110,3 +111,23 @@ class DeliveryTarget:
     id: int
     channel: str
     address: str
+
+
+@dataclass(frozen=True)
+class DayView:
+    """One subqueue's schedule for one day; `published_at` is dateCreate, shown as is."""
+
+    cherg_gpv: str
+    day: date
+    intervals: list[Interval]
+    published_at: datetime
+    checked_at: datetime
+
+
+@dataclass(frozen=True)
+class NextEvent:
+    """The window in which the change happens; `latest` is the guaranteed moment, None if only possible."""
+
+    power_on: bool
+    earliest: datetime
+    latest: datetime | None

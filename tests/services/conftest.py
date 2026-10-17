@@ -1,12 +1,8 @@
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from pathlib import Path
 from typing import Any
 
-import pytest
-
-from poweron.adapters.db.repository import SqlRepository, create_engine, run_migrations
 from poweron.core.domain.models import Address, DaySchedule
 from poweron.core.ports import SourceUnavailable
 
@@ -29,8 +25,10 @@ def day_schedule(
 class FakeSource:
     schedules: dict[str, list[DaySchedule]] = field(default_factory=dict)
     failing: set[str] = field(default_factory=set)
+    requested: list[str] = field(default_factory=list)
 
     async def fetch_schedules(self, address: Address, cherg_gpv: str) -> list[DaySchedule]:
+        self.requested.append(cherg_gpv)
         if cherg_gpv in self.failing:
             raise SourceUnavailable("down")
         return self.schedules.get(cherg_gpv, [])
@@ -45,17 +43,3 @@ class FakeNotifier:
         if self.errors:
             raise self.errors.pop(0)
         self.sent.append((address, kind, payload))
-
-
-@pytest.fixture
-def database_url(tmp_path: Path) -> str:
-    url = f"sqlite+aiosqlite:///{tmp_path / 'test.sqlite3'}"
-    run_migrations(url)
-    return url
-
-
-@pytest.fixture
-async def repository(database_url: str) -> AsyncIterator[SqlRepository]:
-    engine = create_engine(database_url)
-    yield SqlRepository(engine)
-    await engine.dispose()

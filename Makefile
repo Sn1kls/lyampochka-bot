@@ -1,4 +1,4 @@
-.PHONY: check test fmt lint typecheck layers run migrate probe
+.PHONY: check test fmt lint typecheck layers run migrate probe up down logs simulate
 
 check: lint typecheck layers test
 
@@ -27,3 +27,15 @@ migrate:
 
 probe:
 	uv run python scripts/probe.py
+
+up:
+	docker compose up -d --build
+
+down:
+	docker compose down
+
+logs:
+	docker compose logs -f bot
+
+simulate:
+	docker compose exec bot python scripts/simulate_update.py
