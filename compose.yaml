@@ -7,7 +7,8 @@ services:
     volumes:
       - data:/data
     restart: unless-stopped
-    mem_limit: 256m
+    # aiogram alone costs ~120 MB at import; the bot idles at ~200 MB, so 256 MB left no room.
+    mem_limit: 512m
 
 volumes:
   data:
