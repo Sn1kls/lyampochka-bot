@@ -25,6 +25,8 @@ def main() -> None:
     logging.basicConfig(
         level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
+    # httpx logs full request URLs at INFO, and those carry the user's street and building.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     # Alembic runs its own event loop, so migrate before ours starts.
     run_migrations(settings.database_url)
     asyncio.run(run(role, settings))

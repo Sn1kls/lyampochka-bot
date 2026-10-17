@@ -9,6 +9,8 @@ from poweron.core.domain.models import Subscription
 from . import texts
 
 PAGE_SIZE = 8
+BUILDING_COLUMNS = 4
+BUILDING_PAGE_SIZE = 20
 
 
 class Page(CallbackData, prefix="pg"):
@@ -42,20 +44,23 @@ def choice_keyboard(
     kind: str, labels: Sequence[str], generation: int, page: int = 0
 ) -> InlineKeyboardMarkup:
     """`generation` ties the buttons to one search, so buttons of an older list are detectable."""
-    start = page * PAGE_SIZE
+    columns, page_size = (
+        (BUILDING_COLUMNS, BUILDING_PAGE_SIZE) if kind == "building" else (1, PAGE_SIZE)
+    )
+    start = page * page_size
     builder = InlineKeyboardBuilder()
-    for index, label in enumerate(labels[start : start + PAGE_SIZE], start):
+    for index, label in enumerate(labels[start : start + page_size], start):
         builder.button(
             text=label, callback_data=Pick(kind=kind, index=index, generation=generation)
         )
-    builder.adjust(1)
+    builder.adjust(columns)
     navigation = InlineKeyboardBuilder()
     if page > 0:
         navigation.button(
             text=texts.BUTTON_PREVIOUS,
             callback_data=Page(kind=kind, number=page - 1, generation=generation),
         )
-    if start + PAGE_SIZE < len(labels):
+    if start + page_size < len(labels):
         navigation.button(
             text=texts.BUTTON_NEXT,
             callback_data=Page(kind=kind, number=page + 1, generation=generation),

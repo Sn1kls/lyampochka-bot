@@ -54,6 +54,7 @@ async def _respond(
     if isinstance(event, Message):
         await event.answer(text, reply_markup=markup)
         return
+    await event.answer()  # stop the button spinner before the slower edit
     if isinstance(event.message, Message):
         try:
             await event.message.edit_text(text, reply_markup=markup)
@@ -61,7 +62,6 @@ async def _respond(
             # the same button pressed twice edits to identical text
             if NOT_MODIFIED not in error.message:
                 raise
-    await event.answer()
 
 
 async def _reset(state: FSMContext) -> None:
@@ -236,13 +236,13 @@ async def turn_page(
     data = await _current_data(callback, callback_data, state)
     if data is None:
         return
+    await callback.answer()  # stop the button spinner before the slower edit
     if isinstance(callback.message, Message):
         await callback.message.edit_reply_markup(
             reply_markup=keyboards.choice_keyboard(
                 callback_data.kind, data["labels"], data["generation"], callback_data.number
             )
         )
-    await callback.answer()
 
 
 async def _current_data(

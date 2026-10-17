@@ -28,7 +28,7 @@ def test_middle_page_has_both_arrows_and_absolute_item_indexes() -> None:
 
 
 def test_last_page_has_only_previous() -> None:
-    markup = choice_keyboard("building", LABELS, generation=4, page=2)
+    markup = choice_keyboard("street", LABELS, generation=4, page=2)
 
     assert [row[0] for row in texts_of(markup)[:4]] == LABELS[16:]
     assert texts_of(markup)[4:] == [["◀️"], ["Скасувати"]]
@@ -40,3 +40,12 @@ def test_short_list_has_no_navigation_and_cancel_declines_the_wizard() -> None:
     assert texts_of(markup) == [[label] for label in LABELS[:3]] + [["Скасувати"]]
     cancel = Decision.unpack(markup.inline_keyboard[-1][0].callback_data or "")
     assert cancel == Decision(action="add", accepted=False)
+
+
+def test_buildings_are_a_grid_of_four_with_twenty_per_page() -> None:
+    numbers = [str(number) for number in range(1, 46)]
+
+    rows = texts_of(choice_keyboard("building", numbers, generation=4))
+
+    assert rows[:5] == [numbers[start : start + 4] for start in range(0, 20, 4)]
+    assert rows[5:] == [["▶️"], ["Скасувати"]]
