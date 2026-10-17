@@ -69,9 +69,7 @@ def get(
         body = json.loads(raw)
     except ValueError:
         body = raw.decode("utf-8", "replace")[:500]
-    print(
-        f"  {status} cf={hdrs.get('cf-cache-status')} age={hdrs.get('Age')} GET {path} {params}"
-    )
+    print(f"  {status} cf={hdrs.get('cf-cache-status')} age={hdrs.get('Age')} GET {path} {params}")
     if status != 200:  # stop before an error page overwrites a recorded fixture
         sys.exit(f"unexpected HTTP {status}: {body!r}")
     return status, hdrs, body
@@ -132,9 +130,7 @@ def main() -> int:
     _, _, streets = get("/pw_streets", {"pagination": "false", "city.id": CITY_ID})
     save(f"pw_streets_{CITY_ID}.json", streets)
     print(f"  streets: {type(streets).__name__}, {len(members(streets))} items")
-    _, _, buildings = get(
-        "/pw-accounts/building-names", {"cityId": CITY_ID, "streetId": STREET_ID}
-    )
+    _, _, buildings = get("/pw-accounts/building-names", {"cityId": CITY_ID, "streetId": STREET_ID})
     save(f"building_names_{CITY_ID}_{STREET_ID}.json", buildings)
     names = buildings["buildingNames"]
     values = Counter(repr(b.get("chergGpv")) for b in names)
@@ -149,9 +145,7 @@ def main() -> int:
     our_time, key = addr_key(CITY_ID, STREET_ID, target["buildingName"])
     after, before = site_range(now)
     base = {"after": after, "before": before, "time": our_time}
-    print(
-        f"[a_gpv_g] building {target['buildingName']!r} group {group!r} {after} .. {before}"
-    )
+    print(f"[a_gpv_g] building {target['buildingName']!r} group {group!r} {after} .. {before}")
 
     # Cloudflare caches /a_gpv_g by URL, so every experiment below gets its own URL
     # by moving `before` by a few seconds (same day, same result window).
@@ -174,9 +168,7 @@ def main() -> int:
     )
     print(f"  members: {summary(sched)}")
     if not members(sched):
-        sys.exit(
-            "baseline schedule is empty, comparisons would be meaningless; rerun later"
-        )
+        sys.exit("baseline schedule is empty, comparisons would be meaningless; rerun later")
     save(f"a_gpv_g_{group}_{now:%Y-%m-%d}.json", sched)
     for m in members(sched):
         for sub, data in m["dataJson"].items():
@@ -218,9 +210,7 @@ def main() -> int:
     print("[§2.3.3 another subqueue: who decides, time or key?]")
     found = None
     for street in (9982, 9986):  # Mykulynetska, Festyvalna
-        _, _, other_b = get(
-            "/pw-accounts/building-names", {"cityId": CITY_ID, "streetId": street}
-        )
+        _, _, other_b = get("/pw-accounts/building-names", {"cityId": CITY_ID, "streetId": street})
         found = next(
             (
                 (street, b)
@@ -235,9 +225,7 @@ def main() -> int:
         street, b = found
         ftime, fkey = addr_key(CITY_ID, street, b["buildingName"])
         print(f"  other address group {b['chergGpv']!r}")
-        _, _, own = get(
-            "/a_gpv_g", fresh({**base, "time": ftime, "group": b["chergGpv"]}), fkey
-        )
+        _, _, own = get("/a_gpv_g", fresh({**base, "time": ftime, "group": b["chergGpv"]}), fkey)
         save(f"a_gpv_g_{b['chergGpv']}_{now:%Y-%m-%d}.json", own)
         print(f"  its time + its key: {summary(own)}")
         print(
@@ -253,9 +241,7 @@ def main() -> int:
     excluded = next((b for b in names if b["chergGpv"] == "Не входить"), None)
     if excluded:
         etime, ekey = addr_key(CITY_ID, STREET_ID, excluded["buildingName"])
-        _, _, ebody = get(
-            "/a_gpv_g", fresh({**base, "time": etime, "group": "Не входить"}), ekey
-        )
+        _, _, ebody = get("/a_gpv_g", fresh({**base, "time": etime, "group": "Не входить"}), ekey)
         save("a_gpv_g_not_included.json", ebody)
         print(f"  building {excluded['buildingName']!r}: {summary(ebody)}")
     else:

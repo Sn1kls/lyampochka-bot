@@ -32,6 +32,13 @@ uv run python scripts/probe.py  # Phase 0 live API probe
 
 Package manager is uv only, never pip. Python 3.14 (fallback 3.13, see SPEC §10).
 
+## Code style
+
+- Lean and minimal: the smallest structured code that does the job. No speculative abstractions.
+- Descriptive English names. No one-to-three-letter names (`i`, `e`, `s`, `dt`, `cfg`); whole words like `day`, `now`, `key` are fine.
+- Minimal comments: only a non-obvious *why*. Prefer a clear name over a comment. Short one-line docstrings where they add something.
+- Everything in code is English. Ukrainian lives only in user-facing texts.
+
 ## Architecture rules
 
 Ports and adapters (SPEC §3). Package root `src/poweron/`.
