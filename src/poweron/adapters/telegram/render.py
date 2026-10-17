@@ -66,10 +66,16 @@ def render_day(subscription: Subscription, view: DayView | None, day: date, now:
     )
     outage = _state_duration(view, SlotState.OFF)
     switching = _state_duration(view, SlotState.SWITCHING)
-    total = texts.TOTAL_OFF.format(duration=_duration(outage)) if outage or switching else ""
-    if switching:
-        total += texts.TOTAL_WITH_SWITCHING.format(duration=_duration(outage + switching))
-    total = total or texts.NO_OUTAGES
+    if not outage:
+        total = (
+            texts.ONLY_SWITCHING.format(duration=_duration(switching))
+            if switching
+            else texts.NO_OUTAGES
+        )
+    else:
+        total = texts.TOTAL_OFF.format(duration=_duration(outage))
+        if switching:
+            total += texts.TOTAL_WITH_SWITCHING.format(duration=_duration(outage + switching))
     parts = [f"{title}\n{header}"]
     if now - view.checked_at > STALE_AFTER:
         checked = f"{view.checked_at.astimezone(KYIV):%d.%m %H:%M}"

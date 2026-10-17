@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
+from poweron.adapters.telegram import texts
 from poweron.adapters.telegram.render import (
     render_day,
     render_list,
@@ -220,3 +221,13 @@ def test_render_update_for_new_tomorrow() -> None:
     assert render_update(update_payload(None, slots) | {"current": []}).splitlines()[2] == (
         "З'явився графік на 17.10: без відключень 🎉"
     )
+
+
+def test_day_with_only_switching_is_not_a_zero_outage() -> None:
+    slots = {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
+    view = DayView(DAY, parse_slots(slots | {"12:00": "10"}, DAY), PUBLISHED, PUBLISHED)
+
+    text = render_day(SUBSCRIPTION, view, DAY, NOW)
+
+    assert texts.ONLY_SWITCHING.format(duration="30 хв") in text
+    assert "Разом без світла" not in text

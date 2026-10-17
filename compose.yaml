@@ -1,0 +1,13 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////data/poweron.sqlite3
+    volumes:
+      - data:/data
+    restart: unless-stopped
+    mem_limit: 256m
+
+volumes:
+  data:
