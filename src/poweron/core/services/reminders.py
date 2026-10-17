@@ -39,6 +39,8 @@ class Reminders:
             except Exception:
                 logger.exception("reminders failed for subscription %s", subscription.id)
         await self._repository.enqueue_messages(messages)
+        if messages:
+            logger.info("reminders queued=%s", len(messages))
 
 
 def _due_messages(

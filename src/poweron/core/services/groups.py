@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from poweron.core.domain.models import MessageKind, OutboxMessage, Subscription
 from poweron.core.ports import CatalogSource, Repository, SourceError
+from poweron.core.services.alerts import Alerts, report_source_error
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +19,12 @@ class SubqueueChecker:
     "tracked": [str]}.
     """
 
-    def __init__(self, repository: Repository, source: CatalogSource) -> None:
+    def __init__(
+        self, repository: Repository, source: CatalogSource, alerts: Alerts | None = None
+    ) -> None:
         self._repository = repository
         self._source = source
+        self._alerts = alerts
 
     async def check(self, now: datetime) -> None:
         by_building: dict[tuple[int, int, str], list[Subscription]] = defaultdict(list)
@@ -28,41 +32,48 @@ class SubqueueChecker:
             address = subscription.address
             key = (address.city_id, address.street_id, address.building_name)
             by_building[key].append(subscription)
+        changed = 0
         for (city_id, street_id, building_name), subscribers in by_building.items():
             try:
                 found = await self._source.building_subqueues(city_id, street_id, building_name)
             except SourceError as error:
                 logger.warning("subqueue re-check failed for a building: %s", error)
+                await report_source_error(self._alerts, error, now)
                 continue
             for subscription in subscribers:
                 try:
-                    await self._apply(subscription, set(found), now)
+                    changed += await self._apply(subscription, set(found), now)
                 except Exception:
                     logger.exception(
                         "subqueue re-check failed for subscription %s", subscription.id
                     )
+        if by_building:
+            logger.info("subqueue_check buildings=%s changed=%s", len(by_building), changed)
 
-    async def _apply(self, subscription: Subscription, current: set[str], now: datetime) -> None:
+    async def _apply(self, subscription: Subscription, current: set[str], now: datetime) -> bool:
+        """Returns whether the stored queues differ from the current ones."""
         previous = set(subscription.subqueues)
         tracked = set(subscription.tracked_subqueues)
         if current == previous:
             await self._repository.mark_checked(subscription.id, now)
-        elif not current:
+            return False
+        if not current:
             # An empty answer may be a data glitch, so the stored queues stay.
             logger.warning("subscription %s: building has no subqueues now", subscription.id)
             await self._repository.enqueue_messages(
                 [_changed_message(subscription, previous, current, tracked)]
             )
             await self._repository.mark_checked(subscription.id, now)
-        else:
-            tracked = _tracked_after_change(previous, tracked, current)
-            await self._repository.replace_subqueues(
-                subscription.id,
-                sorted(current),
-                sorted(tracked),
-                now,
-                [_changed_message(subscription, previous, current, tracked)],
-            )
+            return True
+        tracked = _tracked_after_change(previous, tracked, current)
+        await self._repository.replace_subqueues(
+            subscription.id,
+            sorted(current),
+            sorted(tracked),
+            now,
+            [_changed_message(subscription, previous, current, tracked)],
+        )
+        return True
 
 
 def _tracked_after_change(previous: set[str], tracked: set[str], current: set[str]) -> set[str]:
