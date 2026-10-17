@@ -13,7 +13,10 @@ and by reading the site client bundle `https://poweron.toe.com.ua/static/js/main
 3. **Cloudflare caches `/a_gpv_g` by URL for up to 2 h** (`s-maxage=7200`). See "Caching" — open question for the owner.
 4. Empty results come in two shapes: `"hydra:member": null` and `"hydra:member": []`.
 
-## Slot semantics (SPEC §2.3.1) — confirmed from the site client
+## Slot semantics (SPEC §2.3.1) — confirmed from the site client and visually
+
+The owner compared the site's rendering of subqueue 4.1 for 2026-10-17 with the fixture: every grey (`10`),
+dark (`1`) and white (`0`) half-hour matches slot by slot. The site labels the last cell `23:00–23:59`.
 
 The site paints each half-hour slot with this function and legend (decoded from the bundle):
 
@@ -39,7 +42,8 @@ Fixture intervals for 4.1, 2026-10-17, checked by hand against the raw 48 slots 
 - **`dateGraph`** (`"2026-10-17T00:00:00Z"`) is a calendar date, not an instant: the site renders it with
   `dayjs.utc(...).format("DD.MM.YYYY")`. Take the date part, ignore the `Z`.
 - **`dateCreate`** (`"2026-10-17T14:16:05Z"`): the site also renders it with `.utc()` («Інформація станом на: 17.10.2026 14:16:05»),
-  so it is either real UTC (17:16 Kyiv) or Kyiv time mislabelled `Z`. **Unconfirmed, asked the owner.**
+  so it is either real UTC (17:16 Kyiv) or Kyiv time mislabelled `Z`. Unconfirmed.
+  **Decision (owner, 2026-10-17): show it as is, without time-zone conversion, exactly like the site.**
   Low impact: update detection uses `data_hash` (SPEC §5.2), `dateCreate` is only shown as "станом на".
 - Request params `after`/`before` are built by the site from the **local** date with a fake `+00:00` suffix:
   `after = (today − 1 day) "YYYY-MM-DDT12:00:00+00:00"`, `before = (today + 1 day) "YYYY-MM-DDT00:00:00+00:00"`.
@@ -75,7 +79,7 @@ Each line is a separate cache-miss request (unique URL) for Ternopil, vul. Sadov
 - A plain `Python-urllib` User-Agent works the same as ours (checked on a cache-miss URL, i.e. at the origin). We still send `poweron-bot/<ver> (personal use; contact: …)`.
 - No auth, no cookies.
 
-### Caching (open question)
+### Caching
 
 - `/a_gpv_g`, `/pw_cities`, `/pw_streets`, `/pw-accounts/building-names` answer with
   `Cache-Control: public, max-age=900|3600, s-maxage=7200` and `cf-cache-status: HIT|MISS|EXPIRED`, `Age` up to minutes.
@@ -90,8 +94,10 @@ Each line is a separate cache-miss request (unique URL) for Ternopil, vul. Sadov
   A request `Cache-Control: no-cache` does **not** bypass it. Any change in the query string (e.g. `before` moved by
   a few seconds) does — the origin answers fresh.
 - Since the site URL for one address is constant for a whole day, a schedule update may reach the edge (and us)
-  **up to ~2 h late** unless the backend purges the cache (unknown). **Owner to decide**: accept the delay, or poll
-  with a per-poll `before` offset (≈1 origin request per subqueue per 5 min).
+  **up to ~2 h late** unless the backend purges the cache (unknown).
+- **Decision (owner, 2026-10-17): bypass the edge cache.** Each poll moves `before` by a few seconds within
+  `T00:MM:SS` of the same day (≈1 origin request per subqueue per poll). Do it only inside the `adapters/toe_api`
+  request method, never in pollers or `core`, and always with matching `time` + `X-debug-key`.
 
 ## Missing data (SPEC §2.3.5)
 
