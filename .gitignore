@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+data/
+*.sqlite3
+.claude/settings.local.json
+CLAUDE.local.md
+.DS_Store
