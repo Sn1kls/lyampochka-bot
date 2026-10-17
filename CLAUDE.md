@@ -60,5 +60,6 @@ Ports and adapters (SPEC §3). Package root `src/poweron/`.
 - Commit with Conventional Commits (`feat(phase2): ...`), show `git status` first. Push only the work branch and open a PR into `develop` with `gh pr create --base develop`.
 - CI (`.github/workflows/check.yml`) runs `make check` on every PR; it must be green.
 - The owner reviews and merges. A release is a PR `develop` → `main`, opened only when the owner asks. Never push to `main`. Pushing to `develop` is allowed, but phases still go through a PR. Never merge PRs yourself.
+- No AI attribution anywhere: no `Co-Authored-By` trailers, no "Generated with" lines in commits, PRs, code or docs.
 - Never force-push, never rewrite history without an explicit request.
 - Never commit `.env`, `data/`, or recorded fixtures containing personal addresses.
