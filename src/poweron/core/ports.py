@@ -4,6 +4,7 @@ from typing import Any, Protocol
 
 from poweron.core.domain.models import (
     Address,
+    AlertKind,
     Building,
     City,
     DaySchedule,
@@ -148,3 +149,9 @@ class Repository(Protocol):
     async def cached_catalog(self, key: str) -> tuple[Any, datetime] | None: ...
 
     async def store_catalog(self, key: str, value: Any, now: datetime) -> None: ...
+
+
+class AdminAlerter(Protocol):
+    async def alert(self, kind: AlertKind, details: str) -> None:
+        """Tell the bot owner that something needs attention; `details` is technical, not for users."""
+        ...
