@@ -1,12 +1,19 @@
 import asyncio
 import logging
+import signal
 import sys
+from contextlib import suppress
+from importlib.metadata import version
+
+from aiogram import Dispatcher
 
 from poweron.adapters.db.repository import SqlRepository, create_engine, run_migrations
+from poweron.adapters.telegram.alerts import TelegramAdminAlerter
 from poweron.adapters.telegram.bot import build_dispatcher, create_bot
 from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.adapters.toe_api.client import ToeClient
 from poweron.config import Settings
+from poweron.core.services.alerts import Alerts
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
@@ -14,8 +21,11 @@ from poweron.core.services.planned_works import PlannedWorks
 from poweron.core.services.polling import Polling
 from poweron.core.services.reminders import Reminders
 from poweron.core.services.schedules import Schedules
+from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
 from poweron.worker.runner import run_worker
+
+logger = logging.getLogger(__name__)
 
 ROLES = ("bot", "worker", "all")
 
@@ -26,7 +36,8 @@ def main() -> None:
         sys.exit(f"usage: python -m poweron [{'|'.join(ROLES)}]")
     settings = Settings()  # values come from the environment
     logging.basicConfig(
-        level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s"
+        level=settings.log_level,
+        format="ts=%(asctime)s level=%(levelname)s logger=%(name)s msg=%(message)s",
     )
     # httpx logs full request URLs at INFO, and those carry the user's street and building.
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -40,6 +51,13 @@ async def run(role: str, settings: Settings) -> None:
     repository = SqlRepository(engine)
     toe_client = ToeClient(settings.api_base, contact=settings.contact)
     bot = create_bot(settings.bot_token.get_secret_value())
+    alerts = (
+        None
+        if settings.admin_chat_id is None
+        else Alerts(TelegramAdminAlerter(bot, settings.admin_chat_id))
+    )
+    stop = asyncio.Event()
+    _stop_on_signals(stop)
     try:
         async with asyncio.TaskGroup() as group:
             if role in ("bot", "all"):
@@ -47,24 +65,41 @@ async def run(role: str, settings: Settings) -> None:
                     Subscriptions(repository),
                     Catalog(repository, toe_client),
                     Schedules(repository),
+                    status=Status(repository, version("poweron")),
+                    admin_chat_id=settings.admin_chat_id,
                 )
                 group.create_task(dispatcher.start_polling(bot, handle_signals=False))
+                group.create_task(_stop_polling_on(stop, dispatcher))
             if role in ("worker", "all"):
                 notifications = Notifications(repository, {"telegram": TelegramNotifier(bot)})
                 group.create_task(
                     run_worker(
-                        Polling(repository, toe_client),
+                        Polling(repository, toe_client, alerts),
                         notifications,
                         Reminders(repository, Schedules(repository)),
-                        SubqueueChecker(repository, toe_client),
-                        PlannedWorks(repository, toe_client),
+                        SubqueueChecker(repository, toe_client, alerts),
+                        PlannedWorks(repository, toe_client, alerts),
                         settings.poll_interval_sec,
+                        stop,
                     )
                 )
     finally:
         await toe_client.aclose()
         await bot.session.close()
         await engine.dispose()
+
+
+def _stop_on_signals(stop: asyncio.Event) -> None:
+    loop = asyncio.get_running_loop()
+    for signal_number in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(signal_number, stop.set)
+
+
+async def _stop_polling_on(stop: asyncio.Event, dispatcher: Dispatcher) -> None:
+    await stop.wait()
+    logger.info("stop requested")
+    with suppress(RuntimeError):  # polling has not started yet
+        await dispatcher.stop_polling()
 
 
 if __name__ == "__main__":

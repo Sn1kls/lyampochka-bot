@@ -19,18 +19,24 @@ class Notifications:
 
     async def dispatch(self, now: datetime) -> None:
         """Send due outbox messages; a failure is retried later with exponential backoff."""
+        sent = failed = gave_up = 0
         for queued in await self._repository.due_messages(now, BATCH_SIZE, MAX_ATTEMPTS):
             try:
                 await self._deliver(queued.message)
             except Exception as error:  # any channel failure must not stop the batch
                 if queued.attempts + 1 >= MAX_ATTEMPTS:
                     logger.error("giving up on message %s: %r", queued.id, error)
+                    gave_up += 1
                 else:
                     logger.warning("delivery of message %s failed: %r", queued.id, error)
+                    failed += 1
                 retry_at = now + FIRST_RETRY_DELAY * 2**queued.attempts
                 await self._repository.mark_failed(queued.id, repr(error), retry_at)
             else:
                 await self._repository.mark_sent(queued.id, now)
+                sent += 1
+        if sent or failed or gave_up:
+            logger.info("dispatch sent=%s failed=%s gave_up=%s", sent, failed, gave_up)
 
     async def _deliver(self, message: OutboxMessage) -> None:
         # At-least-once: a failure on one target retries the message for all of them.

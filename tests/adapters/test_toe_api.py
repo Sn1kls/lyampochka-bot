@@ -231,6 +231,82 @@ async def test_client_errors_are_not_retried(client: ToeClient) -> None:
     assert route.call_count == 1
 
 
+async def fail(client: ToeClient) -> None:
+    with pytest.raises(SourceUnavailable):
+        await client.fetch_schedules(SADOVA_1, "4.1")
+
+
+@respx.mock
+async def test_breaker_opens_after_three_failures_and_backs_off(
+    client: ToeClient, clock: FakeClock
+) -> None:
+    route = respx.get(f"{API}/a_gpv_g").respond(404)
+    for _ in range(3):
+        await fail(client)
+    assert route.call_count == 3
+
+    await fail(client)  # paused: no network call
+    clock.monotonic_now += 58
+    await fail(client)
+    assert route.call_count == 3
+
+    clock.monotonic_now += 2  # the 60 s pause is over, one probe goes out
+    await fail(client)
+    assert route.call_count == 4
+
+    clock.monotonic_now += 119  # the pause doubled to 120 s
+    await fail(client)
+    assert route.call_count == 4
+    clock.monotonic_now += 1
+    await fail(client)
+    assert route.call_count == 5
+
+
+@respx.mock
+async def test_breaker_pause_is_capped_at_an_hour(client: ToeClient, clock: FakeClock) -> None:
+    route = respx.get(f"{API}/a_gpv_g").respond(404)
+    for _ in range(20):
+        clock.monotonic_now += 3600
+        await fail(client)
+    clock.monotonic_now += 3599
+    await fail(client)
+    assert route.call_count == 20
+    clock.monotonic_now += 1
+    await fail(client)
+    assert route.call_count == 21
+
+
+@respx.mock
+async def test_a_success_closes_the_breaker(client: ToeClient, clock: FakeClock) -> None:
+    route = respx.get(f"{API}/a_gpv_g")
+    route.side_effect = (
+        [httpx.Response(404)] * 3 + [httpx.Response(200, json=SCHEDULE)] + [httpx.Response(404)] * 2
+    )
+    for _ in range(3):
+        await fail(client)
+    clock.monotonic_now += 60
+    await client.fetch_schedules(SADOVA_1, "4.1")
+
+    await fail(client)
+    await fail(client)  # two failures after a success do not open it again
+    assert route.call_count == 6
+
+
+@respx.mock
+async def test_schema_errors_do_not_open_the_breaker(client: ToeClient) -> None:
+    route = respx.get(f"{API}/a_gpv_g")
+    route.side_effect = (
+        [httpx.Response(404)] * 2 + [httpx.Response(200, text="<html>")] + [httpx.Response(404)] * 2
+    )
+    await fail(client)
+    await fail(client)
+    with pytest.raises(ApiSchemaError):
+        await client.fetch_schedules(SADOVA_1, "4.1")
+    await fail(client)
+    await fail(client)
+    assert route.call_count == 5
+
+
 @respx.mock
 async def test_requests_are_at_least_one_second_apart(client: ToeClient, clock: FakeClock) -> None:
     respx.get(f"{API}/a_gpv_g").respond(json=SCHEDULE)

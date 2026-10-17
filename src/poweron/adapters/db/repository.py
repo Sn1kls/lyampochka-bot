@@ -297,6 +297,21 @@ class SqlRepository:
             )
             return [_queued_message(row) for row in result]
 
+    async def count_users(self) -> int:
+        async with self._engine.connect() as connection:
+            return await connection.scalar(select(func.count()).select_from(users)) or 0
+
+    async def count_pending_messages(self, max_attempts: int) -> int:
+        async with self._engine.connect() as connection:
+            return (
+                await connection.scalar(
+                    select(func.count())
+                    .select_from(outbox)
+                    .where(outbox.c.sent_at.is_(None), outbox.c.attempts < max_attempts)
+                )
+                or 0
+            )
+
     async def delivery_targets(self, user_id: int) -> list[DeliveryTarget]:
         async with self._engine.connect() as connection:
             result = await connection.execute(

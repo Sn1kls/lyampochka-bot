@@ -5,6 +5,7 @@ from datetime import datetime
 from poweron.core.domain.models import MessageKind, OutboxMessage, PlannedWork, Subscription
 from poweron.core.domain.text import normalise
 from poweron.core.ports import PlannedWorkSource, Repository, SourceError
+from poweron.core.services.alerts import Alerts, report_source_error
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +17,12 @@ class PlannedWorks:
     "ends_at": ISO, "reason": str (may be empty)}.
     """
 
-    def __init__(self, repository: Repository, source: PlannedWorkSource) -> None:
+    def __init__(
+        self, repository: Repository, source: PlannedWorkSource, alerts: Alerts | None = None
+    ) -> None:
         self._repository = repository
         self._source = source
+        self._alerts = alerts
 
     async def check(self, now: datetime) -> None:
         by_street: dict[tuple[int, int], list[Subscription]] = defaultdict(list)
@@ -26,21 +30,24 @@ class PlannedWorks:
             if subscription.notify_on_update:
                 address = subscription.address
                 by_street[(address.city_id, address.street_id)].append(subscription)
+        queued = 0
         for (city_id, street_id), subscribers in by_street.items():
             try:
                 works = await self._source.planned_works(city_id, street_id, now)
-                await self._repository.enqueue_messages(
-                    [
-                        _message(subscription, work)
-                        for subscription in subscribers
-                        for work in works
-                        if _affects(work, subscription)
-                    ]
-                )
+                messages = [
+                    _message(subscription, work)
+                    for subscription in subscribers
+                    for work in works
+                    if _affects(work, subscription)
+                ]
+                await self._repository.enqueue_messages(messages)
+                queued += len(messages)
             except SourceError as error:
                 logger.warning("planned works check failed for street %s: %s", street_id, error)
+                await report_source_error(self._alerts, error, now)
             except Exception:
                 logger.exception("planned works check crashed for street %s", street_id)
+        logger.info("planned_works streets=%s messages=%s", len(by_street), queued)
 
 
 def _affects(work: PlannedWork, subscription: Subscription) -> bool:
