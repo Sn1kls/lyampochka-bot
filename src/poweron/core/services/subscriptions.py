@@ -31,7 +31,7 @@ class Subscriptions:
     async def remove(self, user_id: int, subscription_id: int) -> bool:
         return await self._repository.remove_subscription(user_id, subscription_id)
 
-    async def list(self, user_id: int) -> list[Subscription]:
+    async def of_user(self, user_id: int) -> list[Subscription]:
         raise NotImplementedError
 
     async def get(self, user_id: int, subscription_id: int) -> Subscription | None:
