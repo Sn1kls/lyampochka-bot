@@ -2,11 +2,13 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.subscriptions import Subscriptions
 
+from . import texts
 from .handlers import router
 
 
@@ -27,4 +29,12 @@ def build_dispatcher(
         schedules=schedules,
     )
     dispatcher.include_router(router)
+    dispatcher.startup.register(publish_commands)
     return dispatcher
+
+
+async def publish_commands(bot: Bot) -> None:
+    """The command menu Telegram shows when the user types "/"."""
+    await bot.set_my_commands(
+        [BotCommand(command=command, description=text) for command, text in texts.COMMANDS]
+    )

@@ -1,4 +1,7 @@
-from poweron.adapters.telegram.bot import build_dispatcher, create_bot
+from aiogram.types import BotCommand
+
+from poweron.adapters.telegram import texts
+from poweron.adapters.telegram.bot import build_dispatcher, create_bot, publish_commands
 
 
 def test_dispatcher_carries_services_and_bot_defaults_to_html() -> None:
@@ -9,3 +12,19 @@ def test_dispatcher_carries_services_and_bot_defaults_to_html() -> None:
     bot = create_bot("123:abc")
     assert bot.default.parse_mode == "HTML"
     assert bot.default.link_preview_is_disabled is True
+
+
+async def test_command_menu_matches_help() -> None:
+    class RecordingBot:
+        commands: list[BotCommand] = []
+
+        async def set_my_commands(self, commands: list[BotCommand]) -> None:
+            self.commands = commands
+
+    bot = RecordingBot()
+    await publish_commands(bot)  # type: ignore[arg-type]
+
+    assert [(item.command, item.description) for item in bot.commands] == list(texts.COMMANDS)
+    assert all(
+        f"/{command} — {description}" in texts.HELP for command, description in texts.COMMANDS
+    )
