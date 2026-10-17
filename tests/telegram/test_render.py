@@ -14,7 +14,7 @@ from tests.conftest import load_fixture
 
 DAY = date(2026, 10, 17)
 TOMORROW = date(2026, 10, 18)
-NOTE = "Графік може змінюватись упродовж дня. Орієнтуйтесь також на poweron.toe.com.ua"
+NOTE = "Графік може змінюватися впродовж дня, тож поглядай і на poweron.toe.com.ua"
 LINK = '<a href="https://poweron.toe.com.ua">poweron.toe.com.ua</a>'
 PUBLISHED = datetime(2026, 10, 17, 14, 16, 5, tzinfo=UTC)
 

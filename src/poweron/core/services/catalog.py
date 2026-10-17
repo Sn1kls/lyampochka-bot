@@ -42,14 +42,17 @@ class Catalog:
         now: datetime,
     ) -> list[Item]:
         cached = await self._repository.cached_catalog(key)
-        if cached is not None and now - cached[1] < CACHE_TTL:
-            return [item_type(**fields) for fields in cached[0]]
+        if cached is not None:
+            stored, fetched_at = cached
+            cached_items = [item_type(**fields) for fields in stored]
+            if now - fetched_at < CACHE_TTL:
+                return cached_items
         try:
             items = await fetch()
         except SourceError:
             if cached is None:
                 raise
-            return [item_type(**fields) for fields in cached[0]]
+            return cached_items
         await self._repository.store_catalog(key, [asdict(item) for item in items], now)
         return items
 
