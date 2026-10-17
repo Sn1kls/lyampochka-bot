@@ -67,8 +67,9 @@ Each line is a separate cache-miss request (unique URL) for Ternopil, vul. Sadov
 
 - `X-debug-key = base64(utf8("{cityId}/{streetId}/{buildingName}"))`; `time` = the same string without `/`.
   Still send `time` and `group` exactly like the site (cheap, and `time` keeps the CDN cache key per address).
-- `dataJson` contains **only** the subqueue of the address. The site splits keys on `#` (`"4.1#…".split("#")[0]`),
-  so a key may carry a `#suffix`; not seen yet — strip it when matching.
+- `dataJson` contains **only** the subqueue of the address. The site looks it up by the full trimmed `chergGpv`
+  (`dataJson[String(cherg).trim()]`) and drops a `#suffix` only for display (`cherg.split("#")[0]`). So keep the
+  whole trimmed value as the subqueue id; strip `#…` only when rendering. No suffix seen yet.
 - Response is always the Hydra envelope here (even with `Accept: application/json`).
 - Not seen but plausible (PHP/API Platform backend): `"dataJson": []` for an empty map, or a subqueue entry
   without `times`. The Phase 1 pydantic models should reject or normalise these, not crash.
@@ -95,9 +96,10 @@ Each line is a separate cache-miss request (unique URL) for Ternopil, vul. Sadov
   a few seconds) does — the origin answers fresh.
 - Since the site URL for one address is constant for a whole day, a schedule update may reach the edge (and us)
   **up to ~2 h late** unless the backend purges the cache (unknown).
-- **Decision (owner, 2026-10-17): bypass the edge cache.** Each poll moves `before` by a few seconds within
-  `T00:MM:SS` of the same day (≈1 origin request per subqueue per poll). Do it only inside the `adapters/toe_api`
-  request method, never in pollers or `core`, and always with matching `time` + `X-debug-key`.
+- **Decision (owner, 2026-10-17): bypass the edge cache.** `before` = tomorrow + the current Kyiv time of day
+  (`2026-10-18T17:45:00+00:00`): unique per second for a whole day, and `after` changes with the date, so a URL
+  never repeats within the 2 h TTL. Still before the day after tomorrow, so the result window is unchanged.
+  ≈1 origin request per subqueue per poll. Only inside `adapters/toe_api`, always with matching `time` + `X-debug-key`.
 
 ## Missing data (SPEC §2.3.5)
 
