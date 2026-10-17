@@ -19,9 +19,17 @@ from poweron.adapters.db.repository import SqlRepository
 from poweron.adapters.telegram import keyboards, texts
 from poweron.adapters.telegram.bot import build_dispatcher
 from poweron.core.domain.diff import data_hash
-from poweron.core.domain.models import Building, City, ScheduleVersion, Street, Subscription
+from poweron.core.domain.models import (
+    Building,
+    City,
+    ScheduleVersion,
+    StatusReport,
+    Street,
+    Subscription,
+)
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.schedules import Schedules
+from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
 
 USER = {"id": 1, "is_bot": False, "first_name": "Оля"}
@@ -107,7 +115,12 @@ class SettingsSubscriptions(Subscriptions):
 
 
 class Chat:
-    def __init__(self, repository: SqlRepository) -> None:
+    def __init__(
+        self,
+        repository: SqlRepository,
+        status: Status | None = None,
+        admin_chat_id: int | None = None,
+    ) -> None:
         self.subscriptions = SettingsSubscriptions(repository)
         self.session = RecordingSession()
         self.bot = Bot("123:abc", session=self.session)
@@ -115,6 +128,8 @@ class Chat:
             self.subscriptions,
             Catalog(repository, FakeCatalogSource()),
             Schedules(repository),
+            status=status,
+            admin_chat_id=admin_chat_id,
         )
         self._update_id = 0
 
@@ -524,3 +539,24 @@ async def test_pressing_the_same_setting_twice_ignores_the_unmodified_message(ch
     await chat.press(
         keyboards.SettingChange(subscription_id=1, field="remind_before_on_min", value=0)
     )
+
+
+class FakeStatus:
+    async def report(self) -> StatusReport:
+        return StatusReport("0.1.0", 2, 3, 0, ())
+
+
+async def test_status_is_answered_to_the_admin_chat(repository: SqlRepository) -> None:
+    chat = Chat(repository, status=FakeStatus(), admin_chat_id=CHAT["id"])  # type: ignore[arg-type]
+    await chat.say("/start")
+    await chat.say("/status")
+
+    assert "0.1.0" in chat.sent_texts()[-1]
+
+
+async def test_status_is_ignored_in_other_chats(repository: SqlRepository) -> None:
+    chat = Chat(repository, status=FakeStatus(), admin_chat_id=999)  # type: ignore[arg-type]
+    await chat.say("/start")
+    await chat.say("/status")
+
+    assert chat.sent_texts() == [texts.GREETING]

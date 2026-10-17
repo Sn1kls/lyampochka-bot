@@ -3,11 +3,20 @@ from datetime import date, datetime, timedelta
 from html import escape
 from typing import Any
 
-from poweron.core.domain.models import KYIV, DayView, Interval, NextEvent, SlotState, Subscription
+from poweron.core.domain.models import (
+    KYIV,
+    DayView,
+    Interval,
+    NextEvent,
+    SlotState,
+    StatusReport,
+    Subscription,
+)
 
 from . import texts
 
 STALE_AFTER = timedelta(minutes=30)
+STATUS_STALE_AFTER = timedelta(minutes=15)
 
 STATE_LINES = {
     SlotState.ON: texts.LINE_ON,
@@ -308,3 +317,27 @@ def _duration(span: timedelta) -> str:
     if minutes or not hours:
         parts.append(texts.DURATION_MINUTES.format(minutes=minutes))
     return " ".join(parts)
+
+
+def render_status(report: StatusReport, now: datetime) -> str:
+    lines = [
+        texts.STATUS_TITLE.format(version=escape(report.version)),
+        texts.STATUS_COUNTS.format(
+            users=report.users,
+            subscriptions=report.subscriptions,
+            pending=report.pending_messages,
+        ),
+    ]
+    for subqueue in report.subqueues:
+        polled = subqueue.last_polled_at
+        stale = polled is None or now - polled > STATUS_STALE_AFTER
+        template = texts.STATUS_SUBQUEUE_STALE if stale else texts.STATUS_SUBQUEUE
+        lines.append(
+            template.format(
+                label=subqueue_label(subqueue.cherg_gpv),
+                polled=texts.STATUS_NEVER_POLLED
+                if polled is None
+                else f"{polled.astimezone(KYIV):%d.%m %H:%M}",
+            )
+        )
+    return "\n".join(lines)

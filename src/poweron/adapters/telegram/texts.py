@@ -162,3 +162,17 @@ REMINDER_NONE = "без"
 
 DURATION_HOURS = "{hours} год"
 DURATION_MINUTES = "{minutes} хв"
+
+ALERT_API_SCHEMA = (
+    "🚨 Відповідь обленерго змінила формат, тож я не можу її розібрати. "
+    "Показую графіки з пам'яті.\n<code>{details}</code>"
+)
+ALERT_API_DOWN = (
+    "🚨 Сайт обленерго давно не відповідає. Показую графіки з пам'яті.\n<code>{details}</code>"
+)
+
+STATUS_TITLE = "📊 <b>Лямпочка {version}</b>"
+STATUS_COUNTS = "Користувачів: {users}, адрес: {subscriptions}, у черзі розсилки: {pending}"
+STATUS_SUBQUEUE = "{label}: {polled}"
+STATUS_SUBQUEUE_STALE = "⚠️ {label}: {polled}"
+STATUS_NEVER_POLLED = "ще не опитувалась"
