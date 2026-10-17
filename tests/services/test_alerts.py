@@ -12,7 +12,7 @@ from poweron.core.domain.models import (
     OutboxMessage,
     Street,
 )
-from poweron.core.ports import ApiSchemaError, SourceUnavailable
+from poweron.core.ports import ApiSchemaError, SourcePaused, SourceUnavailable
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.groups import RECHECK_AFTER, SubqueueChecker
 from poweron.core.services.notifications import MAX_ATTEMPTS
@@ -24,6 +24,7 @@ from tests.services.conftest import NOW
 
 TERNOPIL = City(id=1032, name="Тернопіль", otg_name=None)
 SADOVA = Street(id=9985, name="вул. Садова")
+POLL_INTERVAL = timedelta(minutes=5)
 
 
 @dataclass
@@ -100,17 +101,39 @@ async def test_schema_error_in_polling_alerts_once_within_the_hour(
     assert alerter.alerts == [(AlertKind.API_SCHEMA, "bad shape")]
 
 
-async def test_unavailable_source_alerts_in_every_job(
+async def test_a_paused_source_alerts_in_every_job(
     repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts
 ) -> None:
     await subscribe(repository)
-    source = BrokenSource(SourceUnavailable("down"))
+    source = BrokenSource(SourcePaused("down"))
 
     await Polling(repository, source, alerts).poll(NOW)
     await SubqueueChecker(repository, source, alerts).check(NOW + RECHECK_AFTER)
     await PlannedWorks(repository, source, alerts).check(NOW)
 
     assert alerter.alerts == [(AlertKind.API_DOWN, "down")]
+
+
+async def test_a_one_off_failure_does_not_alert(
+    repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts
+) -> None:
+    await subscribe(repository)
+
+    await Polling(repository, BrokenSource(SourceUnavailable("blip")), alerts).poll(NOW)
+
+    assert alerter.alerts == []
+
+
+async def test_a_failed_send_is_retried_on_the_next_report(
+    alerter: FakeAlerter, alerts: Alerts
+) -> None:
+    alerter.error = RuntimeError("telegram is down")
+    await alerts.report(AlertKind.API_DOWN, "first", NOW)
+
+    alerter.error = None
+    await alerts.report(AlertKind.API_DOWN, "second", NOW + timedelta(minutes=1))
+
+    assert alerter.alerts == [(AlertKind.API_DOWN, "second")]
 
 
 async def test_jobs_work_without_alerts(repository: SqlRepository) -> None:
@@ -123,7 +146,7 @@ async def test_jobs_work_without_alerts(repository: SqlRepository) -> None:
 
 
 async def test_status_counts_what_is_pending(repository: SqlRepository) -> None:
-    empty = await Status(repository, "1.2.3").report()
+    empty = await Status(repository, "1.2.3", POLL_INTERVAL).report()
     assert (empty.users, empty.subscriptions, empty.pending_messages, empty.subqueues) == (
         0,
         0,
@@ -143,9 +166,10 @@ async def test_status_counts_what_is_pending(repository: SqlRepository) -> None:
     for _ in range(MAX_ATTEMPTS):
         await repository.mark_failed(queued["given-up"].id, "boom", NOW)
 
-    report = await Status(repository, "1.2.3").report()
+    report = await Status(repository, "1.2.3", POLL_INTERVAL).report()
 
     assert report.version == "1.2.3"
+    assert report.stale_after == timedelta(minutes=15)
     assert (report.users, report.subscriptions, report.pending_messages) == (2, 2, 1)
     [subqueue] = report.subqueues
     assert (subqueue.cherg_gpv, subqueue.last_polled_at) == ("4.1", None)

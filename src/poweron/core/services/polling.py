@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from poweron.core.domain.diff import ScheduleChange, data_hash, schedule_change
@@ -20,6 +21,10 @@ logger = logging.getLogger(__name__)
 NEW_SUBQUEUE_RETRY = timedelta(minutes=5)
 
 
+def never_stop() -> bool:
+    return False
+
+
 class Polling:
     def __init__(
         self, repository: Repository, source: ScheduleSource, alerts: Alerts | None = None
@@ -30,12 +35,15 @@ class Polling:
         self._new_attempts: dict[str, datetime] = {}
         self._lock = asyncio.Lock()
 
-    async def poll(self, now: datetime) -> None:
-        """Fetch every subscribed subqueue once and store new versions with their messages."""
-        async with self._lock:
-            await self._poll_each(await self._by_subqueue(), now)
+    async def poll(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
+        """Fetch every subscribed subqueue once and store new versions with their messages.
 
-    async def poll_new(self, now: datetime) -> None:
+        `should_stop` is checked between subqueues, so a shutdown does not wait for the whole pass.
+        """
+        async with self._lock:
+            await self._poll_each(await self._by_subqueue(), now, should_stop)
+
+    async def poll_new(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
         """Fetch only the subscribed subqueues that have no stored version yet.
 
         A subqueue the source has nothing for is retried only after NEW_SUBQUEUE_RETRY,
@@ -51,7 +59,7 @@ class Polling:
                 >= NEW_SUBQUEUE_RETRY
             }
             self._new_attempts.update(dict.fromkeys(never_polled, now))
-            await self._poll_each(never_polled, now)
+            await self._poll_each(never_polled, now, should_stop)
 
     async def _by_subqueue(self) -> dict[str, list[Subscription]]:
         """Every queue of a building is fetched, so that the untracked ones can be viewed too."""
@@ -61,10 +69,17 @@ class Polling:
                 by_subqueue[cherg_gpv].append(subscription)
         return by_subqueue
 
-    async def _poll_each(self, by_subqueue: dict[str, list[Subscription]], now: datetime) -> None:
+    async def _poll_each(
+        self,
+        by_subqueue: dict[str, list[Subscription]],
+        now: datetime,
+        should_stop: Callable[[], bool],
+    ) -> None:
         started = time.monotonic()
         changed = messages = 0
         for cherg_gpv, subscribers in by_subqueue.items():
+            if should_stop():
+                break
             try:
                 new_versions, new_messages = await self._poll_subqueue(cherg_gpv, subscribers, now)
                 changed += new_versions

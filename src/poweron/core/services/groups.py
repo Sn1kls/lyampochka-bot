@@ -1,10 +1,12 @@
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from poweron.core.domain.models import MessageKind, OutboxMessage, Subscription
 from poweron.core.ports import CatalogSource, Repository, SourceError
 from poweron.core.services.alerts import Alerts, report_source_error
+from poweron.core.services.polling import never_stop
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ class SubqueueChecker:
         self._source = source
         self._alerts = alerts
 
-    async def check(self, now: datetime) -> None:
+    async def check(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
         by_building: dict[tuple[int, int, str], list[Subscription]] = defaultdict(list)
         for subscription in await self._repository.stale_subscriptions(now - RECHECK_AFTER):
             address = subscription.address
@@ -34,6 +36,8 @@ class SubqueueChecker:
             by_building[key].append(subscription)
         changed = 0
         for (city_id, street_id, building_name), subscribers in by_building.items():
+            if should_stop():
+                break
             try:
                 found = await self._source.building_subqueues(city_id, street_id, building_name)
             except SourceError as error:

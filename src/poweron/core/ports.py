@@ -26,6 +26,10 @@ class SourceUnavailable(SourceError):
     """Network error, timeout, or an error status after retries."""
 
 
+class SourcePaused(SourceUnavailable):
+    """The source failed repeatedly and is not being called for a while."""
+
+
 class ApiSchemaError(SourceError):
     """The response no longer matches the expected format."""
 

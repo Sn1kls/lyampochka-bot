@@ -41,7 +41,7 @@ simulate:
 	docker compose exec bot python scripts/simulate_update.py
 
 backup:
-	mkdir -p backups
+	mkdir -p backups && chmod 700 backups
 	docker compose exec -T bot python -c "import sqlite3; sqlite3.connect('/data/poweron.sqlite3').backup(sqlite3.connect('/data/backup.sqlite3'))"
 	docker compose cp bot:/data/backup.sqlite3 backups/poweron-$$(date +%Y%m%d-%H%M%S).sqlite3
 	docker compose exec -T bot rm /data/backup.sqlite3

@@ -16,7 +16,6 @@ from poweron.core.domain.models import (
 from . import texts
 
 STALE_AFTER = timedelta(minutes=30)
-STATUS_STALE_AFTER = timedelta(minutes=15)
 
 STATE_LINES = {
     SlotState.ON: texts.LINE_ON,
@@ -330,14 +329,12 @@ def render_status(report: StatusReport, now: datetime) -> str:
     ]
     for subqueue in report.subqueues:
         polled = subqueue.last_polled_at
-        stale = polled is None or now - polled > STATUS_STALE_AFTER
+        stale = polled is None or now - polled > report.stale_after
         template = texts.STATUS_SUBQUEUE_STALE if stale else texts.STATUS_SUBQUEUE
-        lines.append(
-            template.format(
-                label=subqueue_label(subqueue.cherg_gpv),
-                polled=texts.STATUS_NEVER_POLLED
-                if polled is None
-                else f"{polled.astimezone(KYIV):%d.%m %H:%M}",
-            )
+        polled_text = (
+            texts.STATUS_NEVER_POLLED
+            if polled is None
+            else f"{polled.astimezone(KYIV):%d.%m %H:%M}"
         )
+        lines.append(template.format(label=subqueue_label(subqueue.cherg_gpv), polled=polled_text))
     return "\n".join(lines)

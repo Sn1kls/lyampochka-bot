@@ -1,6 +1,6 @@
 from collections.abc import AsyncGenerator
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -543,7 +543,7 @@ async def test_pressing_the_same_setting_twice_ignores_the_unmodified_message(ch
 
 class FakeStatus:
     async def report(self) -> StatusReport:
-        return StatusReport("0.1.0", 2, 3, 0, ())
+        return StatusReport("0.1.0", 2, 3, 0, (), timedelta(minutes=15))
 
 
 async def test_status_is_answered_to_the_admin_chat(repository: SqlRepository) -> None:

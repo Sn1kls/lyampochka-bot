@@ -185,7 +185,7 @@ async def settings(message: Message, user_id: int, subscriptions: Subscriptions)
 
 
 @router.message(Command("status"))
-async def status_(message: Message, status: Status | None, admin_chat_id: int | None) -> None:
+async def show_status(message: Message, status: Status | None, admin_chat_id: int | None) -> None:
     if status is None or message.chat.id != admin_chat_id:
         return
     await message.answer(render_status(await status.report(), _now()))

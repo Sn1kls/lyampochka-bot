@@ -31,13 +31,25 @@ async def run_worker(
     poll_interval: float,
     stop: asyncio.Event,
 ) -> None:
-    """Runs the jobs until `stop` is set; a job that is running finishes first."""
+    """Runs the jobs until `stop` is set.
+
+    Dispatch finishes its batch; the fetching jobs stop between items.
+    """
     async with asyncio.TaskGroup() as group:
         group.create_task(
-            repeat(lambda: polling.poll(datetime.now(UTC)), stop, poll_interval, POLL_JITTER)
+            repeat(
+                lambda: polling.poll(datetime.now(UTC), stop.is_set),
+                stop,
+                poll_interval,
+                POLL_JITTER,
+            )
         )
         group.create_task(
-            repeat(lambda: polling.poll_new(datetime.now(UTC)), stop, NEW_SUBQUEUE_INTERVAL)
+            repeat(
+                lambda: polling.poll_new(datetime.now(UTC), stop.is_set),
+                stop,
+                NEW_SUBQUEUE_INTERVAL,
+            )
         )
         group.create_task(
             repeat(lambda: notifications.dispatch(datetime.now(UTC)), stop, DISPATCH_INTERVAL)
@@ -47,11 +59,17 @@ async def run_worker(
         )
         group.create_task(
             repeat(
-                lambda: subqueue_checker.check(datetime.now(UTC)), stop, CHECK_SUBQUEUES_INTERVAL
+                lambda: subqueue_checker.check(datetime.now(UTC), stop.is_set),
+                stop,
+                CHECK_SUBQUEUES_INTERVAL,
             )
         )
         group.create_task(
-            repeat(lambda: planned_works.check(datetime.now(UTC)), stop, PLANNED_WORKS_INTERVAL)
+            repeat(
+                lambda: planned_works.check(datetime.now(UTC), stop.is_set),
+                stop,
+                PLANNED_WORKS_INTERVAL,
+            )
         )
 
 

@@ -299,7 +299,7 @@ async def test_regular_and_new_polls_never_fetch_the_same_subqueue_together(
 
     await asyncio.gather(polling.poll(NOW), polling.poll_new(NOW))
 
-    assert source.requested == ["4.1"]
+    assert len(source.requested) == 1
 
 
 async def test_restart_after_a_stop_sends_nothing_twice(
@@ -347,3 +347,13 @@ async def test_poll_logs_a_summary_and_an_empty_dispatch_stays_quiet(
 
     [summary] = [record.getMessage() for record in caplog.records if record.levelname == "INFO"]
     assert summary.startswith("poll subqueues=1 changed=1 messages=0 ms=")
+
+
+async def test_polling_stops_between_subqueues_when_asked(
+    repository: SqlRepository, source: FakeSource
+) -> None:
+    await subscribe(repository, "101", queues=("4.1", "1.2"))
+
+    await Polling(repository, source).poll(NOW, lambda: len(source.requested) >= 1)
+
+    assert len(source.requested) == 1

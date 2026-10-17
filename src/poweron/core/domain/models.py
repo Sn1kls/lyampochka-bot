@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -172,3 +172,4 @@ class StatusReport:
     subscriptions: int
     pending_messages: int
     subqueues: tuple[SubqueueStatus, ...]
+    stale_after: timedelta

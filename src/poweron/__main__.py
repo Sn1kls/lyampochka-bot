@@ -2,7 +2,7 @@ import asyncio
 import logging
 import signal
 import sys
-from contextlib import suppress
+from datetime import timedelta
 from importlib.metadata import version
 
 from aiogram import Dispatcher
@@ -28,6 +28,7 @@ from poweron.worker.runner import run_worker
 logger = logging.getLogger(__name__)
 
 ROLES = ("bot", "worker", "all")
+STOP_RETRY_DELAY = 0.1
 
 
 def main() -> None:
@@ -65,11 +66,17 @@ async def run(role: str, settings: Settings) -> None:
                     Subscriptions(repository),
                     Catalog(repository, toe_client),
                     Schedules(repository),
-                    status=Status(repository, version("poweron")),
+                    status=Status(
+                        repository,
+                        version("poweron"),
+                        timedelta(seconds=settings.poll_interval_sec),
+                    ),
                     admin_chat_id=settings.admin_chat_id,
                 )
-                group.create_task(dispatcher.start_polling(bot, handle_signals=False))
-                group.create_task(_stop_polling_on(stop, dispatcher))
+                polling_task = group.create_task(
+                    dispatcher.start_polling(bot, handle_signals=False)
+                )
+                group.create_task(_stop_polling_on(stop, dispatcher, polling_task))
             if role in ("worker", "all"):
                 notifications = Notifications(repository, {"telegram": TelegramNotifier(bot)})
                 group.create_task(
@@ -95,11 +102,18 @@ def _stop_on_signals(stop: asyncio.Event) -> None:
         loop.add_signal_handler(signal_number, stop.set)
 
 
-async def _stop_polling_on(stop: asyncio.Event, dispatcher: Dispatcher) -> None:
+async def _stop_polling_on(
+    stop: asyncio.Event, dispatcher: Dispatcher, polling_task: asyncio.Task[None]
+) -> None:
     await stop.wait()
     logger.info("stop requested")
-    with suppress(RuntimeError):  # polling has not started yet
-        await dispatcher.stop_polling()
+    # A stop that arrives before polling has started raises; keep trying until it takes.
+    while not polling_task.done():
+        try:
+            await dispatcher.stop_polling()
+            return
+        except RuntimeError:
+            await asyncio.sleep(STOP_RETRY_DELAY)
 
 
 if __name__ == "__main__":

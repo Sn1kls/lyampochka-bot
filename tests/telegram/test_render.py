@@ -494,6 +494,7 @@ def test_status_flags_stale_and_unpolled_subqueues() -> None:
             SubqueueStatus("2.2#1", NOW - timedelta(minutes=16)),
             SubqueueStatus("1.1", None),
         ),
+        stale_after=timedelta(minutes=15),
     )
 
     assert render_status(report, NOW) == (
@@ -503,3 +504,16 @@ def test_status_flags_stale_and_unpolled_subqueues() -> None:
         "⚠️ 2.2: 17.10 17:04\n"
         "⚠️ 1.1: ще не опитувалась"
     )
+
+
+def test_status_stale_threshold_comes_from_the_report() -> None:
+    report = StatusReport(
+        version="0.1.0",
+        users=1,
+        subscriptions=1,
+        pending_messages=0,
+        subqueues=(SubqueueStatus("4.1", NOW - timedelta(minutes=16)),),
+        stale_after=timedelta(minutes=20),
+    )
+
+    assert "⚠️" not in render_status(report, NOW)

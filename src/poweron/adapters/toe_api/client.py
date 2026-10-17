@@ -30,7 +30,7 @@ from poweron.core.domain.models import (
     PlannedWork,
     Street,
 )
-from poweron.core.ports import ApiSchemaError, SourceUnavailable
+from poweron.core.ports import ApiSchemaError, SourcePaused, SourceUnavailable
 
 ATTEMPTS = 3
 RETRY_STATUSES = {429, 500, 502, 503, 504}
@@ -44,6 +44,10 @@ BREAKER_MAX_PAUSE = 3600.0
 MAX_DOUBLINGS = 10
 
 logger = logging.getLogger(__name__)
+
+
+class _Rejected(SourceUnavailable):
+    """The API answered with a non-retryable error status; it is up, so the breaker ignores it."""
 
 
 class ToeClient:
@@ -69,6 +73,7 @@ class ToeClient:
         self._last_request_at = float("-inf")
         self._consecutive_failures = 0
         self._paused_until = float("-inf")
+        self._last_failure = ""
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -162,29 +167,37 @@ class ToeClient:
     ) -> Any:
         async with self._lock:
             if self._monotonic() < self._paused_until:
-                raise SourceUnavailable(f"{path}: paused after repeated failures")
+                raise self._paused()
             try:
                 response = await self._request(path, params, headers)
-            except SourceUnavailable:
-                self._record_failure()
-                raise
-            except ApiSchemaError:
+            except (_Rejected, ApiSchemaError):
                 self._consecutive_failures = 0  # the API answered, so it is up
+                raise
+            except SourceUnavailable as error:
+                self._last_failure = str(error)
+                if self._record_failure():
+                    raise self._paused() from error
                 raise
             self._consecutive_failures = 0
             return response
 
-    def _record_failure(self) -> None:
+    def _paused(self) -> SourcePaused:
+        return SourcePaused(f"paused after repeated failures: {self._last_failure}")
+
+    def _record_failure(self) -> bool:
+        """Returns whether the breaker is open now."""
         self._consecutive_failures += 1
-        if self._consecutive_failures >= BREAKER_THRESHOLD:
-            doublings = min(self._consecutive_failures - BREAKER_THRESHOLD, MAX_DOUBLINGS)
-            pause = min(BREAKER_FIRST_PAUSE * 2**doublings, BREAKER_MAX_PAUSE)
-            self._paused_until = self._monotonic() + pause
-            logger.warning(
-                "toe api paused for %.0f s after %s failed requests in a row",
-                pause,
-                self._consecutive_failures,
-            )
+        if self._consecutive_failures < BREAKER_THRESHOLD:
+            return False
+        doublings = min(self._consecutive_failures - BREAKER_THRESHOLD, MAX_DOUBLINGS)
+        pause = min(BREAKER_FIRST_PAUSE * 2**doublings, BREAKER_MAX_PAUSE)
+        self._paused_until = self._monotonic() + pause
+        logger.warning(
+            "toe api paused for %.0f s after %s failed requests in a row",
+            pause,
+            self._consecutive_failures,
+        )
+        return True
 
     async def _request(
         self, path: str, params: dict[str, Any], headers: dict[str, str] | None
@@ -202,7 +215,7 @@ class ToeClient:
                 if response.status_code == 200:
                     return _json(path, response)
                 if response.status_code not in RETRY_STATUSES:
-                    raise SourceUnavailable(f"{path}: HTTP {response.status_code}")
+                    raise _Rejected(f"{path}: HTTP {response.status_code}")
                 failure = f"HTTP {response.status_code}"
                 delay = _retry_after(response) or _backoff(attempt)
             finally:

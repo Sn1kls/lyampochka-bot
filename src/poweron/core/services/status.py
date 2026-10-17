@@ -1,12 +1,17 @@
+from datetime import timedelta
+
 from poweron.core.domain.models import StatusReport, SubqueueStatus
 from poweron.core.ports import Repository
 from poweron.core.services.notifications import MAX_ATTEMPTS
 
+STALE_POLL_INTERVALS = 3
+
 
 class Status:
-    def __init__(self, repository: Repository, version: str) -> None:
+    def __init__(self, repository: Repository, version: str, poll_interval: timedelta) -> None:
         self._repository = repository
         self._version = version
+        self._stale_after = STALE_POLL_INTERVALS * poll_interval
 
     async def report(self) -> StatusReport:
         subscriptions = await self._repository.all_subscriptions()
@@ -21,4 +26,5 @@ class Status:
             subscriptions=len(subscriptions),
             pending_messages=await self._repository.count_pending_messages(MAX_ATTEMPTS),
             subqueues=tuple(polled),
+            stale_after=self._stale_after,
         )

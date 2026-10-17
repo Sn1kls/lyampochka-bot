@@ -1,11 +1,13 @@
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import datetime
 
 from poweron.core.domain.models import MessageKind, OutboxMessage, PlannedWork, Subscription
 from poweron.core.domain.text import normalise
 from poweron.core.ports import PlannedWorkSource, Repository, SourceError
 from poweron.core.services.alerts import Alerts, report_source_error
+from poweron.core.services.polling import never_stop
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ class PlannedWorks:
         self._source = source
         self._alerts = alerts
 
-    async def check(self, now: datetime) -> None:
+    async def check(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
         by_street: dict[tuple[int, int], list[Subscription]] = defaultdict(list)
         for subscription in await self._repository.all_subscriptions():
             if subscription.notify_on_update:
@@ -32,6 +34,8 @@ class PlannedWorks:
                 by_street[(address.city_id, address.street_id)].append(subscription)
         queued = 0
         for (city_id, street_id), subscribers in by_street.items():
+            if should_stop():
+                break
             try:
                 works = await self._source.planned_works(city_id, street_id, now)
                 messages = [
