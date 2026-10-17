@@ -42,7 +42,7 @@ class Schedules:
         events = [
             (queue, event)
             for queue in subscription.tracked_subqueues
-            for event in await self._queue_events(queue, now)
+            for event in await self.queue_events(queue, now)
         ]
         return sorted(events, key=lambda queue_event: queue_event[1].earliest)
 
@@ -55,20 +55,24 @@ class Schedules:
             first.setdefault(queue, event)
         return [(queue, first[queue]) for queue in subscription.tracked_subqueues if queue in first]
 
-    async def _queue_events(self, cherg_gpv: str, now: datetime) -> list[NextEvent]:
-        """Switching counts as outage; unknown is skipped."""
+    async def queue_events(self, cherg_gpv: str, now: datetime) -> list[NextEvent]:
+        """Switching counts as outage; unknown is skipped; power returns only after a sure OFF."""
         today = now.astimezone(KYIV).date()
         views = [await self._view(cherg_gpv, day) for day in (today, today + timedelta(days=1))]
         intervals = merge(interval for view in views if view for interval in view.intervals)
         baseline = None
+        had_sure_outage = False
         events = []
         for index, interval in enumerate(intervals):
             is_outage = _is_outage(interval.state)
             if interval.start <= now < interval.end:
                 baseline = is_outage
             elif interval.start > now and is_outage is not None and is_outage != baseline:
-                events.append(_event(intervals, index, now))
+                if is_outage or had_sure_outage:
+                    events.append(_event(intervals, index, now))
                 baseline = is_outage
+            if is_outage is not None:
+                had_sure_outage = is_outage and (had_sure_outage or interval.state is SlotState.OFF)
         return events
 
 

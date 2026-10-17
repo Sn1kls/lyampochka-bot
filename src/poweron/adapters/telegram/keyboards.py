@@ -10,11 +10,12 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from poweron.core.domain.models import Subscription
+from poweron.core.services.subscriptions import REMINDER_MINUTES
 
 from . import texts
+from .render import minutes_text
 
 PAGE_SIZE = 8
-REMINDER_MINUTES = (0, 15, 30, 60)
 SETTING_VALUES = {
     "notify_on_update": (0, 1),
     "remind_before_off_min": REMINDER_MINUTES,
@@ -196,7 +197,7 @@ def settings_keyboard(subscription: Subscription) -> InlineKeyboardMarkup:
         ("remind_before_on_min", subscription.remind_before_on_min, texts.BUTTON_REMINDER_ON),
     ):
         builder.button(
-            text=template.format(value=_minutes_text(current)),
+            text=template.format(value=minutes_text(current)),
             callback_data=SettingChange(
                 subscription_id=subscription.id, field=field, value=_next_minutes(current)
             ),
@@ -205,14 +206,8 @@ def settings_keyboard(subscription: Subscription) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def _minutes_text(minutes: int) -> str:
-    if not minutes:
-        return texts.BUTTON_REMINDER_NONE
-    return texts.BUTTON_REMINDER_MINUTES.format(minutes=minutes)
-
-
 def _next_minutes(current: int) -> int:
-    """Each press moves to the next option: без → 15 → 30 → 60 → без."""
+    """Each press moves to the next option and wraps around after the last."""
     if current not in REMINDER_MINUTES:
         return REMINDER_MINUTES[0]
     return REMINDER_MINUTES[(REMINDER_MINUTES.index(current) + 1) % len(REMINDER_MINUTES)]

@@ -8,7 +8,7 @@ from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.adapters.toe_api.client import ToeClient
 from poweron.config import Settings
 from poweron.core.services.catalog import Catalog
-from poweron.core.services.groups import GroupResolver
+from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.polling import Polling
 from poweron.core.services.reminders import Reminders
@@ -54,8 +54,8 @@ async def run(role: str, settings: Settings) -> None:
                     run_worker(
                         Polling(repository, toe_client),
                         notifications,
-                        Reminders(repository),
-                        GroupResolver(repository, toe_client),
+                        Reminders(repository, Schedules(repository)),
+                        SubqueueChecker(repository, toe_client),
                         settings.poll_interval_sec,
                     )
                 )

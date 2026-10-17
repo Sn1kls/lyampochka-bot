@@ -61,6 +61,10 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+async def _show_settings(target: Message | CallbackQuery, subscription: Subscription) -> None:
+    await _respond(target, render_settings(subscription), keyboards.settings_keyboard(subscription))
+
+
 async def _respond(
     event: Message | CallbackQuery, text: str, markup: InlineKeyboardMarkup | None = None
 ) -> None:
@@ -173,9 +177,7 @@ async def remove(message: Message, user_id: int, subscriptions: Subscriptions) -
 @router.message(F.text == texts.MENU_SETTINGS)
 async def settings(message: Message, user_id: int, subscriptions: Subscriptions) -> None:
     async def show_settings(subscription: Subscription) -> None:
-        await _respond(
-            message, render_settings(subscription), keyboards.settings_keyboard(subscription)
-        )
+        await _show_settings(message, subscription)
 
     await _choose_subscription(message, user_id, subscriptions, "settings", show_settings)
 
@@ -227,9 +229,7 @@ async def choose_subscription(
     elif callback_data.action == "next":
         await _respond(callback, await _next_text(schedules, subscription))
     elif callback_data.action == "settings":
-        await _respond(
-            callback, render_settings(subscription), keyboards.settings_keyboard(subscription)
-        )
+        await _show_settings(callback, subscription)
     elif callback_data.action == "remove":
         removed = await subscriptions.remove(user_id, subscription.id)
         if removed:
@@ -259,9 +259,7 @@ async def change_setting(
     if subscription is None:
         await _respond(callback, texts.ADDRESS_GONE)
     else:
-        await _respond(
-            callback, render_settings(subscription), keyboards.settings_keyboard(subscription)
-        )
+        await _show_settings(callback, subscription)
 
 
 @router.callback_query(keyboards.DayChoice.filter())

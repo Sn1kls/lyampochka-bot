@@ -142,20 +142,11 @@ class SqlRepository:
                     building_id=building.id,
                     building_name=building.name,
                     created_at=now,
+                    cherg_checked_at=now,
                 )
                 .returning(subscriptions.c.id)
             )
-            await connection.execute(
-                subscription_subqueues.insert(),
-                [
-                    {
-                        "subscription_id": subscription_id,
-                        "cherg_gpv": cherg_gpv,
-                        "notify": cherg_gpv in tracked,
-                    }
-                    for cherg_gpv in set(subqueues)
-                ],
-            )
+            await _insert_subqueues(connection, subscription_id, subqueues, tracked)
             (subscription,) = await _load(connection, subscriptions.c.id == subscription_id)
             return subscription
 
@@ -228,17 +219,7 @@ class SqlRepository:
                     subscription_subqueues.c.subscription_id == subscription_id
                 )
             )
-            await connection.execute(
-                subscription_subqueues.insert(),
-                [
-                    {
-                        "subscription_id": subscription_id,
-                        "cherg_gpv": cherg_gpv,
-                        "notify": cherg_gpv in tracked,
-                    }
-                    for cherg_gpv in set(subqueues)
-                ],
-            )
+            await _insert_subqueues(connection, subscription_id, subqueues, tracked)
             await _set_checked(connection, subscription_id, now)
             for message in messages:
                 await _enqueue(connection, message)
@@ -384,6 +365,25 @@ async def _set_checked(connection: AsyncConnection, subscription_id: int, now: d
         update(subscriptions)
         .where(subscriptions.c.id == subscription_id)
         .values(cherg_checked_at=now)
+    )
+
+
+async def _insert_subqueues(
+    connection: AsyncConnection,
+    subscription_id: int,
+    subqueues: Sequence[str],
+    tracked: Sequence[str],
+) -> None:
+    await connection.execute(
+        subscription_subqueues.insert(),
+        [
+            {
+                "subscription_id": subscription_id,
+                "cherg_gpv": cherg_gpv,
+                "notify": cherg_gpv in tracked,
+            }
+            for cherg_gpv in set(subqueues)
+        ],
     )
 
 

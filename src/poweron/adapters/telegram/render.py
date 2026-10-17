@@ -189,7 +189,11 @@ def render_update(payload: Mapping[str, Any]) -> str:
 
 def render_reminder(payload: Mapping[str, Any], *, power_on: bool) -> str:
     earliest = datetime.fromisoformat(payload["earliest"]).astimezone(KYIV)
-    latest = payload["latest"] and datetime.fromisoformat(payload["latest"]).astimezone(KYIV)
+    latest = (
+        None
+        if payload["latest"] is None
+        else datetime.fromisoformat(payload["latest"]).astimezone(KYIV)
+    )
     if latest is None:
         template = texts.REMINDER_ON_POSSIBLE if power_on else texts.REMINDER_OFF_POSSIBLE
     elif latest == earliest:
@@ -211,6 +215,8 @@ def render_reminder(payload: Mapping[str, Any], *, power_on: bool) -> str:
 
 
 def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
+    if not payload["current"]:
+        return texts.SUBQUEUES_GONE.format(label=escape(payload["label"]))
     return texts.SUBQUEUES_CHANGED.format(
         label=escape(payload["label"]),
         previous=_queue_list(payload["previous"]),
@@ -220,22 +226,23 @@ def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
 
 
 def _queue_list(subqueues: Sequence[str]) -> str:
-    return ", ".join(subqueue_label(queue) for queue in subqueues) or texts.NO_QUEUES
+    return ", ".join(subqueue_label(queue) for queue in subqueues)
+
+
+def minutes_text(minutes: int) -> str:
+    return texts.DURATION_MINUTES.format(minutes=minutes) if minutes else texts.REMINDER_NONE
 
 
 def render_settings(subscription: Subscription) -> str:
-    def reminder(minutes: int) -> str:
-        if minutes:
-            return texts.SETTINGS_REMINDER_MINUTES.format(minutes=minutes)
-        return texts.SETTINGS_REMINDER_NONE
-
     updates = texts.SETTINGS_ENABLED if subscription.notify_on_update else texts.SETTINGS_DISABLED
     return "\n".join(
         [
             texts.SETTINGS_TITLE.format(label=escape(subscription.label)),
             texts.SETTINGS_UPDATES.format(state=updates),
-            texts.SETTINGS_REMINDER_OFF.format(when=reminder(subscription.remind_before_off_min)),
-            texts.SETTINGS_REMINDER_ON.format(when=reminder(subscription.remind_before_on_min)),
+            texts.SETTINGS_REMINDER_OFF.format(
+                when=minutes_text(subscription.remind_before_off_min)
+            ),
+            texts.SETTINGS_REMINDER_ON.format(when=minutes_text(subscription.remind_before_on_min)),
         ]
     )
 

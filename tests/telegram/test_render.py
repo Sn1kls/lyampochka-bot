@@ -420,10 +420,15 @@ def test_render_subqueues_changed_lists_queues_and_points_to_settings() -> None:
     )
 
 
-def test_render_subqueues_changed_shows_a_dash_for_no_queues() -> None:
-    payload = {"label": "Дім", "previous": ["4.1"], "current": [], "tracked": []}
+def test_render_subqueues_changed_says_so_when_the_schedule_no_longer_applies() -> None:
+    payload = {"label": "Дім <&>", "previous": ["4.1"], "current": [], "tracked": ["4.1"]}
 
-    assert "Стало: —\nСтежу за: —" in render_subqueues_changed(payload)
+    text = render_subqueues_changed(payload)
+
+    assert "<b>Дім &lt;&amp;&gt;</b>" in text
+    assert "більше не діють" in text
+    assert "poweron.toe.com.ua" in text
+    assert "Стало" not in text
 
 
 def test_render_settings_shows_each_setting() -> None:
@@ -433,7 +438,7 @@ def test_render_settings_shows_each_setting() -> None:
         [
             "⚙️ Налаштування для <b>Дім &lt;&amp;&gt;</b>",
             "Пуші про оновлення графіка: вимкнено",
-            "⏰ Нагадати перед вимкненням: за 15 хв",
-            "💡 Нагадати перед поверненням світла: не треба",
+            "⏰ Нагадати перед вимкненням: 15 хв",
+            "💡 Нагадати перед поверненням світла: без",
         ]
     )

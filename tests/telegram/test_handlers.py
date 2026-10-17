@@ -447,8 +447,8 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
         [
             "⚙️ Налаштування для <b>Дім</b>",
             "Пуші про оновлення графіка: увімкнено",
-            "⏰ Нагадати перед вимкненням: за 30 хв",
-            "💡 Нагадати перед поверненням світла: не треба",
+            "⏰ Нагадати перед вимкненням: 30 хв",
+            "💡 Нагадати перед поверненням світла: без",
         ]
     )
     assert button_texts(chat.last_reply_markup()) == [
@@ -466,8 +466,8 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
     }
     assert chat.edited_texts()[-1].splitlines()[1:] == [
         "Пуші про оновлення графіка: вимкнено",
-        "⏰ Нагадати перед вимкненням: за 60 хв",
-        "💡 Нагадати перед поверненням світла: за 15 хв",
+        "⏰ Нагадати перед вимкненням: 60 хв",
+        "💡 Нагадати перед поверненням світла: 15 хв",
     ]
     edited_markup = [call for call in chat.session.calls if isinstance(call, EditMessageText)][
         -1

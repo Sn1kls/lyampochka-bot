@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -9,12 +9,14 @@ from poweron.core.domain.models import (
     City,
     DaySchedule,
     MessageKind,
+    NextEvent,
     OutboxMessage,
     ScheduleVersion,
     Street,
     Subscription,
 )
 from poweron.core.services.reminders import Reminders
+from poweron.core.services.schedules import Schedules
 from poweron.core.services.subscriptions import Subscriptions
 from tests.services.conftest import NOW, TODAY, day_schedule
 from tests.services.test_schedules import kyiv
@@ -55,7 +57,7 @@ async def subscription(subscriptions: Subscriptions) -> Subscription:
 
 @pytest.fixture
 def reminders(repository: SqlRepository) -> Reminders:
-    return Reminders(repository)
+    return Reminders(repository, Schedules(repository))
 
 
 async def test_off_reminder_fires_only_inside_the_window_and_only_once(
@@ -80,7 +82,9 @@ async def test_off_reminder_fires_only_inside_the_window_and_only_once(
         "earliest": kyiv(TODAY, 20).isoformat(),
         "latest": kyiv(TODAY, 20).isoformat(),
     }
-    assert message.dedupe_key == f"remind:{subscription.id}:4.1:{kyiv(TODAY, 20).isoformat()}:off"
+    assert message.dedupe_key == (
+        f"remind:{subscription.id}:4.1:{kyiv(TODAY, 20).isoformat()}:reminder_off"
+    )
 
 
 async def test_nothing_is_sent_once_the_event_has_started(
@@ -108,9 +112,9 @@ async def test_on_reminder_is_separate_and_disabled_by_default(
     await reminders.tick(kyiv(TODAY, 20, 20))
     [message] = await queued(repository)
     assert message.kind is MessageKind.REMINDER_ON
-    assert message.payload["minutes"] == 15
+    assert message.payload["minutes"] == 10
     assert message.payload["earliest"] == kyiv(TODAY, 20, 30).isoformat()
-    assert message.dedupe_key.endswith(":on")
+    assert message.dedupe_key.endswith(":reminder_on")
 
 
 async def test_zero_minutes_disables_the_off_reminder(
@@ -156,3 +160,79 @@ async def test_only_tracked_queues_are_reminded(
 
     [message] = await queued(repository)
     assert message.payload["cherg_gpv"] == "4.1"
+
+
+async def test_minutes_are_what_is_actually_left_rounded_up(
+    repository: SqlRepository,
+    reminders: Reminders,
+    subscriptions: Subscriptions,
+    subscription: Subscription,
+) -> None:
+    await save(repository, day_schedule(outages=OUTAGE_AT_20))
+    await subscriptions.update_settings(
+        subscription.user_id, subscription.id, remind_before_off_min=60
+    )
+
+    await reminders.tick(kyiv(TODAY, 19, 55) + timedelta(seconds=20))
+
+    [message] = await queued(repository)
+    assert message.payload["minutes"] == 5
+
+
+async def test_switching_between_power_never_reminds_about_power_returning(
+    repository: SqlRepository,
+    reminders: Reminders,
+    subscriptions: Subscriptions,
+    subscription: Subscription,
+) -> None:
+    await save(repository, day_schedule(outages={"10:00": "10", "10:30": "10"}))
+    await subscriptions.update_settings(
+        subscription.user_id, subscription.id, remind_before_on_min=60
+    )
+
+    await reminders.tick(kyiv(TODAY, 9, 50))
+    await reminders.tick(kyiv(TODAY, 10, 40))
+
+    assert [message.kind for message in await queued(repository)] == [MessageKind.REMINDER_OFF]
+
+
+class FailingQueue(Schedules):
+    async def queue_events(self, cherg_gpv: str, now: datetime) -> list[NextEvent]:
+        if cherg_gpv == "2.2":
+            raise RuntimeError("broken")
+        return await super().queue_events(cherg_gpv, now)
+
+
+async def test_a_failing_subscription_does_not_drop_the_others(
+    repository: SqlRepository, subscriptions: Subscriptions, subscription: Subscription
+) -> None:
+    user_id = await subscriptions.register("telegram", "2", "telegram", "2")
+    broken = await subscriptions.add(
+        user_id, "Дача", TERNOPIL, SADOVA, Building(2, "2", "2.2"), ["2.2"], ["2.2"], NOW
+    )
+    await save(repository, day_schedule(outages=OUTAGE_AT_20))
+
+    await Reminders(repository, FailingQueue(repository)).tick(kyiv(TODAY, 19, 45))
+
+    [message] = await queued(repository)
+    assert message.payload["subscription_id"] == subscription.id != broken.id
+
+
+async def test_a_queue_shared_by_subscriptions_is_computed_once_per_tick(
+    repository: SqlRepository, subscriptions: Subscriptions, subscription: Subscription
+) -> None:
+    user_id = await subscriptions.register("telegram", "3", "telegram", "3")
+    await subscriptions.add(
+        user_id, "Дача", TERNOPIL, SADOVA, Building(3, "3", "4.1"), ["4.1"], ["4.1"], NOW
+    )
+
+    class Counting(Schedules):
+        calls = 0
+
+        async def queue_events(self, cherg_gpv: str, now: datetime) -> list[NextEvent]:
+            Counting.calls += 1
+            return await super().queue_events(cherg_gpv, now)
+
+    await Reminders(repository, Counting(repository)).tick(kyiv(TODAY, 19, 45))
+
+    assert Counting.calls == 1

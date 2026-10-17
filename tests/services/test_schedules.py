@@ -187,6 +187,26 @@ async def test_switching_only_block_has_no_guaranteed_outage(
     assert event == NextEvent(False, kyiv(TODAY, 20), None)
 
 
+async def test_switching_between_power_is_a_possible_outage_but_no_power_on_event(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    await save(repository, day_schedule(outages={"10:00": "10", "10:30": "10"}))
+
+    events = await schedules.events(subscription, kyiv(TODAY, 9))
+
+    assert events == [("4.1", NextEvent(False, kyiv(TODAY, 10), None))]
+
+
+async def test_power_on_follows_switching_that_came_after_an_outage(
+    repository: SqlRepository, schedules: Schedules, subscription: Subscription
+) -> None:
+    await save(repository, day_schedule(outages={"09:00": "1", "09:30": "1", "10:00": "10"}))
+
+    event = await first_event(schedules, subscription, kyiv(TODAY, 10, 10))
+
+    assert event == NextEvent(True, kyiv(TODAY, 10, 10), kyiv(TODAY, 10, 30))
+
+
 @pytest.fixture
 async def two_queues(repository: SqlRepository) -> Subscription:
     subscriptions = Subscriptions(repository)

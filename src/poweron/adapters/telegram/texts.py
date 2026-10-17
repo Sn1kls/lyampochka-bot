@@ -139,7 +139,11 @@ SUBQUEUES_CHANGED = (
     "Було: {previous}\nСтало: {current}\nСтежу за: {tracked}\n\n"
     "Перевір, чи все гаразд, у /settings"
 )
-NO_QUEUES = "—"
+SUBQUEUES_GONE = (
+    "⚠️ За даними обленерго, графіки відключень для <b>{label}</b>, схоже, більше не діють "
+    "на цю адресу.\nМожливо, це збій у даних, тож нічого не змінюю — перевір на "
+    f"{UPDATE_LINK}"
+)
 
 SETTINGS_TITLE = "⚙️ Налаштування для <b>{label}</b>"
 SETTINGS_UPDATES = "Пуші про оновлення графіка: {state}"
@@ -147,14 +151,11 @@ SETTINGS_REMINDER_OFF = "⏰ Нагадати перед вимкненням: {
 SETTINGS_REMINDER_ON = "💡 Нагадати перед поверненням світла: {when}"
 SETTINGS_ENABLED = "увімкнено"
 SETTINGS_DISABLED = "вимкнено"
-SETTINGS_REMINDER_MINUTES = "за {minutes} хв"
-SETTINGS_REMINDER_NONE = "не треба"
 BUTTON_UPDATES_ON = "✅ Пуші про оновлення"
 BUTTON_UPDATES_OFF = "🚫 Пуші про оновлення"
 BUTTON_REMINDER_OFF = "⏰ Нагадати до вимкнення: {value}"
 BUTTON_REMINDER_ON = "💡 Нагадати до повернення: {value}"
-BUTTON_REMINDER_NONE = "без"
-BUTTON_REMINDER_MINUTES = "{minutes} хв"
+REMINDER_NONE = "без"
 
 DURATION_HOURS = "{hours} год"
 DURATION_MINUTES = "{minutes} хв"
