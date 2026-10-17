@@ -8,8 +8,10 @@ from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.adapters.toe_api.client import ToeClient
 from poweron.config import Settings
 from poweron.core.services.catalog import Catalog
+from poweron.core.services.groups import GroupResolver
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.polling import Polling
+from poweron.core.services.reminders import Reminders
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.subscriptions import Subscriptions
 from poweron.worker.runner import run_worker
@@ -50,7 +52,11 @@ async def run(role: str, settings: Settings) -> None:
                 notifications = Notifications(repository, {"telegram": TelegramNotifier(bot)})
                 group.create_task(
                     run_worker(
-                        Polling(repository, toe_client), notifications, settings.poll_interval_sec
+                        Polling(repository, toe_client),
+                        notifications,
+                        Reminders(repository),
+                        GroupResolver(repository, toe_client),
+                        settings.poll_interval_sec,
                     )
                 )
     finally:

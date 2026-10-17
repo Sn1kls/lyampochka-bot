@@ -9,6 +9,7 @@ from poweron.core.domain.models import (
     OutboxMessage,
     ScheduleVersion,
     Street,
+    Subscription,
 )
 from poweron.core.services.subscriptions import Subscriptions
 from tests.services.conftest import NOW
@@ -123,3 +124,55 @@ async def test_tracked_queues_must_be_a_non_empty_subset(subscriptions: Subscrip
             await subscriptions.add(
                 user_id, "Дім", TERNOPIL, SADOVA, building, ["4.1"], tracked, NOW
             )
+
+
+def settings_of(subscription: Subscription) -> tuple[bool, int, int]:
+    return (
+        subscription.notify_on_update,
+        subscription.remind_before_off_min,
+        subscription.remind_before_on_min,
+    )
+
+
+async def test_update_settings_changes_only_the_given_fields(subscriptions: Subscriptions) -> None:
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    home = await subscriptions.add(
+        user_id, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
+    )
+    assert settings_of(home) == (True, 30, 0)
+
+    updated = await subscriptions.update_settings(user_id, home.id, remind_before_on_min=15)
+    assert updated is not None
+    assert settings_of(updated) == (True, 30, 15)
+
+    muted = await subscriptions.update_settings(user_id, home.id, notify_on_update=False)
+    assert muted is not None
+    assert settings_of(muted) == (False, 30, 15)
+
+
+async def test_update_settings_cannot_touch_another_users_subscription(
+    subscriptions: Subscriptions,
+) -> None:
+    alice = await subscriptions.register("telegram", "1", "telegram", "1")
+    bob = await subscriptions.register("telegram", "2", "telegram", "2")
+    home = await subscriptions.add(
+        alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
+    )
+
+    assert await subscriptions.update_settings(bob, home.id, remind_before_off_min=60) is None
+    assert await subscriptions.get(alice, home.id) == home
+
+
+async def test_update_settings_rejects_unsupported_minutes(subscriptions: Subscriptions) -> None:
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    home = await subscriptions.add(
+        user_id, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
+    )
+
+    with pytest.raises(ValueError):
+        await subscriptions.update_settings(
+            user_id, home.id, notify_on_update=False, remind_before_off_min=45
+        )
+    with pytest.raises(ValueError):
+        await subscriptions.update_settings(user_id, home.id, remind_before_on_min=-15)
+    assert await subscriptions.get(user_id, home.id) == home

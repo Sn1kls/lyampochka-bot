@@ -4,6 +4,8 @@ from datetime import datetime
 from poweron.core.domain.models import Building, City, Street, Subscription
 from poweron.core.ports import Repository
 
+REMINDER_MINUTES = (0, 15, 30, 60)
+
 
 class NoScheduleForAddress(Exception):
     """Outage schedules do not apply to this building."""
@@ -60,4 +62,17 @@ class Subscriptions:
         remind_before_on_min: int | None = None,
     ) -> Subscription | None:
         """Change only the given settings of the user's own subscription; None if not theirs."""
-        raise NotImplementedError
+        for minutes in (remind_before_off_min, remind_before_on_min):
+            if minutes is not None and minutes not in REMINDER_MINUTES:
+                raise ValueError(f"reminder minutes must be one of {REMINDER_MINUTES}")
+        changes = {
+            "notify_on_update": notify_on_update,
+            "remind_before_off_min": remind_before_off_min,
+            "remind_before_on_min": remind_before_on_min,
+        }
+        await self._repository.update_settings(
+            user_id,
+            subscription_id,
+            {name: value for name, value in changes.items() if value is not None},
+        )
+        return await self._repository.subscription(user_id, subscription_id)
