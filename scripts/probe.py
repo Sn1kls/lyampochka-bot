@@ -69,9 +69,7 @@ def get(
         body = json.loads(raw)
     except ValueError:
         body = raw.decode("utf-8", "replace")[:500]
-    print(
-        f"  {status} cf={hdrs.get('cf-cache-status')} age={hdrs.get('Age')} GET {path} {params}"
-    )
+    print(f"  {status} cf={hdrs.get('cf-cache-status')} age={hdrs.get('Age')} GET {path} {params}")
     if status != 200:  # stop before an error page overwrites a recorded fixture
         sys.exit(f"unexpected HTTP {status}: {body!r}")
     return status, hdrs, body
@@ -132,9 +130,7 @@ def main() -> int:
     _, _, streets = get("/pw_streets", {"pagination": "false", "city.id": CITY_ID})
     save(f"pw_streets_{CITY_ID}.json", streets)
     print(f"  streets: {type(streets).__name__}, {len(members(streets))} items")
-    _, _, buildings = get(
-        "/pw-accounts/building-names", {"cityId": CITY_ID, "streetId": STREET_ID}
-    )
+    _, _, buildings = get("/pw-accounts/building-names", {"cityId": CITY_ID, "streetId": STREET_ID})
     save(f"building_names_{CITY_ID}_{STREET_ID}.json", buildings)
     names = buildings["buildingNames"]
     values = Counter(repr(b.get("chergGpv")) for b in names)
@@ -149,9 +145,7 @@ def main() -> int:
     our_time, key = addr_key(CITY_ID, STREET_ID, target["buildingName"])
     after, before = site_range(now)
     base = {"after": after, "before": before, "time": our_time}
-    print(
-        f"[a_gpv_g] building {target['buildingName']!r} group {group!r} {after} .. {before}"
-    )
+    print(f"[a_gpv_g] building {target['buildingName']!r} group {group!r} {after} .. {before}")
 
     # Cloudflare caches /a_gpv_g by URL, so every experiment below gets its own URL
     # by moving `before` by a few seconds (same day, same result window).
@@ -174,9 +168,7 @@ def main() -> int:
     )
     print(f"  members: {summary(sched)}")
     if not members(sched):
-        sys.exit(
-            "baseline schedule is empty, comparisons would be meaningless; rerun later"
-        )
+        sys.exit("baseline schedule is empty, comparisons would be meaningless; rerun later")
     save(f"a_gpv_g_{group}_{now:%Y-%m-%d}.json", sched)
     for m in members(sched):
         for sub, data in m["dataJson"].items():
@@ -218,9 +210,7 @@ def main() -> int:
     print("[§2.3.3 another subqueue: who decides, time or key?]")
     found = None
     for street in (9982, 9986):  # Mykulynetska, Festyvalna
-        _, _, other_b = get(
-            "/pw-accounts/building-names", {"cityId": CITY_ID, "streetId": street}
-        )
+        _, _, other_b = get("/pw-accounts/building-names", {"cityId": CITY_ID, "streetId": street})
         found = next(
             (
                 (street, b)
@@ -235,9 +225,7 @@ def main() -> int:
         street, b = found
         ftime, fkey = addr_key(CITY_ID, street, b["buildingName"])
         print(f"  other address group {b['chergGpv']!r}")
-        _, _, own = get(
-            "/a_gpv_g", fresh({**base, "time": ftime, "group": b["chergGpv"]}), fkey
-        )
+        _, _, own = get("/a_gpv_g", fresh({**base, "time": ftime, "group": b["chergGpv"]}), fkey)
         save(f"a_gpv_g_{b['chergGpv']}_{now:%Y-%m-%d}.json", own)
         print(f"  its time + its key: {summary(own)}")
         print(
@@ -253,9 +241,7 @@ def main() -> int:
     excluded = next((b for b in names if b["chergGpv"] == "Не входить"), None)
     if excluded:
         etime, ekey = addr_key(CITY_ID, STREET_ID, excluded["buildingName"])
-        _, _, ebody = get(
-            "/a_gpv_g", fresh({**base, "time": etime, "group": "Не входить"}), ekey
-        )
+        _, _, ebody = get("/a_gpv_g", fresh({**base, "time": etime, "group": "Не входить"}), ekey)
         save("a_gpv_g_not_included.json", ebody)
         print(f"  building {excluded['buildingName']!r}: {summary(ebody)}")
     else:
@@ -308,5 +294,54 @@ def main() -> int:
     return 0
 
 
+def probe_building(city_id: int, street_id: int, building_name: str) -> int:
+    """Print what the API says about one building; saves nothing (addresses are personal)."""
+    _, _, names = get("/pw-accounts/building-names", {"cityId": city_id, "streetId": street_id})
+    rows = [row for row in names["buildingNames"] if row["buildingName"] == building_name]
+    print(f"  building-names rows for {building_name!r}: {rows}")
+    params = {"cityId": city_id, "streetId": street_id, "buildingNames": building_name}
+    _, _, groups = get("/pw-accounts/building-groups", params)
+    print(f"  building-groups: {groups}")
+    after, before = site_range(datetime.now(KYIV))
+    unique_before = before.replace(
+        "T00:00:00", f"T00:{int(time.time()) % 3600 // 60:02d}:{int(time.time()) % 60:02d}"
+    )
+    address_time, key = addr_key(city_id, street_id, building_name)
+    params = {
+        "after": after,
+        "before": unique_before,
+        "time": address_time,
+        "group": rows[0]["chergGpv"],
+    }
+    _, _, schedule = get("/a_gpv_g", params, key)
+    print(
+        f"  a_gpv_g dataJson keys per day: {[(m['dateGraph'], sorted(m['dataJson'])) for m in members(schedule)]}"
+    )
+    return 0
+
+
+def probe_planned(city_id: int, after: str | None = None) -> int:
+    """Show the shape of planned works for a city; prints only."""
+    params: dict[str, object] = {"page": 1, "city.id": city_id}
+    if after:
+        params["datePlanIn[after]"] = after
+    _, headers, works = get("/pw_accident_planeds", params)
+    items = members(works)
+    print(f"  dates on page: {sorted({item['dateEvent'][:10] for item in items})}")
+    print(f"  type={type(works).__name__} items on page 1: {len(items)}")
+    print(
+        f"  total header/hydra: {works.get('hydra:totalItems') if isinstance(works, dict) else '-'}"
+    )
+    for item in items[:2]:
+        print(json.dumps(item, ensure_ascii=False))
+    if items:
+        save(f"pw_accident_planeds_{city_id}_sample.json", items[:3])
+    return 0
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["planned"]:
+        sys.exit(probe_planned(int(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else None))
+    if sys.argv[1:2] == ["building"]:
+        sys.exit(probe_building(int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]))
     sys.exit(main())

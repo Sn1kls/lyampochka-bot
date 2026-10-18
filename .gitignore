@@ -11,3 +11,5 @@ data/
 .claude/settings.local.json
 CLAUDE.local.md
 .DS_Store
+.claude/worktrees/
+backups/

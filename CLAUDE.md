@@ -28,9 +28,18 @@ make fmt                     # ruff format + ruff check --fix
 uv run python -m poweron all # bot + worker in one process (needs .env); also `bot` / `worker`
 uv run alembic upgrade head  # apply DB migrations
 uv run python scripts/probe.py  # Phase 0 live API probe
+make up / make logs / make down # run in Docker (compose.yaml, SQLite in the `data` volume)
+make simulate                # fake a schedule change in the running container to test the push
 ```
 
 Package manager is uv only, never pip. Python 3.14 (fallback 3.13, see SPEC §10).
+
+## Code style
+
+- Lean and minimal: the smallest structured code that does the job. No speculative abstractions.
+- Descriptive English names. No one-to-three-letter names (`i`, `e`, `s`, `dt`, `cfg`); whole words like `day`, `now`, `key` are fine.
+- Minimal comments: only a non-obvious *why*. Prefer a clear name over a comment. Short one-line docstrings where they add something.
+- Everything in code is English. Ukrainian lives only in user-facing texts.
 
 ## Architecture rules
 
@@ -38,7 +47,7 @@ Ports and adapters (SPEC §3). Package root `src/poweron/`.
 
 - `core/` (domain + services + ports) imports only stdlib and pydantic. Never aiogram, httpx, SQLAlchemy, or anything in `adapters/`.
 - Client adapters (`adapters/telegram`, later `adapters/http_api`) call only `core.services`. Never the repository or the toe API directly.
-- Services take and return domain models and the internal `user_id`. Never `chat_id`, never aiogram objects.
+- Services take and return domain models and the internal `user_id`. Never `chat_id`, never aiogram objects. The one exception is `Subscriptions.register`, which maps an external identity and its delivery address to the internal `user_id`.
 - `core` emits structured events into the `outbox`; channel notifiers render them. No human-readable text in `core`.
 - `adapters/toe_api` is the only place that knows URLs, headers and raw JSON; validate everything with pydantic, raise `ApiSchemaError` on mismatch.
 - DB: SQLAlchemy 2.0 async + Alembic, portable SQL only (SQLite now, Postgres later by `DATABASE_URL`). Every schema change is a migration.
@@ -46,11 +55,14 @@ Ports and adapters (SPEC §3). Package root `src/poweron/`.
 - Times: store UTC, display Europe/Kyiv. Use `zoneinfo`, never naive datetimes.
 - Schedule cache is keyed by subqueue (`cherg_gpv`), never by user.
 - Do not build the HTTP API or mobile pieces until the owner asks; just don't block them.
+- Any LLM/RAG feature gets a prompt-injection review: user and API text is data, never instructions; model output is never executed or fed to tools unchecked; no other users' data or secrets in prompts; adversarial-input tests.
 
 ## Git
 
-- Remote: `github.com/Sn1kls/lyampochka-bot` (private). Work through pull requests; the owner reviews and merges.
-- Each phase on its own branch `phase-N` from an up-to-date `main`. Commit at the end with Conventional Commits (`feat(phase2): ...`), show `git status` first.
-- Push only the phase branch (`git push -u origin phase-N`) and open a PR with `gh pr create`. Never push to `main`, never merge PRs yourself.
+- Remote: `github.com/Sn1kls/lyampochka-bot` (private). Branches: `main` = what is deployed, `develop` = integration (default branch), work branches `feature/<name>` (phases: `feature/phase-N`) or `chore/<name>` from an up-to-date `develop`.
+- Commit with Conventional Commits (`feat(phase2): ...`), show `git status` first. Push only the work branch and open a PR into `develop` with `gh pr create --base develop`.
+- CI (`.github/workflows/check.yml`) runs `make check` on every PR; it must be green.
+- The owner reviews and merges. A release is a PR `develop` → `main`, opened only when the owner asks. Never push to `main`. Pushing to `develop` is allowed, but phases still go through a PR. Never merge PRs yourself.
+- No AI attribution anywhere: no `Co-Authored-By` trailers, no "Generated with" lines in commits, PRs, code or docs.
 - Never force-push, never rewrite history without an explicit request.
 - Never commit `.env`, `data/`, or recorded fixtures containing personal addresses.

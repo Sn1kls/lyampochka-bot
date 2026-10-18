@@ -1,0 +1,67 @@
+[project]
+name = "poweron"
+version = "0.1.0"
+description = "Power outage schedules for Ternopiloblenergo"
+requires-python = ">=3.13"
+dependencies = [
+    "aiogram>=3.31",
+    "aiosqlite>=0.22.1",
+    "alembic>=1.20.0",
+    "httpx>=0.28.1",
+    "pydantic>=2.13",
+    "pydantic-settings>=2.16",
+    "sqlalchemy[asyncio]>=2.1.5",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.13"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.15",
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "respx>=0.23.1",
+    "ruff>=0.17.1",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["poweron", "tests"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.importlinter]
+root_package = "poweron"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "core depends on nothing above it"
+type = "layers"
+layers = ["poweron.adapters | poweron.worker", "poweron.core"]
+
+[[tool.importlinter.contracts]]
+name = "adapters are independent of each other"
+type = "independence"
+modules = ["poweron.adapters.db", "poweron.adapters.toe_api", "poweron.adapters.telegram"]
+
+[[tool.importlinter.contracts]]
+name = "core uses only stdlib and pydantic"
+type = "forbidden"
+source_modules = ["poweron.core"]
+forbidden_modules = ["httpx", "sqlalchemy", "alembic", "aiosqlite", "aiogram", "apscheduler"]

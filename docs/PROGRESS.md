@@ -20,3 +20,116 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Owner decisions (after review): `dateCreate` is shown as is, without time-zone conversion (like the site); the client bypasses the CDN cache by moving `before` a few seconds per poll, only inside `adapters/toe_api`. The owner visually confirmed the 4.1 schedule against the site.
 - Not observed yet: a day with two members (tomorrow published), a day without outages, a non-empty planned-works item, `#` suffix in `dataJson` keys.
 - Next step: `/phase 1`.
+
+## 2026-10-17 — phase 1 (core)
+
+- Done: `pyproject.toml` (uv, Python 3.14; all later deps checked to install on 3.14: aiogram 3.31, SQLAlchemy 2.1, APScheduler 3.11, aiosqlite, pydantic-settings, alembic), `core/domain` (models, `parse_slots`, `merge`), `core/ports.py` (`ScheduleSource`, `CatalogSource`, `SourceError` → `SourceUnavailable` / `ApiSchemaError`), `adapters/toe_api` (pydantic models + `ToeClient`). 34 tests; `make check` green (ruff, mypy --strict, import-linter, pytest).
+- Decisions:
+  - `Interval` bounds are aware UTC instants, displayed in Kyiv: Python compares and subtracts same-tzinfo datetimes by wall clock, which breaks on DST days. A day is walked as a real timeline, so DST days are 23/25 h (both transitions tested).
+  - Errors live in `core/ports.py` so services can catch them without importing adapters.
+  - `ToeClient`: ≤1 req/s under one lock, 3 attempts with backoff + jitter, `Retry-After` capped at 60 s, any `httpx.RequestError` / non-UTF-8 body mapped to `SourceError`.
+  - CDN bypass: `before` = tomorrow + current Kyiv time of day (unique for a day; not yet live-checked beyond `T00:MM:SS`).
+  - The client returns only `dataJson[requested subqueue]`, keyed by the full trimmed `chergGpv` (`#suffix` kept, like the site); «Не входить» / empty → `None`, no request.
+  - Deferred to their phases: `Repository`/`Notifier`/`Clock` ports, diff/events/reminders, `config.py`, `__main__`.
+  - Code style (owner): lean code, descriptive English names, minimal comments; recorded in CLAUDE.md.
+- Open questions: should bot texts be bilingual (English + Ukrainian)? SPEC lists multilingual as a non-goal (Phase 3).
+- Notes for later: `DaySchedule.created_at` must be shown without tz conversion (Phase 3); `DaySchedule` is frozen but holds a dict, so don't hash it (Phase 2 uses `data_hash`); a non-string slot value fails the whole response with `ApiSchemaError`.
+- Next step: `/phase 2`.
+
+## 2026-10-17 — phase 2 (storage, polling, outbox)
+
+- Done: SQLAlchemy 2.1 async tables + Alembic initial migration (users, identities, delivery_targets, subscriptions, schedule_versions, outbox), `SqlRepository`; `core/domain/diff.py` (`data_hash`, outage diff with added/removed, structured payload); services `Subscriptions` (register, add, remove), `Polling`, `Notifications`; `worker/runner.py` (poll every `POLL_INTERVAL` ± 20 s, dispatch every 5 s). 52 tests; `make check` green (mypy now on all of `src`, 3 import contracts).
+- Done when: `test_new_version_reaches_each_subscriber_exactly_once` — new version → one outbox row per subscriber → dispatch → repeated cycle and restart without duplicates — passes on real SQLite migrated by Alembic.
+- Decisions:
+  - Plain asyncio loops instead of APScheduler (no extra dependency); the clock is passed as `now` instead of a `Clock` port.
+  - Version + its outbox rows are saved in one transaction. An unchanged poll touches `fetched_at`, which gives the last successful poll per subqueue (§9, `/status`).
+  - A change is announced only to subscriptions created before the previous poll of that subqueue, so a first load is never an update, even on an abandoned subqueue with stale versions.
+  - `dedupe_key` = subscription + day + previous poll time + new hash: a repeated or parallel poll dedupes, a real A→B→A→B flip-back is announced again.
+  - Outbox row per subscription; retries with 30 s × 2ⁿ backoff, max 5 attempts, then logged as given up; blocked target → `is_active = false`; channel without a notifier is skipped.
+  - `UtcDateTime` column type keeps datetimes aware on SQLite and rejects naive ones; SQLite foreign keys are switched on.
+  - Security review (PII now stored): no findings. For Phase 3: refuse rebinding a delivery target to a different user.
+- Deferred: schedules service, `config.py`, `__main__`, `catalog_cache` (Phase 3); `resolve_groups` / `cherg_checked_at` (Phase 4); circuit breaker, admin alerts, graceful shutdown (Phase 6).
+- Known limits: delivery is at-least-once (a failure on one of several targets resends to all; only one channel exists now); dispatch is N+1 per message (fine at personal scale); a subscriber gets one push per changed day; `run_migrations` must be called before the event loop starts (Phase 3 `__main__`).
+- Next step: `/phase 3`.
+
+## 2026-10-17 — phase 3 (Telegram bot)
+
+- Done: `adapters/telegram` (texts, render, keyboards, `/add` FSM wizard, `/start /help /list /schedule /next /remove /forget`, `TelegramNotifier`, command menu, persistent phone keyboard), services `Catalog` (24 h cache in `catalog_cache`, normalised search), `Schedules`, `Subscriptions` (find/register/add/remove/forget), `config.py` (pydantic-settings), `__main__` (`bot | worker | all`), Docker (`Dockerfile`, `compose.yaml`, `make up/logs/down/simulate`), `scripts/simulate_update.py`. ~170 tests; `make check` green.
+- Done when: the owner added their address, saw the schedule of both their queues in Telegram, and received the push after `make simulate` (bot running in Docker).
+- Work split: contracts first, then Sonnet agents in parallel worktrees (core + telegram), review fixes by agents, integration and verification by me.
+- Decisions:
+  - Registration only on `/start`; other commands ask for `/start` (respects `/forget`). A delivery target is never rebound to another user.
+  - Wizard buttons carry a search generation, so a button from an older list is rejected. Auto-pick happens only on an exact, unique name; a partial single match is still a button.
+  - Switching slots: `/next` shows the window (`можуть вимкнути з 10:30, точно — о 11:00`), the day total shows `3 год (до 4 год з перемиканнями)`.
+  - Buildings in several subqueues (found during acceptance, see api-notes): queues come from `building-groups`; the user picks which to track at `/add`; pushes and `/next` cover tracked queues; the others stay viewable from `/schedule`. Table `subscription_subqueues(…, notify)`.
+  - New subqueues are polled within ~10 s (`poll_new`), an empty one at most every 5 min.
+  - Informal "ти" in texts; `dateCreate` shown as is; httpx INFO logs off (URLs carry addresses).
+  - Container memory limit 512 MB instead of SPEC's ~256 MB: aiogram alone takes ~120 MB, the bot idles at ~200 MB.
+- Owner decision: texts stay Ukrainian only for now; English comes later as a separate step.
+- Known limits: a building in two queues costs two API calls per poll (one call returns both); `poll_new` does a few DB reads every 10 s; `building-groups` is not cached.
+- Deferred: `/settings`, reminders, `resolve_groups` (Phase 4); circuit breaker, admin alerts, graceful shutdown (Phase 6); FSM state lives in memory, so a restart drops an unfinished `/add`.
+- Next step: `/phase 4`.
+
+## 2026-10-17 — phase 4 (reminders, settings, subqueue re-check)
+
+- Done:
+  - `Reminders.tick` (every 60 s): "за N хв" reminders before outages and before power returns, for tracked queues only, computed from the latest stored versions. N is the real time left.
+  - `Schedules.events`: every event ahead over two days; `/next` uses it.
+  - `/settings` and the «⚙️ Налаштування» button: three labelled buttons that cycle — update pushes ✅/🚫, before outage, before power returns (без → 15 → 30 → 60).
+  - `SubqueueChecker.check` (hourly over subscriptions not checked for 24 h): one `building-groups` call per building. A changed queue set is replaced atomically together with a «черги змінилися» message.
+  - Renderers for the new message kinds. 226 tests; `make check` green.
+- Done when: in Docker, the owner set a 60-min reminder; a simulated 22:00 outage produced the update pushes and «⏰ за 33 хв вимкнуть світло (о 22:00)» for both queues, and the real poll then restored the schedule with a push.
+- Work split: contracts, then two Sonnet agents in worktrees (core and telegram), four reviews (code, standards, spec, security: no findings), then one agent applied 11 fixes.
+- Decisions:
+  - The reminder fires inside `[earliest − N, earliest)`, never after the event started. Its dedupe key is `remind:{sub}:{queue}:{earliest}:{kind}`.
+  - A block of switching only (no OFF) is a possible outage with no "power returns" event.
+  - If a building returns no queues, the stored ones are kept and the user is told once.
+  - The `subqueues_changed` dedupe key is subscription + previous>current.
+  - New subscriptions are marked as checked at `/add`.
+  - Each subscription and each building is isolated, so one failure does not stop the rest.
+- Open questions: none.
+- Deferred to phase 6: circuit breaker, admin alerts, graceful shutdown, `/status`.
+- Next step: phase 5 (planned works, optional) or phase 6 (deploy).
+
+## 2026-10-17 — phase 5 (planned works)
+
+- Done:
+  - `ToeClient.planned_works`: paginated, filtered by `datePlanIn[after]`, dates read as Kyiv wall-clock time.
+  - `PlannedWorks.check`, hourly: one request per street. It pushes «🛠 Дім: планові роботи 22.08 з 08:30 до 17:30 — Ремонт ПЛ» when the work lists the building, or lists no buildings at all.
+  - Renderer and notifier route. 252 tests; `make check` green.
+- Not checked live: Ternopil has no future planned works right now (the API has data only up to August). Tests use real recorded items (`pw_accident_planeds_1032_sample.json`).
+- Decisions:
+  - The dates are Kyiv wall time with a fake `+00:00` label; the site formats them in UTC. An item with a real offset is skipped as a format-change signal.
+  - A malformed item is skipped. If no item on a page matches the format, the page raises `ApiSchemaError`.
+  - The reason is kept to one line, at most 300 chars.
+  - A rescheduled work is announced again: the dedupe key holds its times.
+  - Dedupe keys use `Subscription.instance_key` (id + creation time), because SQLite reuses the ids of deleted subscriptions. Reminders use it too.
+  - Planned-work pushes follow the same switch as schedule updates; the settings text says so.
+  - `normalise` moved to `core/domain/text.py`.
+- Known limits: pagination always costs one extra empty-page request; there is a 10-page cap with a warning.
+- Next step: `/phase 6`.
+
+## 2026-10-17 — phase 6 (reliability and deploy)
+
+- Done:
+  - Circuit breaker in `ToeClient`: 3 consecutive real outages (retries exhausted, network, 429/5xx) pause all calls for 60 s, doubling up to 1 h. A 4xx or a schema error does not count.
+  - `Alerts`: admin alerts in Telegram, at most once per hour per kind. `API_SCHEMA` fires immediately; `API_DOWN` fires only when the breaker opens (`SourcePaused`).
+  - Graceful shutdown on SIGTERM/SIGINT: the stop is retried until aiogram polling is up, fetching jobs stop between items, dispatch finishes its batch. `stop_grace_period: 90s`.
+  - Admin-only `/status`: version, users, addresses, outbox queue, last poll per subqueue with ⚠️ after 3 poll intervals. It is not in the menu.
+  - `key=value` logs with an INFO summary per job run and no personal data.
+  - README in Ukrainian: BotFather, `.env`, run, VPS deploy, update, backup.
+  - `make backup`: consistent SQLite copy via the backup API into `backups/` (mode 700).
+  - 282 tests; `make check` green.
+- Done when: in Docker, a simulated update, a reminder and an immediate `docker compose restart` gave 6 outbox rows, each sent once. A later restart takes ~1 s ("stop requested" → "Polling stopped" → back up).
+- Found on the way: the container was being OOM-killed by the Docker Desktop VM (2.35 GB shared with other projects' containers), not by its own 512 MB limit. The owner raised the VM to 4 GB, and it has been stable since. A dedicated VPS does not have this problem.
+- Reviews: code, standards + spec, security (no findings); 8 fixes applied.
+- Decisions:
+  - Admin alerts go straight to the admin chat, not through the outbox: the admin is not a subscriber, and the rate limit is in memory.
+  - `/status` "last poll" = the newest stored version time.
+- Known limits:
+  - A stuck retrying call can still outlast the grace period.
+  - Alert state resets on restart.
+  - Backups are not encrypted.
+  - `/status` works in the admin's private chat only.
+- Open: permanent hosting. Recommended: Hetzner CAX11/CX22. First check from the server that the toe API answers a foreign IP (`curl` or `scripts/probe.py`).
+- Next step: move to a VPS once the owner has one. All SPEC phases (0–6) are done.

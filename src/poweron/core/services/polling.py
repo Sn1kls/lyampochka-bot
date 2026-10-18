@@ -1,0 +1,165 @@
+import asyncio
+import logging
+import time
+from collections import defaultdict
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+
+from poweron.core.domain.diff import ScheduleChange, data_hash, schedule_change
+from poweron.core.domain.models import (
+    DaySchedule,
+    MessageKind,
+    OutboxMessage,
+    ScheduleVersion,
+    Subscription,
+)
+from poweron.core.ports import Repository, ScheduleSource, SourceError
+from poweron.core.services.alerts import Alerts, report_source_error
+
+logger = logging.getLogger(__name__)
+
+NEW_SUBQUEUE_RETRY = timedelta(minutes=5)
+
+
+def never_stop() -> bool:
+    return False
+
+
+class Polling:
+    def __init__(
+        self, repository: Repository, source: ScheduleSource, alerts: Alerts | None = None
+    ) -> None:
+        self._repository = repository
+        self._source = source
+        self._alerts = alerts
+        self._new_attempts: dict[str, datetime] = {}
+        self._lock = asyncio.Lock()
+
+    async def poll(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
+        """Fetch every subscribed subqueue once and store new versions with their messages.
+
+        `should_stop` is checked between subqueues, so a shutdown does not wait for the whole pass.
+        """
+        async with self._lock:
+            await self._poll_each(await self._by_subqueue(), now, should_stop)
+
+    async def poll_new(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
+        """Fetch only the subscribed subqueues that have no stored version yet.
+
+        A subqueue the source has nothing for is retried only after NEW_SUBQUEUE_RETRY,
+        so a frequent caller does not hammer the API.
+        """
+        # Shares the lock with poll() so a subqueue is never fetched twice at once.
+        async with self._lock:
+            never_polled = {
+                cherg_gpv: subscribers
+                for cherg_gpv, subscribers in (await self._by_subqueue()).items()
+                if await self._repository.last_polled_at(cherg_gpv) is None
+                and now - self._new_attempts.get(cherg_gpv, datetime.min.replace(tzinfo=UTC))
+                >= NEW_SUBQUEUE_RETRY
+            }
+            self._new_attempts.update(dict.fromkeys(never_polled, now))
+            await self._poll_each(never_polled, now, should_stop)
+
+    async def _by_subqueue(self) -> dict[str, list[Subscription]]:
+        """Every queue of a building is fetched, so that the untracked ones can be viewed too."""
+        by_subqueue: dict[str, list[Subscription]] = defaultdict(list)
+        for subscription in await self._repository.all_subscriptions():
+            for cherg_gpv in subscription.subqueues:
+                by_subqueue[cherg_gpv].append(subscription)
+        return by_subqueue
+
+    async def _poll_each(
+        self,
+        by_subqueue: dict[str, list[Subscription]],
+        now: datetime,
+        should_stop: Callable[[], bool],
+    ) -> None:
+        started = time.monotonic()
+        changed = messages = 0
+        for cherg_gpv, subscribers in by_subqueue.items():
+            if should_stop():
+                break
+            try:
+                new_versions, new_messages = await self._poll_subqueue(cherg_gpv, subscribers, now)
+                changed += new_versions
+                messages += new_messages
+            except SourceError as error:
+                logger.warning("poll failed for subqueue %s: %s", cherg_gpv, error)
+                await report_source_error(self._alerts, error, now)
+            except Exception:
+                logger.exception("poll crashed for subqueue %s", cherg_gpv)
+        if by_subqueue:
+            logger.info(
+                "poll subqueues=%s changed=%s messages=%s ms=%s",
+                len(by_subqueue),
+                changed,
+                messages,
+                round((time.monotonic() - started) * 1000),
+            )
+
+    async def _poll_subqueue(
+        self, cherg_gpv: str, subscribers: list[Subscription], now: datetime
+    ) -> tuple[int, int]:
+        """Returns how many versions were new and how many messages were queued."""
+        schedules = await self._source.fetch_schedules(subscribers[0].address, cherg_gpv)
+        last_polled_at = await self._repository.last_polled_at(cherg_gpv)
+        # A change is news only to subscribers who already had the previous poll's data;
+        # for everyone else (and on the very first poll) this poll is their first load.
+        recipients = [
+            subscription
+            for subscription in subscribers
+            if subscription.notify_on_update
+            and cherg_gpv in subscription.tracked_subqueues
+            and last_polled_at is not None
+            and subscription.created_at <= last_polled_at
+        ]
+        stored = [await self._store(schedule, recipients, now) for schedule in schedules]
+        return sum(is_new for is_new, _ in stored), sum(count for _, count in stored)
+
+    async def _store(
+        self, schedule: DaySchedule, recipients: list[Subscription], now: datetime
+    ) -> tuple[bool, int]:
+        digest = data_hash(schedule.slots)
+        previous = await self._repository.latest_version(schedule.cherg_gpv, schedule.day)
+        messages = []
+        if recipients and (previous is None or previous.data_hash != digest):
+            change = schedule_change(
+                schedule.cherg_gpv,
+                schedule.day,
+                None if previous is None else previous.slots,
+                schedule.slots,
+            )
+            if change is not None:
+                base = "new" if previous is None else previous.fetched_at.isoformat()
+                messages = _messages(change, recipients, f"{base}:{digest}")
+        version = ScheduleVersion(
+            cherg_gpv=schedule.cherg_gpv,
+            day=schedule.day,
+            created_at=schedule.created_at,
+            data_hash=digest,
+            slots=schedule.slots,
+            fetched_at=now,
+        )
+        await self._repository.save_version(version, messages)
+        return previous is None or previous.data_hash != digest, len(messages)
+
+
+def _messages(
+    change: ScheduleChange, recipients: list[Subscription], transition: str
+) -> list[OutboxMessage]:
+    payload = change.payload()
+    return [
+        OutboxMessage(
+            user_id=subscription.user_id,
+            kind=MessageKind.SCHEDULE_UPDATED,
+            payload=payload
+            | {
+                "subscription_id": subscription.id,
+                "label": subscription.label,
+                "queue_count": len(subscription.tracked_subqueues),
+            },
+            dedupe_key=f"update:{subscription.id}:{change.cherg_gpv}:{change.day}:{transition}",
+        )
+        for subscription in recipients
+    ]
