@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import Literal
 
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import (
@@ -25,11 +26,16 @@ BUILDING_COLUMNS = 4
 BUILDING_PAGE_SIZE = 20
 MENU_ROWS = (
     (texts.MENU_SCHEDULE, texts.MENU_NEXT),
-    (texts.MENU_LIST, texts.MENU_ADD),
-    (texts.MENU_SETTINGS, texts.MENU_REMOVE),
-    (texts.MENU_HELP,),
+    (texts.MENU_LIST, texts.MENU_SETTINGS),
 )
-MENU_LABELS = frozenset(label for row in MENU_ROWS for label in row)
+# Older clients may still show the previous seven-button keyboard, so its labels keep working.
+MENU_LABELS = frozenset(label for row in MENU_ROWS for label in row) | {
+    texts.MENU_ADD,
+    texts.MENU_REMOVE,
+    texts.MENU_HELP,
+}
+ActionName = Literal["add", "remove"]
+ACTION_LABELS: dict[ActionName, str] = {"add": texts.MENU_ADD, "remove": texts.MENU_REMOVE}
 
 
 class Page(CallbackData, prefix="pg"):
@@ -72,6 +78,12 @@ class SettingChange(CallbackData, prefix="set"):
     value: int
 
 
+class Action(CallbackData, prefix="go"):
+    """An inline shortcut to what a menu button or command does."""
+
+    name: ActionName
+
+
 class Decision(CallbackData, prefix="ok"):
     action: str
     accepted: bool
@@ -106,6 +118,14 @@ def choice_keyboard(
     cancel.button(text=texts.BUTTON_CANCEL, callback_data=Decision(action="add", accepted=False))
     builder.attach(navigation)
     builder.attach(cancel)
+    return builder.as_markup()
+
+
+def actions_keyboard(*names: ActionName) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for name in names:
+        builder.button(text=ACTION_LABELS[name], callback_data=Action(name=name))
+    builder.adjust(1)
     return builder.as_markup()
 
 

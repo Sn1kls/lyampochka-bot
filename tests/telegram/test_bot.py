@@ -15,7 +15,7 @@ def test_dispatcher_carries_services_and_bot_defaults_to_html() -> None:
     assert bot.default.link_preview_is_disabled is True
 
 
-async def test_command_menu_matches_help() -> None:
+async def test_command_menu_is_published() -> None:
     class RecordingBot:
         commands: list[BotCommand] = []
 
@@ -26,14 +26,13 @@ async def test_command_menu_matches_help() -> None:
     await publish_commands(bot)  # type: ignore[arg-type]
 
     assert [(item.command, item.description) for item in bot.commands] == list(texts.COMMANDS)
-    assert all(
-        f"/{command} — {description}" in texts.HELP for command, description in texts.COMMANDS
-    )
 
 
-def test_settings_is_in_the_command_menu_and_help() -> None:
-    assert ("settings", "налаштування сповіщень") in texts.COMMANDS
-    assert "/settings — налаштування сповіщень" in texts.HELP
+def test_help_explains_the_buttons_not_the_commands() -> None:
+    for button in (texts.MENU_SCHEDULE, texts.MENU_NEXT, texts.MENU_LIST, texts.MENU_SETTINGS):
+        assert button in texts.HELP
+    assert "/forget" in texts.HELP
+    assert "/add" not in texts.HELP
 
 
 async def test_a_failing_command_menu_does_not_stop_the_bot() -> None:

@@ -1,12 +1,19 @@
 BRAND = "Лямпочка"
 SITE_URL = "https://poweron.toe.com.ua"
 
+MENU_SCHEDULE = "📅 Графік"
+MENU_NEXT = "⏭ Що далі"
+MENU_LIST = "📋 Мої адреси"
+MENU_ADD = "➕ Додати адресу"
+MENU_SETTINGS = "⚙️ Налаштування"
+MENU_REMOVE = "🗑 Видалити адресу"
+MENU_HELP = "❓ Допомога"
+
 GREETING = (
     f"Привіт! Я «{BRAND}» 💡\n"
-    "Підкажу, коли у тебе вимикатимуть світло, і напишу, щойно обленерго змінить графік.\n\n"
-    "Почнімо з адреси: /add\n"
-    "Усі команди: /help"
+    "Підкажу, коли у тебе вимикатимуть світло, і напишу, щойно обленерго змінить графік."
 )
+ADD_FIRST = "Почнімо з твоєї адреси 👇"
 COMMANDS = (
     ("schedule", "графік на сьогодні чи завтра"),
     ("next", "коли вимкнуть чи увімкнуть світло"),
@@ -17,7 +24,6 @@ COMMANDS = (
     ("forget", "стерти всі мої дані"),
     ("help", "що я вмію"),
 )
-HELP = "\n".join(f"/{command} — {description}" for command, description in COMMANDS)
 
 ASK_CITY = "З якого ти міста чи села? Напиши кілька літер назви."
 CHOOSE_CITY = "Обери зі списку або напиши назву ще раз:"
@@ -43,13 +49,13 @@ CONFIRM_ADDRESS = (
 )
 ADDED = (
     "Готово! Адресу «{label}» додано. Графік з'явиться за кілька хвилин після першої "
-    "перевірки — тоді глянь його: /schedule"
+    f"перевірки — тоді натисни «{MENU_SCHEDULE}» внизу."
 )
 CANCELLED = "Гаразд, скасовано."
 DEFAULT_LABEL = "Дім"
 LABEL_MAX_LENGTH = 40
 
-NO_SUBSCRIPTIONS = "Адрес ще немає. Додай першу: /add"
+NO_SUBSCRIPTIONS = "Адрес ще немає. Додай першу 👇"
 LIST_HEADER = "Твої адреси:"
 LIST_ITEM = "• <b>{label}</b> — {address} ({queues})"
 CHOOSE_SUBSCRIPTION = "Яка адреса?"
@@ -66,13 +72,13 @@ SOURCE_DOWN = "Сервіс обленерго зараз не відповід�
 STALE_BUTTON = "Ця кнопка вже застаріла. Почни спочатку."
 START_FIRST = "Спершу натисни /start, щоб ми познайомились."
 
-MENU_SCHEDULE = "📅 Графік"
-MENU_NEXT = "⏭ Що далі"
-MENU_LIST = "📋 Мої адреси"
-MENU_ADD = "➕ Додати адресу"
-MENU_SETTINGS = "⚙️ Налаштування"
-MENU_REMOVE = "🗑 Видалити адресу"
-MENU_HELP = "❓ Допомога"
+HELP = (
+    f"{MENU_SCHEDULE} — графік на сьогодні чи завтра\n"
+    f"{MENU_NEXT} — коли вимкнуть чи увімкнуть світло\n"
+    f"{MENU_LIST} — твої адреси; там же додати чи видалити\n"
+    f"{MENU_SETTINGS} — сповіщення та нагадування\n\n"
+    "Стерти всі свої дані: /forget"
+)
 
 BUTTON_SAVE = "Зберегти"
 BUTTON_FORGET = "Так, видалити все"
@@ -137,7 +143,7 @@ REMINDER_ON_POSSIBLE = (
 SUBQUEUES_CHANGED = (
     "🔄 Для <b>{label}</b> змінилися черги.\n"
     "Було: {previous}\nСтало: {current}\nСтежу за: {tracked}\n\n"
-    "Перевір, чи все гаразд, у /settings"
+    f"Перевір, чи все гаразд, у «{MENU_SETTINGS}»."
 )
 SUBQUEUES_GONE = (
     "⚠️ За даними обленерго, графіки відключень для <b>{label}</b>, схоже, більше не діють "

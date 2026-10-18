@@ -419,7 +419,7 @@ def test_render_subqueues_changed_lists_queues_and_points_to_settings() -> None:
             "Стало: 2.2, 4.1",
             "Стежу за: 4.1",
             "",
-            "Перевір, чи все гаразд, у /settings",
+            "Перевір, чи все гаразд, у «⚙️ Налаштування».",
         ]
     )
 
