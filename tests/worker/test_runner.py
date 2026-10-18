@@ -57,3 +57,37 @@ async def test_stop_interrupts_the_wait_between_runs() -> None:
     await asyncio.wait_for(loop_task, timeout=5)
 
     assert calls == [1]
+
+
+class FakePolling:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+
+    async def poll(self, *_: object) -> None:
+        if self.error is not None:
+            raise self.error
+
+
+class FakeHeartbeat:
+    def __init__(self) -> None:
+        self.beats = 0
+
+    async def beat(self) -> None:
+        self.beats += 1
+
+
+async def test_the_heartbeat_follows_a_finished_poll() -> None:
+    heartbeat = FakeHeartbeat()
+
+    await runner.poll_then_beat(FakePolling(), heartbeat, asyncio.Event())  # type: ignore[arg-type]
+
+    assert heartbeat.beats == 1
+
+
+async def test_a_crashed_poll_skips_the_heartbeat() -> None:
+    heartbeat = FakeHeartbeat()
+
+    with pytest.raises(RuntimeError):
+        await runner.poll_then_beat(FakePolling(RuntimeError("boom")), heartbeat, asyncio.Event())  # type: ignore[arg-type]
+
+    assert heartbeat.beats == 0

@@ -11,6 +11,7 @@ ALERT_TEXTS = {
     AlertKind.API_SCHEMA: texts.ALERT_API_SCHEMA,
     AlertKind.API_DOWN: texts.ALERT_API_DOWN,
     AlertKind.NEW_USER: texts.ALERT_NEW_USER,
+    AlertKind.BACKUP_FAILED: texts.ALERT_BACKUP_FAILED,
 }
 
 

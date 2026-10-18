@@ -146,6 +146,10 @@ class Repository(Protocol):
 
     async def count_users(self) -> int: ...
 
+    async def snapshot(self) -> bytes:
+        """A consistent copy of the whole database, for backups."""
+        ...
+
     async def user_ids_on(self, channel: str) -> list[int]:
         """Users with an active delivery target on `channel`."""
         ...
@@ -165,6 +169,18 @@ class Repository(Protocol):
     async def cached_catalog(self, key: str) -> tuple[Any, datetime] | None: ...
 
     async def store_catalog(self, key: str, value: Any, now: datetime) -> None: ...
+
+
+class BackupSink(Protocol):
+    async def store(self, name: str, content: bytes) -> None:
+        """Keep a database backup somewhere off the server; raise if it was not kept."""
+        ...
+
+
+class Heartbeat(Protocol):
+    async def beat(self) -> None:
+        """Tell an outside monitor the worker is alive; never raises."""
+        ...
 
 
 class AdminAlerter(Protocol):

@@ -5,15 +5,18 @@ import sys
 from datetime import timedelta
 from importlib.metadata import version
 
-from aiogram import Dispatcher
+from aiogram import Bot, Dispatcher
 
 from poweron.adapters.db.repository import SqlRepository, create_engine, run_migrations
+from poweron.adapters.healthcheck import HealthcheckPinger
 from poweron.adapters.telegram.alerts import TelegramAdminAlerter
+from poweron.adapters.telegram.backup import TelegramBackupSink
 from poweron.adapters.telegram.bot import build_dispatcher, create_bot
 from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.adapters.toe_api.client import ToeClient
 from poweron.config import Settings
 from poweron.core.services.alerts import Alerts
+from poweron.core.services.backups import Backups
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
@@ -57,6 +60,11 @@ async def run(role: str, settings: Settings) -> None:
         if settings.admin_chat_id is None
         else Alerts(TelegramAdminAlerter(bot, settings.admin_chat_id))
     )
+    heartbeat = (
+        None
+        if settings.healthcheck_url is None
+        else HealthcheckPinger(settings.healthcheck_url.get_secret_value())
+    )
     stop = asyncio.Event()
     _stop_on_signals(stop)
     try:
@@ -88,12 +96,29 @@ async def run(role: str, settings: Settings) -> None:
                         PlannedWorks(repository, toe_client, alerts),
                         settings.poll_interval_sec,
                         stop,
+                        heartbeat,
+                        _backups(settings, repository, bot, alerts),
                     )
                 )
     finally:
         await toe_client.aclose()
         await bot.session.close()
         await engine.dispose()
+
+
+def _backups(
+    settings: Settings, repository: SqlRepository, bot: Bot, alerts: Alerts | None
+) -> Backups | None:
+    if settings.admin_chat_id is None or settings.backup_password is None:
+        logger.info("daily backups are off: set ADMIN_CHAT_ID and BACKUP_PASSWORD to turn them on")
+        return None
+    if not settings.database_url.startswith("sqlite"):
+        logger.info("daily backups are off: they are implemented for SQLite only")
+        return None
+    sink = TelegramBackupSink(
+        bot, settings.admin_chat_id, settings.backup_password.get_secret_value()
+    )
+    return Backups(repository, sink, alerts)
 
 
 def _stop_on_signals(stop: asyncio.Event) -> None:
