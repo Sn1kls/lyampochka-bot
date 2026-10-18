@@ -45,6 +45,16 @@ make up
 
 Оновлення: `git pull && make up`. Міграції бази застосовуються самі при старті.
 
+### Автодеплой
+
+Після кожного пушу в `main` CI проганяє `make check`, а тоді job `deploy` заходить на сервер по SSH. Ключ деплою на сервері обмежений однією командою, тож навіть якщо він витече, ним можна лише задеплоїти те, що вже лежить у `main`. У `~/.ssh/authorized_keys` на сервері він виглядає так:
+
+```
+restrict,command="cd /home/ubuntu/lyampochka-bot && git pull --ff-only -q && exec ./scripts/deploy.sh" ssh-ed25519 AAAA... github-actions-deploy
+```
+
+Секрети репозиторію: `DEPLOY_SSH_KEY` (приватний ключ), `DEPLOY_KNOWN_HOSTS` (рядок сервера з `known_hosts`), `DEPLOY_TARGET` (`ubuntu@<IP>`). Ручний запуск: Actions → check → Run workflow на гілці `main`.
+
 ## Бекап
 
 ```bash

@@ -129,9 +129,17 @@ async def start(
 ) -> None:
     await _reset(state)
     await subscriptions.register(
-        "telegram", str(event_from_user.id), "telegram", str(message.chat.id)
+        "telegram",
+        str(event_from_user.id),
+        "telegram",
+        str(message.chat.id),
+        display_name(event_from_user),
     )
     await message.answer(texts.GREETING, reply_markup=keyboards.menu_keyboard())
+
+
+def display_name(user: User) -> str:
+    return f"{user.full_name} @{user.username}" if user.username else user.full_name
 
 
 @router.message(Command("help"))

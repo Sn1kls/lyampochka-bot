@@ -68,13 +68,14 @@ class SqlRepository:
 
     async def register_user(
         self, provider: str, external_id: str, channel: str, address: str
-    ) -> int:
+    ) -> tuple[int, bool]:
         async with self._engine.begin() as connection:
             user_id = await connection.scalar(
                 select(identities.c.user_id).where(
                     identities.c.provider == provider, identities.c.external_id == external_id
                 )
             )
+            created = user_id is None
             if user_id is None:
                 user_id = await connection.scalar(users.insert().returning(users.c.id))
                 await connection.execute(
@@ -107,7 +108,7 @@ class SqlRepository:
                     "delivery target on channel %s already belongs to another user; not rebinding",
                     channel,
                 )
-            return int(user_id)
+            return int(user_id), created
 
     async def find_user(self, provider: str, external_id: str) -> int | None:
         async with self._engine.connect() as connection:

@@ -15,7 +15,11 @@ class FakeBot:
 
 @pytest.mark.parametrize(
     ("kind", "template"),
-    [(AlertKind.API_SCHEMA, texts.ALERT_API_SCHEMA), (AlertKind.API_DOWN, texts.ALERT_API_DOWN)],
+    [
+        (AlertKind.API_SCHEMA, texts.ALERT_API_SCHEMA),
+        (AlertKind.API_DOWN, texts.ALERT_API_DOWN),
+        (AlertKind.NEW_USER, texts.ALERT_NEW_USER),
+    ],
 )
 async def test_alert_goes_to_the_admin_chat_with_escaped_details(
     kind: AlertKind, template: str

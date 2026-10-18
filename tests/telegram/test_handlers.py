@@ -13,13 +13,16 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     Update,
+    User,
 )
 
 from poweron.adapters.db.repository import SqlRepository
 from poweron.adapters.telegram import keyboards, texts
 from poweron.adapters.telegram.bot import build_dispatcher
+from poweron.adapters.telegram.handlers import display_name
 from poweron.core.domain.diff import data_hash
 from poweron.core.domain.models import (
+    AlertKind,
     Building,
     City,
     ScheduleVersion,
@@ -27,10 +30,12 @@ from poweron.core.domain.models import (
     Street,
     Subscription,
 )
+from poweron.core.services.alerts import Alerts
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
+from tests.fakes import FakeAlerter
 
 USER = {"id": 1, "is_bot": False, "first_name": "Оля"}
 CHAT = {"id": 1, "type": "private"}
@@ -87,8 +92,8 @@ class RecordingSession(BaseSession):
 class SettingsSubscriptions(Subscriptions):
     """Core's update_settings is not implemented in this worktree; this keeps changes in memory."""
 
-    def __init__(self, repository: SqlRepository) -> None:
-        super().__init__(repository)
+    def __init__(self, repository: SqlRepository, alerts: Alerts | None = None) -> None:
+        super().__init__(repository, alerts)
         self.stored: dict[int, dict[str, Any]] = {}
 
     async def update_settings(
@@ -120,8 +125,9 @@ class Chat:
         repository: SqlRepository,
         status: Status | None = None,
         admin_chat_id: int | None = None,
+        alerts: Alerts | None = None,
     ) -> None:
-        self.subscriptions = SettingsSubscriptions(repository)
+        self.subscriptions = SettingsSubscriptions(repository, alerts)
         self.session = RecordingSession()
         self.bot = Bot("123:abc", session=self.session)
         self.dispatcher: Dispatcher = build_dispatcher(
@@ -226,6 +232,23 @@ async def test_start_registers_the_user_and_unlocks_commands(chat: Chat) -> None
 
     assert chat.sent_texts() == [texts.GREETING, texts.NO_SUBSCRIPTIONS]
     assert await chat.subscriptions.find_user("telegram", "1") is not None
+
+
+async def test_start_announces_a_new_user_to_the_admin(repository: SqlRepository) -> None:
+    alerter = FakeAlerter()
+    chat = Chat(repository, alerts=Alerts(alerter))
+
+    await chat.say("/start")
+    await chat.say("/start")
+
+    assert alerter.alerts == [(AlertKind.NEW_USER, "Оля")]
+
+
+def test_display_name_adds_the_username_when_there_is_one() -> None:
+    olya = User(id=1, is_bot=False, first_name="Оля", last_name="Коваль", username="olya")
+
+    assert display_name(olya) == "Оля Коваль @olya"
+    assert display_name(olya.model_copy(update={"username": None})) == "Оля Коваль"
 
 
 async def test_stale_button_does_not_bring_a_forgotten_user_back(chat: Chat) -> None:

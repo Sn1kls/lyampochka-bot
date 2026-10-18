@@ -73,7 +73,9 @@ class Notifier(Protocol):
 class Repository(Protocol):
     async def register_user(
         self, provider: str, external_id: str, channel: str, address: str
-    ) -> int: ...
+    ) -> tuple[int, bool]:
+        """Return the user id and whether this call created the user."""
+        ...
 
     async def find_user(self, provider: str, external_id: str) -> int | None: ...
 
