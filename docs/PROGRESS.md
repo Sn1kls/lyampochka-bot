@@ -133,3 +133,14 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - `/status` works in the admin's private chat only.
 - Open: permanent hosting. Recommended: Hetzner CAX11/CX22. First check from the server that the toe API answers a foreign IP (`curl` or `scripts/probe.py`).
 - Next step: move to a VPS once the owner has one. All SPEC phases (0–6) are done.
+
+## 2026-10-18: deploy and Volyn research
+
+- Deployed: the bot runs from `main` on an Oracle Cloud Always Free VM (Stockholm).
+  - Machine: E2.1.Micro, 1 GB RAM + 2 GB swap. A1.Flex was out of capacity.
+  - The toe API answers the foreign IP.
+  - The SQLite DB was moved from the Mac with no lost or duplicate pushes.
+  - Updates: release PR `develop` → `main`, then `git pull && docker compose up -d --build` on the server.
+- Bot profile set in BotFather: name «Лямпочка», descriptions, avatar.
+- Researched Volynoblenergo. It has an HTML form with free-text search and no JSON API; see `docs/volyn-notes.md`. Postponed by the owner.
+- Open: upgrade the Oracle account to Pay As You Go once the button is enabled, so the idle VM isn't reclaimed.
