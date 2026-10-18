@@ -8,6 +8,8 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from poweron.core.domain.models import MessageKind
 from poweron.core.ports import DeliveryTargetGone
 
+from . import texts
+from .keyboards import menu_keyboard
 from .render import render_planned_work, render_reminder, render_subqueues_changed, render_update
 
 SEND_INTERVAL = 0.04
@@ -26,6 +28,8 @@ def _render(kind: str, payload: Mapping[str, Any]) -> str:
             return render_subqueues_changed(payload)
         case MessageKind.PLANNED_WORK:
             return render_planned_work(payload)
+        case MessageKind.MENU_UPDATED:
+            return texts.MENU_UPDATED
         case _:
             raise ValueError(f"unknown message kind {kind!r}")
 
@@ -38,9 +42,11 @@ class TelegramNotifier:
 
     async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> None:
         text = _render(kind, payload)
+        # A reply keyboard only changes when a message brings a new one.
+        keyboard = menu_keyboard() if kind == MessageKind.MENU_UPDATED else None
         await self._wait_for_slot()
         try:
-            await self._bot.send_message(int(address), text)
+            await self._bot.send_message(int(address), text, reply_markup=keyboard)
         except TelegramForbiddenError as error:
             raise DeliveryTargetGone(address) from error
         except TelegramBadRequest as error:

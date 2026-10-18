@@ -4,7 +4,9 @@ from itertools import pairwise
 import pytest
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramServerError
 from aiogram.methods import SendMessage
+from aiogram.types import ReplyKeyboardMarkup
 
+from poweron.adapters.telegram import texts
 from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.core.ports import DeliveryTargetGone
 
@@ -23,13 +25,15 @@ class FakeBot:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
         self.sent: list[tuple[int, str]] = []
+        self.markups: list[object] = []
         self.send_times: list[float] = []
 
-    async def send_message(self, chat_id: int, text: str) -> None:
+    async def send_message(self, chat_id: int, text: str, reply_markup: object = None) -> None:
         self.send_times.append(asyncio.get_running_loop().time())
         if self.error is not None:
             raise self.error
         self.sent.append((chat_id, text))
+        self.markups.append(reply_markup)
 
 
 def notifier_with(bot: FakeBot) -> TelegramNotifier:
@@ -112,6 +116,23 @@ async def test_new_kinds_are_rendered_and_sent(
     await notifier_with(bot).send("42", kind, payload)
 
     assert bot.sent[0][1].startswith(start)
+
+
+async def test_menu_update_brings_the_new_keyboard() -> None:
+    bot = FakeBot()
+
+    await notifier_with(bot).send("42", "menu_updated", {})
+
+    assert bot.sent == [(42, texts.MENU_UPDATED)]
+    assert isinstance(bot.markups[0], ReplyKeyboardMarkup)
+
+
+async def test_other_kinds_leave_the_keyboard_alone() -> None:
+    bot = FakeBot()
+
+    await notifier_with(bot).send("42", "schedule_updated", PAYLOAD)
+
+    assert bot.markups == [None]
 
 
 async def test_unknown_kind_is_rejected() -> None:

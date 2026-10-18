@@ -153,6 +153,7 @@ SUBQUEUES_GONE = (
     f"{UPDATE_LINK}"
 )
 
+MENU_UPDATED = "🔄 Оновив меню: тепер усе під кнопками внизу 👇"
 PLANNED_WORK = "🛠 <b>{label}</b>: планові роботи {date} з {start} до {end}"
 PLANNED_WORK_REASON = " — {reason}"
 

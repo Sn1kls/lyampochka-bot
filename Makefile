@@ -1,4 +1,4 @@
-.PHONY: check test fmt lint typecheck layers run migrate probe up down logs simulate backup
+.PHONY: check test fmt lint typecheck layers run migrate probe up down logs simulate announce-menu backup
 
 check: lint typecheck layers test
 
@@ -39,6 +39,9 @@ logs:
 
 simulate:
 	docker compose exec bot python scripts/simulate_update.py
+
+announce-menu:
+	docker compose exec -T bot python scripts/announce_menu.py $(VERSION)
 
 backup:
 	mkdir -p backups && chmod 700 backups

@@ -168,3 +168,7 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - The reply keyboard is down to four buttons. The old labels still work until a client receives the new keyboard (next `/start` or add/remove).
 - Removing an address now needs a confirmation, so an old list button can't delete anything by itself.
 - Decision: stay on SQLite. Postgres comes when a second independent DB writer appears (a separate API process, a split worker, or another service). A C# client would go through the HTTP API, not the DB.
+- Menu announcement:
+  - `make announce-menu VERSION=N` queues «🔄 Оновив меню» with the new reply keyboard for every user with an active Telegram target, once per version, through the outbox.
+  - It prints how many messages were queued, so a forgotten version bump shows 0.
+  - Run it once after each reply-keyboard change. Version 2 is the four-button menu.

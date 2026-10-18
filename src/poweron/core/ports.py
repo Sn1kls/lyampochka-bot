@@ -128,8 +128,8 @@ class Repository(Protocol):
         """Swap the stored queues, mark the subscription checked and enqueue messages atomically."""
         ...
 
-    async def enqueue_messages(self, messages: list[OutboxMessage]) -> None:
-        """Enqueue messages, skipping those whose dedupe key is already stored."""
+    async def enqueue_messages(self, messages: list[OutboxMessage]) -> int:
+        """Enqueue messages, skipping those whose dedupe key is already stored; returns how many were new."""
         ...
 
     async def last_polled_at(self, cherg_gpv: str) -> datetime | None: ...
@@ -145,6 +145,10 @@ class Repository(Protocol):
     ) -> list[QueuedMessage]: ...
 
     async def count_users(self) -> int: ...
+
+    async def user_ids_on(self, channel: str) -> list[int]:
+        """Users with an active delivery target on `channel`."""
+        ...
 
     async def count_pending_messages(self, max_attempts: int) -> int:
         """Messages not sent and not given up on."""

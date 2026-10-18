@@ -30,6 +30,7 @@ uv run alembic upgrade head  # apply DB migrations
 uv run python scripts/probe.py  # Phase 0 live API probe
 make up / make logs / make down # run in Docker (compose.yaml, SQLite in the `data` volume)
 make simulate                # fake a schedule change in the running container to test the push
+make announce-menu VERSION=N # after a reply-keyboard change: send every user the new menu once
 ssh ubuntu@<server> 'cd ~/lyampochka-bot && docker compose logs -f --tail 50'  # production logs
 ```
 
