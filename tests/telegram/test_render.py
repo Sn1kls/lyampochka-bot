@@ -13,6 +13,7 @@ from poweron.adapters.telegram.render import (
     render_queues,
     render_reminder,
     render_settings,
+    render_status,
     render_subqueues_changed,
     render_update,
     subqueue_label,
@@ -23,6 +24,8 @@ from poweron.core.domain.models import (
     Address,
     DayView,
     NextEvent,
+    StatusReport,
+    SubqueueStatus,
     Subscription,
 )
 from poweron.core.domain.schedule import parse_slots
@@ -478,3 +481,39 @@ def test_planned_work_escapes_label_and_reason() -> None:
 
     assert "<b>&lt;i&gt;</b>" in text
     assert text.endswith("a &lt; b &amp; c")
+
+
+def test_status_flags_stale_and_unpolled_subqueues() -> None:
+    report = StatusReport(
+        version="0.1.0",
+        users=2,
+        subscriptions=3,
+        pending_messages=1,
+        subqueues=(
+            SubqueueStatus("4.1#7", NOW - timedelta(minutes=5)),
+            SubqueueStatus("2.2#1", NOW - timedelta(minutes=16)),
+            SubqueueStatus("1.1", None),
+        ),
+        stale_after=timedelta(minutes=15),
+    )
+
+    assert render_status(report, NOW) == (
+        "📊 <b>Лямпочка 0.1.0</b>\n"
+        "Користувачів: 2, адрес: 3, у черзі розсилки: 1\n"
+        "4.1: 17.10 17:15\n"
+        "⚠️ 2.2: 17.10 17:04\n"
+        "⚠️ 1.1: ще не опитувалась"
+    )
+
+
+def test_status_stale_threshold_comes_from_the_report() -> None:
+    report = StatusReport(
+        version="0.1.0",
+        users=1,
+        subscriptions=1,
+        pending_messages=0,
+        subqueues=(SubqueueStatus("4.1", NOW - timedelta(minutes=16)),),
+        stale_after=timedelta(minutes=20),
+    )
+
+    assert "⚠️" not in render_status(report, NOW)

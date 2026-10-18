@@ -235,3 +235,14 @@ async def test_one_failing_subscription_does_not_stop_the_others(
 
     assert set((await current(repository, kept)).subqueues) == {"4.1", "5.2"}
     assert [stale.id for stale in await repository.stale_subscriptions(LATER)] == [gone.id]
+
+
+async def test_the_check_stops_between_buildings_when_asked(
+    repository: SqlRepository, buildings: FakeBuildings, checker: SubqueueChecker
+) -> None:
+    await subscribe(repository, "1", ["4.1"], ["4.1"], building_name="96")
+    await subscribe(repository, "2", ["4.1"], ["4.1"], building_name="97")
+
+    await checker.check(LATER, lambda: len(buildings.calls) >= 1)
+
+    assert len(buildings.calls) == 1

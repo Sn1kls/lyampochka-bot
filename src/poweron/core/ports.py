@@ -4,6 +4,7 @@ from typing import Any, Protocol
 
 from poweron.core.domain.models import (
     Address,
+    AlertKind,
     Building,
     City,
     DaySchedule,
@@ -23,6 +24,10 @@ class SourceError(Exception):
 
 class SourceUnavailable(SourceError):
     """Network error, timeout, or an error status after retries."""
+
+
+class SourcePaused(SourceUnavailable):
+    """The source failed repeatedly and is not being called for a while."""
 
 
 class ApiSchemaError(SourceError):
@@ -137,6 +142,12 @@ class Repository(Protocol):
         self, now: datetime, limit: int, max_attempts: int
     ) -> list[QueuedMessage]: ...
 
+    async def count_users(self) -> int: ...
+
+    async def count_pending_messages(self, max_attempts: int) -> int:
+        """Messages not sent and not given up on."""
+        ...
+
     async def delivery_targets(self, user_id: int) -> list[DeliveryTarget]: ...
 
     async def deactivate_target(self, target_id: int) -> None: ...
@@ -148,3 +159,9 @@ class Repository(Protocol):
     async def cached_catalog(self, key: str) -> tuple[Any, datetime] | None: ...
 
     async def store_catalog(self, key: str, value: Any, now: datetime) -> None: ...
+
+
+class AdminAlerter(Protocol):
+    async def alert(self, kind: AlertKind, details: str) -> None:
+        """Tell the bot owner that something needs attention; `details` is technical, not for users."""
+        ...

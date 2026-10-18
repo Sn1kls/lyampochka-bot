@@ -185,3 +185,14 @@ async def test_a_failing_street_does_not_stop_the_others(
     await planned_works.check(NOW)
 
     assert len(await messages(repository)) == 1
+
+
+async def test_the_check_stops_between_streets_when_asked(
+    repository: SqlRepository, source: FakeWorks, planned_works: PlannedWorks
+) -> None:
+    await subscribe(repository, "1")
+    await subscribe(repository, "2", street=STUSA)
+
+    await planned_works.check(NOW, lambda: len(source.calls) >= 1)
+
+    assert len(source.calls) == 1

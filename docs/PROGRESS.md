@@ -108,3 +108,28 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - `normalise` moved to `core/domain/text.py`.
 - Known limits: pagination always costs one extra empty-page request; there is a 10-page cap with a warning.
 - Next step: `/phase 6`.
+
+## 2026-10-17 — phase 6 (reliability and deploy)
+
+- Done:
+  - Circuit breaker in `ToeClient`: 3 consecutive real outages (retries exhausted, network, 429/5xx) pause all calls for 60 s, doubling up to 1 h. A 4xx or a schema error does not count.
+  - `Alerts`: admin alerts in Telegram, at most once per hour per kind. `API_SCHEMA` fires immediately; `API_DOWN` fires only when the breaker opens (`SourcePaused`).
+  - Graceful shutdown on SIGTERM/SIGINT: the stop is retried until aiogram polling is up, fetching jobs stop between items, dispatch finishes its batch. `stop_grace_period: 90s`.
+  - Admin-only `/status`: version, users, addresses, outbox queue, last poll per subqueue with ⚠️ after 3 poll intervals. It is not in the menu.
+  - `key=value` logs with an INFO summary per job run and no personal data.
+  - README in Ukrainian: BotFather, `.env`, run, VPS deploy, update, backup.
+  - `make backup`: consistent SQLite copy via the backup API into `backups/` (mode 700).
+  - 282 tests; `make check` green.
+- Done when: in Docker, a simulated update, a reminder and an immediate `docker compose restart` gave 6 outbox rows, each sent once. A later restart takes ~1 s ("stop requested" → "Polling stopped" → back up).
+- Found on the way: the container was being OOM-killed by the Docker Desktop VM (2.35 GB shared with other projects' containers), not by its own 512 MB limit. The owner raised the VM to 4 GB, and it has been stable since. A dedicated VPS does not have this problem.
+- Reviews: code, standards + spec, security (no findings); 8 fixes applied.
+- Decisions:
+  - Admin alerts go straight to the admin chat, not through the outbox: the admin is not a subscriber, and the rate limit is in memory.
+  - `/status` "last poll" = the newest stored version time.
+- Known limits:
+  - A stuck retrying call can still outlast the grace period.
+  - Alert state resets on restart.
+  - Backups are not encrypted.
+  - `/status` works in the admin's private chat only.
+- Open: permanent hosting. Recommended: Hetzner CAX11/CX22. First check from the server that the toe API answers a foreign IP (`curl` or `scripts/probe.py`).
+- Next step: move to a VPS once the owner has one. All SPEC phases (0–6) are done.

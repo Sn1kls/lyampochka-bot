@@ -9,6 +9,7 @@ from aiogram.types import BotCommand
 
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.schedules import Schedules
+from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
 
 from . import texts
@@ -25,13 +26,20 @@ def create_bot(token: str) -> Bot:
 
 
 def build_dispatcher(
-    subscriptions: Subscriptions, catalog: Catalog, schedules: Schedules
+    subscriptions: Subscriptions,
+    catalog: Catalog,
+    schedules: Schedules,
+    *,
+    status: Status | None = None,
+    admin_chat_id: int | None = None,
 ) -> Dispatcher:
     dispatcher = Dispatcher(
         storage=MemoryStorage(),
         subscriptions=subscriptions,
         catalog=catalog,
         schedules=schedules,
+        status=status,
+        admin_chat_id=admin_chat_id,
     )
     dispatcher.include_router(router)
     dispatcher.startup.register(publish_commands)

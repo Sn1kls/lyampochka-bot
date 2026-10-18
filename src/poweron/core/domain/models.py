@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -152,3 +152,24 @@ class NextEvent:
     power_on: bool
     earliest: datetime
     latest: datetime | None
+
+
+class AlertKind(StrEnum):
+    API_SCHEMA = "api_schema"
+    API_DOWN = "api_down"
+
+
+@dataclass(frozen=True)
+class SubqueueStatus:
+    cherg_gpv: str
+    last_polled_at: datetime | None
+
+
+@dataclass(frozen=True)
+class StatusReport:
+    version: str
+    users: int
+    subscriptions: int
+    pending_messages: int
+    subqueues: tuple[SubqueueStatus, ...]
+    stale_after: timedelta

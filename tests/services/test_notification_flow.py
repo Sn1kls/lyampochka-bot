@@ -1,6 +1,7 @@
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -10,6 +11,7 @@ from poweron.core.ports import DeliveryTargetGone
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.polling import Polling
 from poweron.core.services.subscriptions import NoScheduleForAddress, Subscriptions
+from poweron.worker.runner import repeat
 from tests.services.conftest import NOW, TODAY, TOMORROW, FakeNotifier, FakeSource, day_schedule
 
 TERNOPIL = City(id=1032, name="Тернопіль", otg_name="Тернопільська")
@@ -297,4 +299,61 @@ async def test_regular_and_new_polls_never_fetch_the_same_subqueue_together(
 
     await asyncio.gather(polling.poll(NOW), polling.poll_new(NOW))
 
-    assert source.requested == ["4.1"]
+    assert len(source.requested) == 1
+
+
+async def test_restart_after_a_stop_sends_nothing_twice(
+    repository: SqlRepository, source: FakeSource
+) -> None:
+    await subscribe(repository, "101")
+    source.schedules = {"4.1": [day_schedule()]}
+    await Polling(repository, source).poll(NOW)
+    source.schedules = {"4.1": [day_schedule(outages={"11:00": "1"})]}
+    await Polling(repository, source).poll(NOW + timedelta(minutes=1))
+
+    stop = asyncio.Event()
+
+    class StoppingNotifier(FakeNotifier):
+        async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> None:
+            stop.set()  # the stop signal arrives in the middle of the dispatch
+            await super().send(address, kind, payload)
+
+    before_stop = StoppingNotifier()
+    dispatch = Notifications(repository, {"telegram": before_stop})
+    await asyncio.wait_for(
+        repeat(lambda: dispatch.dispatch(NOW + timedelta(minutes=2)), stop, 5), timeout=5
+    )
+
+    after_restart = FakeNotifier()
+    later = NOW + timedelta(hours=1)
+    await Notifications(repository, {"telegram": after_restart}).dispatch(later)
+
+    assert len(before_stop.sent) == 1
+    assert after_restart.sent == []
+
+
+async def test_poll_logs_a_summary_and_an_empty_dispatch_stays_quiet(
+    repository: SqlRepository,
+    source: FakeSource,
+    notifier: FakeNotifier,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await subscribe(repository, "101")
+    source.schedules = {"4.1": [day_schedule()]}
+
+    with caplog.at_level("INFO"):
+        await Polling(repository, source).poll(NOW)
+        await Notifications(repository, {"telegram": notifier}).dispatch(NOW)
+
+    [summary] = [record.getMessage() for record in caplog.records if record.levelname == "INFO"]
+    assert summary.startswith("poll subqueues=1 changed=1 messages=0 ms=")
+
+
+async def test_polling_stops_between_subqueues_when_asked(
+    repository: SqlRepository, source: FakeSource
+) -> None:
+    await subscribe(repository, "101", queues=("4.1", "1.2"))
+
+    await Polling(repository, source).poll(NOW, lambda: len(source.requested) >= 1)
+
+    assert len(source.requested) == 1

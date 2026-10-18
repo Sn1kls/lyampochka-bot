@@ -9,7 +9,7 @@ def test_dispatcher_carries_services_and_bot_defaults_to_html() -> None:
     services: dict[str, object] = {"subscriptions": 1, "catalog": 2, "schedules": 3}
     dispatcher = build_dispatcher(**services)  # type: ignore[arg-type]
 
-    assert dispatcher.workflow_data == services
+    assert dispatcher.workflow_data == {**services, "status": None, "admin_chat_id": None}
     bot = create_bot("123:abc")
     assert bot.default.parse_mode == "HTML"
     assert bot.default.link_preview_is_disabled is True

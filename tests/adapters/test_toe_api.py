@@ -8,7 +8,7 @@ import httpx
 import pytest
 import respx
 
-from poweron.adapters.toe_api.client import ToeClient
+from poweron.adapters.toe_api.client import ATTEMPTS, ToeClient
 from poweron.core.domain.models import (
     KYIV,
     Address,
@@ -18,7 +18,7 @@ from poweron.core.domain.models import (
     PlannedWork,
     Street,
 )
-from poweron.core.ports import ApiSchemaError, SourceUnavailable
+from poweron.core.ports import ApiSchemaError, SourcePaused, SourceUnavailable
 from tests.conftest import load_fixture
 
 API = "https://api.test/api"
@@ -229,6 +229,108 @@ async def test_client_errors_are_not_retried(client: ToeClient) -> None:
     with pytest.raises(SourceUnavailable):
         await client.fetch_schedules(SADOVA_1, "4.1")
     assert route.call_count == 1
+
+
+async def fail(client: ToeClient) -> SourceUnavailable:
+    with pytest.raises(SourceUnavailable) as raised:
+        await client.fetch_schedules(SADOVA_1, "4.1")
+    return raised.value
+
+
+@respx.mock
+async def test_breaker_opens_after_three_exhausted_requests_and_backs_off(
+    client: ToeClient, clock: FakeClock
+) -> None:
+    route = respx.get(f"{API}/a_gpv_g").respond(503)
+    for _ in range(3):
+        await fail(client)
+    assert route.call_count == 3 * ATTEMPTS
+
+    paused = await fail(client)  # no network call
+    assert isinstance(paused, SourcePaused)
+    assert "HTTP 503" in str(paused)
+    clock.monotonic_now += 58
+    await fail(client)
+    assert route.call_count == 3 * ATTEMPTS
+
+    clock.monotonic_now += 2  # the 60 s pause is over, one probe goes out
+    await fail(client)
+    assert route.call_count == 4 * ATTEMPTS
+
+    clock.monotonic_now += 119  # the pause doubled to 120 s
+    await fail(client)
+    assert route.call_count == 4 * ATTEMPTS
+    clock.monotonic_now += 1
+    await fail(client)
+    assert route.call_count == 5 * ATTEMPTS
+
+
+@respx.mock
+async def test_the_failure_that_opens_the_breaker_is_already_a_pause(client: ToeClient) -> None:
+    respx.get(f"{API}/a_gpv_g").respond(503)
+
+    errors = [await fail(client) for _ in range(3)]
+
+    assert [isinstance(error, SourcePaused) for error in errors] == [False, False, True]
+
+
+@respx.mock
+async def test_client_errors_do_not_open_the_breaker(client: ToeClient) -> None:
+    route = respx.get(f"{API}/a_gpv_g").respond(404)
+
+    errors = [await fail(client) for _ in range(5)]
+
+    assert route.call_count == 5
+    assert not any(isinstance(error, SourcePaused) for error in errors)
+
+
+@respx.mock
+async def test_breaker_pause_is_capped_at_an_hour(client: ToeClient, clock: FakeClock) -> None:
+    route = respx.get(f"{API}/a_gpv_g").respond(503)
+    for _ in range(20):
+        clock.monotonic_now += 3600
+        await fail(client)
+    clock.monotonic_now += 3599
+    await fail(client)
+    assert route.call_count == 20 * ATTEMPTS
+    clock.monotonic_now += 1
+    await fail(client)
+    assert route.call_count == 21 * ATTEMPTS
+
+
+@respx.mock
+async def test_a_success_closes_the_breaker(client: ToeClient, clock: FakeClock) -> None:
+    route = respx.get(f"{API}/a_gpv_g")
+    route.side_effect = (
+        [httpx.Response(503)] * 3 * ATTEMPTS
+        + [httpx.Response(200, json=SCHEDULE)]
+        + [httpx.Response(503)] * 2 * ATTEMPTS
+    )
+    for _ in range(3):
+        await fail(client)
+    clock.monotonic_now += 60
+    await client.fetch_schedules(SADOVA_1, "4.1")
+
+    await fail(client)
+    await fail(client)  # two failures after a success do not open it again
+    assert route.call_count == 3 * ATTEMPTS + 1 + 2 * ATTEMPTS
+
+
+@respx.mock
+async def test_schema_errors_do_not_open_the_breaker(client: ToeClient) -> None:
+    route = respx.get(f"{API}/a_gpv_g")
+    route.side_effect = (
+        [httpx.Response(503)] * 2 * ATTEMPTS
+        + [httpx.Response(200, text="<html>")]
+        + [httpx.Response(503)] * 2 * ATTEMPTS
+    )
+    await fail(client)
+    await fail(client)
+    with pytest.raises(ApiSchemaError):
+        await client.fetch_schedules(SADOVA_1, "4.1")
+    await fail(client)
+    await fail(client)
+    assert route.call_count == 4 * ATTEMPTS + 1
 
 
 @respx.mock

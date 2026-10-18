@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from datetime import UTC, datetime
 
 from poweron.core.services.groups import SubqueueChecker
@@ -28,35 +29,61 @@ async def run_worker(
     subqueue_checker: SubqueueChecker,
     planned_works: PlannedWorks,
     poll_interval: float,
+    stop: asyncio.Event,
 ) -> None:
+    """Runs the jobs until `stop` is set.
+
+    Dispatch finishes its batch; the fetching jobs stop between items.
+    """
     async with asyncio.TaskGroup() as group:
         group.create_task(
-            repeat(lambda: polling.poll(datetime.now(UTC)), poll_interval, POLL_JITTER)
+            repeat(
+                lambda: polling.poll(datetime.now(UTC), stop.is_set),
+                stop,
+                poll_interval,
+                POLL_JITTER,
+            )
         )
         group.create_task(
-            repeat(lambda: polling.poll_new(datetime.now(UTC)), NEW_SUBQUEUE_INTERVAL)
+            repeat(
+                lambda: polling.poll_new(datetime.now(UTC), stop.is_set),
+                stop,
+                NEW_SUBQUEUE_INTERVAL,
+            )
         )
         group.create_task(
-            repeat(lambda: notifications.dispatch(datetime.now(UTC)), DISPATCH_INTERVAL)
-        )
-        group.create_task(repeat(lambda: reminders.tick(datetime.now(UTC)), REMINDER_INTERVAL))
-        group.create_task(
-            repeat(lambda: subqueue_checker.check(datetime.now(UTC)), CHECK_SUBQUEUES_INTERVAL)
+            repeat(lambda: notifications.dispatch(datetime.now(UTC)), stop, DISPATCH_INTERVAL)
         )
         group.create_task(
-            repeat(lambda: planned_works.check(datetime.now(UTC)), PLANNED_WORKS_INTERVAL)
+            repeat(lambda: reminders.tick(datetime.now(UTC)), stop, REMINDER_INTERVAL)
+        )
+        group.create_task(
+            repeat(
+                lambda: subqueue_checker.check(datetime.now(UTC), stop.is_set),
+                stop,
+                CHECK_SUBQUEUES_INTERVAL,
+            )
+        )
+        group.create_task(
+            repeat(
+                lambda: planned_works.check(datetime.now(UTC), stop.is_set),
+                stop,
+                PLANNED_WORKS_INTERVAL,
+            )
         )
 
 
 async def repeat(
     job: Callable[[], Awaitable[None]],
+    stop: asyncio.Event,
     interval: float,
     jitter: float = 0.0,
-    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
-    while True:
+    while not stop.is_set():
         try:
             await job()
         except Exception:
             logger.exception("worker job failed")
-        await sleep(max(MIN_DELAY, interval + random.uniform(-jitter, jitter)))
+        delay = max(MIN_DELAY, interval + random.uniform(-jitter, jitter))
+        with suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), delay)

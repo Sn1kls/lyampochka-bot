@@ -26,6 +26,7 @@ from poweron.core.domain.models import KYIV, Building, City, Street, Subscriptio
 from poweron.core.ports import SourceError
 from poweron.core.services.catalog import Catalog, find_by_name
 from poweron.core.services.schedules import Schedules
+from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
 
 from . import keyboards, texts
@@ -37,6 +38,7 @@ from .render import (
     render_next,
     render_no_schedule_for_address,
     render_settings,
+    render_status,
     subqueue_label,
 )
 
@@ -180,6 +182,13 @@ async def settings(message: Message, user_id: int, subscriptions: Subscriptions)
         await _show_settings(message, subscription)
 
     await _choose_subscription(message, user_id, subscriptions, "settings", show_settings)
+
+
+@router.message(Command("status"))
+async def show_status(message: Message, status: Status | None, admin_chat_id: int | None) -> None:
+    if status is None or message.chat.id != admin_chat_id:
+        return
+    await message.answer(render_status(await status.report(), _now()))
 
 
 @router.message(Command("forget"))

@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import time
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from poweron.core.domain.diff import ScheduleChange, data_hash, schedule_change
@@ -12,25 +14,36 @@ from poweron.core.domain.models import (
     Subscription,
 )
 from poweron.core.ports import Repository, ScheduleSource, SourceError
+from poweron.core.services.alerts import Alerts, report_source_error
 
 logger = logging.getLogger(__name__)
 
 NEW_SUBQUEUE_RETRY = timedelta(minutes=5)
 
 
+def never_stop() -> bool:
+    return False
+
+
 class Polling:
-    def __init__(self, repository: Repository, source: ScheduleSource) -> None:
+    def __init__(
+        self, repository: Repository, source: ScheduleSource, alerts: Alerts | None = None
+    ) -> None:
         self._repository = repository
         self._source = source
+        self._alerts = alerts
         self._new_attempts: dict[str, datetime] = {}
         self._lock = asyncio.Lock()
 
-    async def poll(self, now: datetime) -> None:
-        """Fetch every subscribed subqueue once and store new versions with their messages."""
-        async with self._lock:
-            await self._poll_each(await self._by_subqueue(), now)
+    async def poll(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
+        """Fetch every subscribed subqueue once and store new versions with their messages.
 
-    async def poll_new(self, now: datetime) -> None:
+        `should_stop` is checked between subqueues, so a shutdown does not wait for the whole pass.
+        """
+        async with self._lock:
+            await self._poll_each(await self._by_subqueue(), now, should_stop)
+
+    async def poll_new(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
         """Fetch only the subscribed subqueues that have no stored version yet.
 
         A subqueue the source has nothing for is retried only after NEW_SUBQUEUE_RETRY,
@@ -46,7 +59,7 @@ class Polling:
                 >= NEW_SUBQUEUE_RETRY
             }
             self._new_attempts.update(dict.fromkeys(never_polled, now))
-            await self._poll_each(never_polled, now)
+            await self._poll_each(never_polled, now, should_stop)
 
     async def _by_subqueue(self) -> dict[str, list[Subscription]]:
         """Every queue of a building is fetched, so that the untracked ones can be viewed too."""
@@ -56,18 +69,39 @@ class Polling:
                 by_subqueue[cherg_gpv].append(subscription)
         return by_subqueue
 
-    async def _poll_each(self, by_subqueue: dict[str, list[Subscription]], now: datetime) -> None:
+    async def _poll_each(
+        self,
+        by_subqueue: dict[str, list[Subscription]],
+        now: datetime,
+        should_stop: Callable[[], bool],
+    ) -> None:
+        started = time.monotonic()
+        changed = messages = 0
         for cherg_gpv, subscribers in by_subqueue.items():
+            if should_stop():
+                break
             try:
-                await self._poll_subqueue(cherg_gpv, subscribers, now)
+                new_versions, new_messages = await self._poll_subqueue(cherg_gpv, subscribers, now)
+                changed += new_versions
+                messages += new_messages
             except SourceError as error:
                 logger.warning("poll failed for subqueue %s: %s", cherg_gpv, error)
+                await report_source_error(self._alerts, error, now)
             except Exception:
                 logger.exception("poll crashed for subqueue %s", cherg_gpv)
+        if by_subqueue:
+            logger.info(
+                "poll subqueues=%s changed=%s messages=%s ms=%s",
+                len(by_subqueue),
+                changed,
+                messages,
+                round((time.monotonic() - started) * 1000),
+            )
 
     async def _poll_subqueue(
         self, cherg_gpv: str, subscribers: list[Subscription], now: datetime
-    ) -> None:
+    ) -> tuple[int, int]:
+        """Returns how many versions were new and how many messages were queued."""
         schedules = await self._source.fetch_schedules(subscribers[0].address, cherg_gpv)
         last_polled_at = await self._repository.last_polled_at(cherg_gpv)
         # A change is news only to subscribers who already had the previous poll's data;
@@ -80,12 +114,12 @@ class Polling:
             and last_polled_at is not None
             and subscription.created_at <= last_polled_at
         ]
-        for schedule in schedules:
-            await self._store(schedule, recipients, now)
+        stored = [await self._store(schedule, recipients, now) for schedule in schedules]
+        return sum(is_new for is_new, _ in stored), sum(count for _, count in stored)
 
     async def _store(
         self, schedule: DaySchedule, recipients: list[Subscription], now: datetime
-    ) -> None:
+    ) -> tuple[bool, int]:
         digest = data_hash(schedule.slots)
         previous = await self._repository.latest_version(schedule.cherg_gpv, schedule.day)
         messages = []
@@ -108,6 +142,7 @@ class Polling:
             fetched_at=now,
         )
         await self._repository.save_version(version, messages)
+        return previous is None or previous.data_hash != digest, len(messages)
 
 
 def _messages(

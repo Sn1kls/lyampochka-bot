@@ -30,7 +30,7 @@ from poweron.core.domain.models import (
     PlannedWork,
     Street,
 )
-from poweron.core.ports import ApiSchemaError, SourceUnavailable
+from poweron.core.ports import ApiSchemaError, SourcePaused, SourceUnavailable
 
 ATTEMPTS = 3
 RETRY_STATUSES = {429, 500, 502, 503, 504}
@@ -38,8 +38,16 @@ MIN_REQUEST_INTERVAL = 1.0
 MAX_RETRY_AFTER = 60.0
 MAX_PLANNED_WORK_PAGES = 10
 MAX_REASON_LENGTH = 300
+BREAKER_THRESHOLD = 3
+BREAKER_FIRST_PAUSE = 60.0
+BREAKER_MAX_PAUSE = 3600.0
+MAX_DOUBLINGS = 10
 
 logger = logging.getLogger(__name__)
+
+
+class _Rejected(SourceUnavailable):
+    """The API answered with a non-retryable error status; it is up, so the breaker ignores it."""
 
 
 class ToeClient:
@@ -63,6 +71,9 @@ class ToeClient:
         self._sleep = sleep
         self._lock = asyncio.Lock()
         self._last_request_at = float("-inf")
+        self._consecutive_failures = 0
+        self._paused_until = float("-inf")
+        self._last_failure = ""
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -155,27 +166,63 @@ class ToeClient:
         self, path: str, params: dict[str, Any], headers: dict[str, str] | None = None
     ) -> Any:
         async with self._lock:
-            for attempt in range(1, ATTEMPTS + 1):
-                wait = self._last_request_at + MIN_REQUEST_INTERVAL - self._monotonic()
-                if wait > 0:
-                    await self._sleep(wait)
-                try:
-                    response = await self._http.get(path, params=params, headers=headers)
-                except httpx.RequestError as error:
-                    failure = f"{type(error).__name__}: {error}"
-                    delay = _backoff(attempt)
-                else:
-                    if response.status_code == 200:
-                        return _json(path, response)
-                    if response.status_code not in RETRY_STATUSES:
-                        raise SourceUnavailable(f"{path}: HTTP {response.status_code}")
-                    failure = f"HTTP {response.status_code}"
-                    delay = _retry_after(response) or _backoff(attempt)
-                finally:
-                    self._last_request_at = self._monotonic()
-                if attempt < ATTEMPTS:
-                    await self._sleep(delay)
-            raise SourceUnavailable(f"{path}: {failure} after {ATTEMPTS} attempts")
+            if self._monotonic() < self._paused_until:
+                raise self._paused()
+            try:
+                response = await self._request(path, params, headers)
+            except (_Rejected, ApiSchemaError):
+                self._consecutive_failures = 0  # the API answered, so it is up
+                raise
+            except SourceUnavailable as error:
+                self._last_failure = str(error)
+                if self._record_failure():
+                    raise self._paused() from error
+                raise
+            self._consecutive_failures = 0
+            return response
+
+    def _paused(self) -> SourcePaused:
+        return SourcePaused(f"paused after repeated failures: {self._last_failure}")
+
+    def _record_failure(self) -> bool:
+        """Returns whether the breaker is open now."""
+        self._consecutive_failures += 1
+        if self._consecutive_failures < BREAKER_THRESHOLD:
+            return False
+        doublings = min(self._consecutive_failures - BREAKER_THRESHOLD, MAX_DOUBLINGS)
+        pause = min(BREAKER_FIRST_PAUSE * 2**doublings, BREAKER_MAX_PAUSE)
+        self._paused_until = self._monotonic() + pause
+        logger.warning(
+            "toe api paused for %.0f s after %s failed requests in a row",
+            pause,
+            self._consecutive_failures,
+        )
+        return True
+
+    async def _request(
+        self, path: str, params: dict[str, Any], headers: dict[str, str] | None
+    ) -> Any:
+        for attempt in range(1, ATTEMPTS + 1):
+            wait = self._last_request_at + MIN_REQUEST_INTERVAL - self._monotonic()
+            if wait > 0:
+                await self._sleep(wait)
+            try:
+                response = await self._http.get(path, params=params, headers=headers)
+            except httpx.RequestError as error:
+                failure = f"{type(error).__name__}: {error}"
+                delay = _backoff(attempt)
+            else:
+                if response.status_code == 200:
+                    return _json(path, response)
+                if response.status_code not in RETRY_STATUSES:
+                    raise _Rejected(f"{path}: HTTP {response.status_code}")
+                failure = f"HTTP {response.status_code}"
+                delay = _retry_after(response) or _backoff(attempt)
+            finally:
+                self._last_request_at = self._monotonic()
+            if attempt < ATTEMPTS:
+                await self._sleep(delay)
+        raise SourceUnavailable(f"{path}: {failure} after {ATTEMPTS} attempts")
 
 
 def _raw_planned_work(item: Any) -> RawPlannedWork | None:
