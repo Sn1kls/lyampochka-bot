@@ -1,8 +1,9 @@
 from collections.abc import Sequence
 from datetime import datetime
 
-from poweron.core.domain.models import Building, City, Street, Subscription
+from poweron.core.domain.models import AlertKind, Building, City, Street, Subscription
 from poweron.core.ports import Repository
+from poweron.core.services.alerts import Alerts
 
 REMINDER_MINUTES = (0, 15, 30, 60)
 
@@ -12,11 +13,20 @@ class NoScheduleForAddress(Exception):
 
 
 class Subscriptions:
-    def __init__(self, repository: Repository) -> None:
+    def __init__(self, repository: Repository, alerts: Alerts | None = None) -> None:
         self._repository = repository
+        self._alerts = alerts
 
-    async def register(self, provider: str, external_id: str, channel: str, address: str) -> int:
-        return await self._repository.register_user(provider, external_id, channel, address)
+    async def register(
+        self, provider: str, external_id: str, channel: str, address: str, display_name: str = ""
+    ) -> int:
+        """`display_name` only goes into the admin's new-user alert; it is never stored."""
+        user_id, created = await self._repository.register_user(
+            provider, external_id, channel, address
+        )
+        if created and self._alerts is not None:
+            await self._alerts.send(AlertKind.NEW_USER, display_name)
+        return user_id
 
     async def find_user(self, provider: str, external_id: str) -> int | None:
         return await self._repository.find_user(provider, external_id)

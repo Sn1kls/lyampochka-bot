@@ -170,6 +170,7 @@ ALERT_API_SCHEMA = (
 ALERT_API_DOWN = (
     "🚨 Сайт обленерго давно не відповідає. Показую графіки з пам'яті.\n<code>{details}</code>"
 )
+ALERT_NEW_USER = "👤 Новий користувач: {details}"
 
 STATUS_TITLE = "📊 <b>Лямпочка {version}</b>"
 STATUS_COUNTS = "Користувачів: {users}, адрес: {subscriptions}, у черзі розсилки: {pending}"
