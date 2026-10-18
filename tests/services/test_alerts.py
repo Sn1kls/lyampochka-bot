@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 
 import pytest
@@ -20,22 +20,12 @@ from poweron.core.services.planned_works import PlannedWorks
 from poweron.core.services.polling import Polling
 from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
+from tests.fakes import FakeAlerter
 from tests.services.conftest import NOW
 
 TERNOPIL = City(id=1032, name="Тернопіль", otg_name=None)
 SADOVA = Street(id=9985, name="вул. Садова")
 POLL_INTERVAL = timedelta(minutes=5)
-
-
-@dataclass
-class FakeAlerter:
-    alerts: list[tuple[AlertKind, str]] = field(default_factory=list)
-    error: Exception | None = None
-
-    async def alert(self, kind: AlertKind, details: str) -> None:
-        if self.error:
-            raise self.error
-        self.alerts.append((kind, details))
 
 
 @dataclass
@@ -134,6 +124,33 @@ async def test_a_failed_send_is_retried_on_the_next_report(
     await alerts.report(AlertKind.API_DOWN, "second", NOW + timedelta(minutes=1))
 
     assert alerter.alerts == [(AlertKind.API_DOWN, "second")]
+
+
+async def test_every_new_user_is_announced_once(
+    repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts
+) -> None:
+    subscriptions = Subscriptions(repository, alerts)
+
+    await subscriptions.register("telegram", "101", "telegram", "101", "Оля @olya")
+    await subscriptions.register("telegram", "101", "telegram", "101", "Оля @olya")
+    await subscriptions.register("telegram", "102", "telegram", "102", "Петро")
+
+    assert alerter.alerts == [
+        (AlertKind.NEW_USER, "Оля @olya"),
+        (AlertKind.NEW_USER, "Петро"),
+    ]
+
+
+async def test_registration_survives_a_failing_alerter(
+    repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts
+) -> None:
+    alerter.error = RuntimeError("telegram is down")
+
+    user_id = await Subscriptions(repository, alerts).register(
+        "telegram", "101", "telegram", "101", "Оля"
+    )
+
+    assert await repository.find_user("telegram", "101") == user_id
 
 
 async def test_jobs_work_without_alerts(repository: SqlRepository) -> None:

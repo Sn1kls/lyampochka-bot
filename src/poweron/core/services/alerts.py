@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class Alerts:
-    """Admin alerts, at most one per kind per `interval` (SPEC §9)."""
+    """Admin alerts: `report` sends at most one per kind per `interval` (SPEC §9), `send` always sends."""
 
     def __init__(self, alerter: AdminAlerter, interval: timedelta = timedelta(hours=1)) -> None:
         self._alerter = alerter
@@ -19,12 +19,17 @@ class Alerts:
         last_sent = self._last_sent.get(kind)
         if last_sent is not None and now - last_sent < self._interval:
             return
+        if await self.send(kind, details):
+            self._last_sent[kind] = now
+
+    async def send(self, kind: AlertKind, details: str) -> bool:
+        """Send without rate limiting; a failed send is logged, never raised."""
         try:
             await self._alerter.alert(kind, details)
         except Exception as error:
             logger.warning("admin alert %s was not delivered: %r", kind, error)
-        else:
-            self._last_sent[kind] = now
+            return False
+        return True
 
 
 async def report_source_error(alerts: Alerts | None, error: SourceError, now: datetime) -> None:

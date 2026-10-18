@@ -10,6 +10,7 @@ MAX_DETAILS = 500
 ALERT_TEXTS = {
     AlertKind.API_SCHEMA: texts.ALERT_API_SCHEMA,
     AlertKind.API_DOWN: texts.ALERT_API_DOWN,
+    AlertKind.NEW_USER: texts.ALERT_NEW_USER,
 }
 
 

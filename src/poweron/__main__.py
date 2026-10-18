@@ -63,7 +63,7 @@ async def run(role: str, settings: Settings) -> None:
         async with asyncio.TaskGroup() as group:
             if role in ("bot", "all"):
                 dispatcher = build_dispatcher(
-                    Subscriptions(repository),
+                    Subscriptions(repository, alerts),
                     Catalog(repository, toe_client),
                     Schedules(repository),
                     status=Status(
