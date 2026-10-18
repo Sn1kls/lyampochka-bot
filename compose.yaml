@@ -10,6 +10,10 @@ services:
     stop_grace_period: 90s
     # aiogram alone costs ~120 MB at import; the bot idles at ~200 MB, so 256 MB left no room.
     mem_limit: 512m
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
 
 volumes:
   data:
