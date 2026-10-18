@@ -30,6 +30,7 @@ uv run alembic upgrade head  # apply DB migrations
 uv run python scripts/probe.py  # Phase 0 live API probe
 make up / make logs / make down # run in Docker (compose.yaml, SQLite in the `data` volume)
 make simulate                # fake a schedule change in the running container to test the push
+ssh ubuntu@<server> 'cd ~/lyampochka-bot && docker compose logs -f --tail 50'  # production logs
 ```
 
 Package manager is uv only, never pip. Python 3.14 (fallback 3.13, see SPEC §10).
@@ -62,7 +63,7 @@ Ports and adapters (SPEC §3). Package root `src/poweron/`.
 - Remote: `github.com/Sn1kls/lyampochka-bot` (private). Branches: `main` = what is deployed, `develop` = integration (default branch), work branches `feature/<name>` (phases: `feature/phase-N`) or `chore/<name>` from an up-to-date `develop`.
 - Commit with Conventional Commits (`feat(phase2): ...`), show `git status` first. Push only the work branch and open a PR into `develop` with `gh pr create --base develop`.
 - CI (`.github/workflows/check.yml`) runs `make check` on every PR; it must be green.
-- The owner reviews and merges. A release is a PR `develop` → `main`, opened only when the owner asks. Never push to `main`. Pushing to `develop` is allowed, but phases still go through a PR. Never merge PRs yourself.
+- The owner reviews and merges. A release is a PR `develop` → `main`, opened only when the owner asks. Merging into `main` deploys to production automatically: the CI `deploy` job runs after a green check (README, «Автодеплой»). Never push to `main`. Pushing to `develop` is allowed, but phases still go through a PR. Never merge PRs yourself.
 - No AI attribution anywhere: no `Co-Authored-By` trailers, no "Generated with" lines in commits, PRs, code or docs.
 - Never force-push, never rewrite history without an explicit request.
 - Never commit `.env`, `data/`, or recorded fixtures containing personal addresses.
