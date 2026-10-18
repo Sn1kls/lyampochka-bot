@@ -128,7 +128,7 @@ async def start(
     message: Message, event_from_user: User, state: FSMContext, subscriptions: Subscriptions
 ) -> None:
     await _reset(state)
-    await subscriptions.register(
+    user_id = await subscriptions.register(
         "telegram",
         str(event_from_user.id),
         "telegram",
@@ -136,6 +136,8 @@ async def start(
         display_name(event_from_user),
     )
     await message.answer(texts.GREETING, reply_markup=keyboards.menu_keyboard())
+    if not await subscriptions.of_user(user_id):
+        await message.answer(texts.ADD_FIRST, reply_markup=keyboards.actions_keyboard("add"))
 
 
 def display_name(user: User) -> str:
@@ -152,7 +154,16 @@ async def help_(message: Message) -> None:
 @router.message(F.text == texts.MENU_LIST)
 async def list_(message: Message, user_id: int, subscriptions: Subscriptions) -> None:
     items = await subscriptions.of_user(user_id)
-    await message.answer(render_list(items) if items else texts.NO_SUBSCRIPTIONS)
+    if items:
+        await message.answer(
+            render_list(items), reply_markup=keyboards.actions_keyboard("add", "remove")
+        )
+    else:
+        await _no_subscriptions(message)
+
+
+async def _no_subscriptions(message: Message) -> None:
+    await message.answer(texts.NO_SUBSCRIPTIONS, reply_markup=keyboards.actions_keyboard("add"))
 
 
 @router.message(Command("schedule"))
@@ -218,7 +229,7 @@ async def _choose_subscription(
     """Handles none / exactly one / several addresses; `on_single` None means always ask."""
     items = await subscriptions.of_user(user_id)
     if not items:
-        await message.answer(texts.NO_SUBSCRIPTIONS)
+        await _no_subscriptions(message)
     elif len(items) == 1 and on_single is not None:
         await on_single(items[0])
     else:
@@ -248,6 +259,12 @@ async def choose_subscription(
     elif callback_data.action == "settings":
         await _show_settings(callback, subscription)
     elif callback_data.action == "remove":
+        await _respond(
+            callback,
+            texts.REMOVE_CONFIRM.format(label=escape(subscription.label)),
+            keyboards.remove_confirm_keyboard(subscription.id),
+        )
+    elif callback_data.action == "remove_confirmed":
         removed = await subscriptions.remove(user_id, subscription.id)
         if removed:
             await _finish(callback, texts.REMOVED, keyboards.menu_keyboard())
@@ -326,8 +343,27 @@ async def add(message: Message, state: FSMContext) -> None:
     await message.answer(texts.ASK_CITY)
 
 
-@router.callback_query(keyboards.Decision.filter((F.action == "add") & ~F.accepted))
-async def cancel_add(callback: CallbackQuery, state: FSMContext) -> None:
+@router.callback_query(keyboards.Action.filter())
+async def run_action(
+    callback: CallbackQuery,
+    callback_data: keyboards.Action,
+    state: FSMContext,
+    user_id: int,
+    subscriptions: Subscriptions,
+) -> None:
+    """The button stays on its message, so the flow starts in a new one below."""
+    await callback.answer()
+    await _reset(state)  # like a menu button, any shortcut leaves an open wizard
+    if not isinstance(callback.message, Message):
+        return
+    if callback_data.name == "add":
+        await add(callback.message, state)
+    else:
+        await remove(callback.message, user_id, subscriptions)
+
+
+@router.callback_query(keyboards.Decision.filter(F.action.in_({"add", "remove"}) & ~F.accepted))
+async def cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await _reset(state)
     await _respond(callback, texts.CANCELLED)
 

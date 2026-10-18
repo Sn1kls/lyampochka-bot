@@ -230,8 +230,56 @@ async def test_start_registers_the_user_and_unlocks_commands(chat: Chat) -> None
     await chat.say("/start")
     await chat.say("/list")
 
-    assert chat.sent_texts() == [texts.GREETING, texts.NO_SUBSCRIPTIONS]
+    assert chat.sent_texts() == [texts.GREETING, texts.ADD_FIRST, texts.NO_SUBSCRIPTIONS]
     assert await chat.subscriptions.find_user("telegram", "1") is not None
+
+
+async def test_the_add_button_under_the_greeting_starts_the_wizard(chat: Chat) -> None:
+    await chat.say("/start")
+    await chat.press_button(texts.MENU_ADD)
+
+    assert chat.sent_texts()[-1] == texts.ASK_CITY
+
+
+async def test_a_returning_user_with_addresses_is_not_asked_to_add_one(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.say("/start")
+
+    assert chat.sent_texts()[-1] == texts.GREETING
+
+
+async def test_my_addresses_offers_add_and_remove_buttons(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.say(texts.MENU_LIST)
+    await chat.press_button(texts.MENU_REMOVE)
+
+    assert chat.sent_texts()[-1] == texts.REMOVE_PROMPT
+
+
+async def test_an_inline_action_leaves_an_open_wizard(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+    await chat.say(texts.MENU_LIST)
+    await chat.press_button(texts.MENU_ADD)
+    assert chat.sent_texts()[-1] == texts.ASK_CITY
+
+    await chat.press_button(texts.MENU_REMOVE)
+    sent_before = len(chat.sent_texts())
+    await chat.say("бережани")  # would be the city search if the wizard were still open
+
+    assert len(chat.sent_texts()) == sent_before
+
+
+async def test_an_empty_list_offers_the_add_button(chat: Chat) -> None:
+    await chat.say("/start")
+    await chat.say(texts.MENU_SCHEDULE)
+    await chat.press_button(texts.MENU_ADD)
+
+    assert chat.sent_texts()[-2:] == [texts.NO_SUBSCRIPTIONS, texts.ASK_CITY]
 
 
 async def test_start_announces_a_new_user_to_the_admin(repository: SqlRepository) -> None:
@@ -341,14 +389,16 @@ async def add_address(chat: Chat, building: str) -> None:
 
 async def test_start_and_a_finished_add_show_the_phone_menu(chat: Chat) -> None:
     await chat.say("/start")
-    markup = chat.last_reply_markup()
+    [markup] = [
+        call.reply_markup
+        for call in chat.session.calls
+        if isinstance(call, SendMessage) and call.text == texts.GREETING
+    ]
     assert isinstance(markup, ReplyKeyboardMarkup)
     assert markup.is_persistent and markup.resize_keyboard
     assert [[button.text for button in row] for row in markup.keyboard] == [
         ["📅 Графік", "⏭ Що далі"],
-        ["📋 Мої адреси", "➕ Додати адресу"],
-        ["⚙️ Налаштування", "🗑 Видалити адресу"],
-        ["❓ Допомога"],
+        ["📋 Мої адреси", "⚙️ Налаштування"],
     ]
 
     await add_address(chat, "5")
@@ -366,6 +416,7 @@ async def test_remove_and_cancelled_forget_show_the_menu_and_forget_removes_it(
 
     await chat.say("/remove")
     await chat.press_button("Дім")
+    await chat.press_button(texts.BUTTON_REMOVE)
     assert chat.sent_texts()[-1] == texts.REMOVED
     assert isinstance(chat.last_reply_markup(), ReplyKeyboardMarkup)
 
@@ -378,6 +429,22 @@ async def test_remove_and_cancelled_forget_show_the_menu_and_forget_removes_it(
     await chat.press_button(texts.BUTTON_FORGET)
     assert chat.sent_texts()[-1] == texts.FORGOTTEN
     assert isinstance(chat.last_reply_markup(), ReplyKeyboardRemove)
+
+
+async def test_removing_an_address_asks_for_confirmation(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+    user_id = await chat.subscriptions.find_user("telegram", "1")
+    assert user_id is not None
+
+    await chat.say("/remove")
+    await chat.press_button("Дім")
+    assert chat.edited_texts()[-1] == texts.REMOVE_CONFIRM.format(label="Дім")
+    assert len(await chat.subscriptions.of_user(user_id)) == 1
+
+    await chat.press_button(texts.BUTTON_CANCEL)
+    assert chat.edited_texts()[-1] == texts.CANCELLED
+    assert len(await chat.subscriptions.of_user(user_id)) == 1
 
 
 @pytest.mark.parametrize(
@@ -582,4 +649,4 @@ async def test_status_is_ignored_in_other_chats(repository: SqlRepository) -> No
     await chat.say("/start")
     await chat.say("/status")
 
-    assert chat.sent_texts() == [texts.GREETING]
+    assert chat.sent_texts() == [texts.GREETING, texts.ADD_FIRST]
