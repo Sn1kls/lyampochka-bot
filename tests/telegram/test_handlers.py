@@ -416,6 +416,7 @@ async def test_remove_and_cancelled_forget_show_the_menu_and_forget_removes_it(
 
     await chat.say("/remove")
     await chat.press_button("Дім")
+    await chat.press_button(texts.BUTTON_REMOVE)
     assert chat.sent_texts()[-1] == texts.REMOVED
     assert isinstance(chat.last_reply_markup(), ReplyKeyboardMarkup)
 
@@ -428,6 +429,22 @@ async def test_remove_and_cancelled_forget_show_the_menu_and_forget_removes_it(
     await chat.press_button(texts.BUTTON_FORGET)
     assert chat.sent_texts()[-1] == texts.FORGOTTEN
     assert isinstance(chat.last_reply_markup(), ReplyKeyboardRemove)
+
+
+async def test_removing_an_address_asks_for_confirmation(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+    user_id = await chat.subscriptions.find_user("telegram", "1")
+    assert user_id is not None
+
+    await chat.say("/remove")
+    await chat.press_button("Дім")
+    assert chat.edited_texts()[-1] == texts.REMOVE_CONFIRM.format(label="Дім")
+    assert len(await chat.subscriptions.of_user(user_id)) == 1
+
+    await chat.press_button(texts.BUTTON_CANCEL)
+    assert chat.edited_texts()[-1] == texts.CANCELLED
+    assert len(await chat.subscriptions.of_user(user_id)) == 1
 
 
 @pytest.mark.parametrize(

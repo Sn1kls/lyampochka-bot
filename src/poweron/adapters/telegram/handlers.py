@@ -259,6 +259,12 @@ async def choose_subscription(
     elif callback_data.action == "settings":
         await _show_settings(callback, subscription)
     elif callback_data.action == "remove":
+        await _respond(
+            callback,
+            texts.REMOVE_CONFIRM.format(label=escape(subscription.label)),
+            keyboards.remove_confirm_keyboard(subscription.id),
+        )
+    elif callback_data.action == "remove_confirmed":
         removed = await subscriptions.remove(user_id, subscription.id)
         if removed:
             await _finish(callback, texts.REMOVED, keyboards.menu_keyboard())
@@ -356,8 +362,8 @@ async def run_action(
         await remove(callback.message, user_id, subscriptions)
 
 
-@router.callback_query(keyboards.Decision.filter((F.action == "add") & ~F.accepted))
-async def cancel_add(callback: CallbackQuery, state: FSMContext) -> None:
+@router.callback_query(keyboards.Decision.filter(F.action.in_({"add", "remove"}) & ~F.accepted))
+async def cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await _reset(state)
     await _respond(callback, texts.CANCELLED)
 

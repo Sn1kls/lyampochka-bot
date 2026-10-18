@@ -192,6 +192,20 @@ def subscription_keyboard(
     return builder.as_markup()
 
 
+def remove_confirm_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=texts.BUTTON_REMOVE,
+        callback_data=SubscriptionChoice(
+            action="remove_confirmed", subscription_id=subscription_id
+        ),
+    )
+    builder.button(
+        text=texts.BUTTON_CANCEL, callback_data=Decision(action="remove", accepted=False)
+    )
+    return builder.as_markup()
+
+
 def confirm_keyboard(action: str, accept_text: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=accept_text, callback_data=Decision(action=action, accepted=True))
