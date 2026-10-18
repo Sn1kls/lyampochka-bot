@@ -158,3 +158,13 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - Secrets: `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_TARGET`.
   - The first run (release #13) passed after a rerun; two secrets had been missing.
 - Open: Oracle Pay As You Go upgrade (the button is still disabled); Volynoblenergo is postponed.
+
+## 2026-10-18: buttons instead of commands
+
+- Texts no longer send users to `/add`, `/help`, `/schedule` or `/settings`.
+  - Inline «➕ Додати адресу» appears under the greeting (when there are no addresses) and under «Адрес ще немає».
+  - «Мої адреси» carries add and remove buttons.
+  - The `Action` callback reuses the existing flows and leaves an open wizard.
+- The reply keyboard is down to four buttons. The old labels still work until a client receives the new keyboard (next `/start` or add/remove).
+- Removing an address now needs a confirmation, so an old list button can't delete anything by itself.
+- Decision: stay on SQLite. Postgres comes when a second independent DB writer appears (a separate API process, a split worker, or another service). A C# client would go through the HTTP API, not the DB.
