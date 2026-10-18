@@ -172,3 +172,16 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - `make announce-menu VERSION=N` queues «🔄 Оновив меню» with the new reply keyboard for every user with an active Telegram target, once per version, through the outbox.
   - It prints how many messages were queued, so a forgotten version bump shows 0.
   - Run it once after each reply-keyboard change. Version 2 is the four-button menu.
+
+## 2026-10-18: monitoring and backups
+
+- Heartbeat: with `HEALTHCHECK_URL` set, the worker pings healthchecks.io after every finished poll. If the server, the container or the worker dies, the outside monitor alerts the owner. Ping errors are logged by type only (the URL is a secret) and never raise.
+- Daily backup: with `ADMIN_CHAT_ID` and `BACKUP_PASSWORD` set, the worker snapshots SQLite during 04:00 Kyiv and sends `poweron-YYYY-MM-DD.sqlite3.enc` to the admin chat.
+  - The snapshot uses SQLite's backup API, in memory, with no plaintext on disk.
+  - The file is encrypted with scrypt (n=2^16) + Fernet.
+  - A failure alerts the admin (`BACKUP_FAILED`, at most hourly) and is retried within the hour.
+  - `scripts/restore_backup.py` decrypts the file, checks its integrity and writes it with mode 0600, never overwriting.
+- Decisions:
+  - The heartbeat means "the worker runs", not "the API answers". API trouble already has its own alerts.
+  - Backups are SQLite-only; with another database they are switched off with a log line.
+- Reviews: simplify, code-review, security-review (no findings).

@@ -159,6 +159,7 @@ class AlertKind(StrEnum):
     API_SCHEMA = "api_schema"
     API_DOWN = "api_down"
     NEW_USER = "new_user"
+    BACKUP_FAILED = "backup_failed"
 
 
 @dataclass(frozen=True)
