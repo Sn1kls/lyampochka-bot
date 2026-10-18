@@ -144,3 +144,27 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Bot profile set in BotFather: name «Лямпочка», descriptions, avatar.
 - Researched Volynoblenergo. It has an HTML form with free-text search and no JSON API; see `docs/volyn-notes.md`. Postponed by the owner.
 - Open: upgrade the Oracle account to Pay As You Go once the button is enabled, so the idle VM isn't reclaimed.
+
+## 2026-10-18: operations
+
+- Container logs are capped at 3 × 10 MB (`compose.yaml`).
+- Admin alert on every new user's first `/start`: «👤 Новий користувач: Ім'я @username».
+  - The name goes only into that message, never into the DB or logs.
+  - `register_user` now returns `(user_id, created)`, so the check is atomic.
+  - `Alerts.send` sends without the hourly throttle; error alerts still go through `report`.
+- Auto-deploy: after a green `make check` on `main`, the CI `deploy` job SSHes to the server.
+  - The deploy key is limited by a forced command to `git pull --ff-only && ./scripts/deploy.sh`.
+  - `deploy.sh` fails unless the bot is running 20 s after `compose up`.
+  - Secrets: `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_TARGET`.
+  - The first run (release #13) passed after a rerun; two secrets had been missing.
+- Open: Oracle Pay As You Go upgrade (the button is still disabled); Volynoblenergo is postponed.
+
+## 2026-10-18: buttons instead of commands
+
+- Texts no longer send users to `/add`, `/help`, `/schedule` or `/settings`.
+  - Inline «➕ Додати адресу» appears under the greeting (when there are no addresses) and under «Адрес ще немає».
+  - «Мої адреси» carries add and remove buttons.
+  - The `Action` callback reuses the existing flows and leaves an open wizard.
+- The reply keyboard is down to four buttons. The old labels still work until a client receives the new keyboard (next `/start` or add/remove).
+- Removing an address now needs a confirmation, so an old list button can't delete anything by itself.
+- Decision: stay on SQLite. Postgres comes when a second independent DB writer appears (a separate API process, a split worker, or another service). A C# client would go through the HTTP API, not the DB.
