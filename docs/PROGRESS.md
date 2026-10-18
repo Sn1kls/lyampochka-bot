@@ -144,3 +144,17 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Bot profile set in BotFather: name «Лямпочка», descriptions, avatar.
 - Researched Volynoblenergo. It has an HTML form with free-text search and no JSON API; see `docs/volyn-notes.md`. Postponed by the owner.
 - Open: upgrade the Oracle account to Pay As You Go once the button is enabled, so the idle VM isn't reclaimed.
+
+## 2026-10-18: operations
+
+- Container logs are capped at 3 × 10 MB (`compose.yaml`).
+- Admin alert on every new user's first `/start`: «👤 Новий користувач: Ім'я @username».
+  - The name goes only into that message, never into the DB or logs.
+  - `register_user` now returns `(user_id, created)`, so the check is atomic.
+  - `Alerts.send` sends without the hourly throttle; error alerts still go through `report`.
+- Auto-deploy: after a green `make check` on `main`, the CI `deploy` job SSHes to the server.
+  - The deploy key is limited by a forced command to `git pull --ff-only && ./scripts/deploy.sh`.
+  - `deploy.sh` fails unless the bot is running 20 s after `compose up`.
+  - Secrets: `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_TARGET`.
+  - The first run (release #13) passed after a rerun; two secrets had been missing.
+- Open: Oracle Pay As You Go upgrade (the button is still disabled); Volynoblenergo is postponed.
