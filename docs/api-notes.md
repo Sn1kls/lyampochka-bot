@@ -136,8 +136,28 @@ the user choose which of them to get pushes for (the others can still be viewed)
 - `/pw_streets?pagination=false&city.id=1032` → plain array, 299 items `{id, city:"/api/pw_cities/1032", name}`.
   The site strips the `вул.` prefix for display/search.
 - `/pw-accounts/building-names?cityId=&streetId=` → `{filters:{cityId, streetId, otgId}, buildingNames:[…]}` as in SPEC.
-- `/pw_accident_planeds?…` → plain `[]` for Sadova today (shape of a non-empty item still unknown, Phase 5).
+- `/pw_accident_planeds?…` → plain `[]` for Sadova today; the shape of an item is in "Planned works" below.
 - Also in the bundle, not needed now: `/pw-accounts/building-groups`, `/pw_accounts_by_acc?account=`.
+
+## Planned works
+
+Verified live 2026-10-17 (Phase 5).
+
+- `GET /pw_accident_planeds?page=N&city.id=&street.id=&datePlanIn[after]=…` with `Accept: application/json` returns a
+  plain JSON array (no Hydra envelope), about 29 items per page. An empty array means no more pages. The site also sends
+  `otg.id` and `datePlanIn[before]`. Not cached by Cloudflare (`DYNAMIC`).
+- Item: `id`, `city{id, name}`, `street{id, name}`, `dateEvent` (start), `datePlanIn` (planned end), `koment` (reason,
+  may contain `\r\n`), `otg{…}`, `buildingNames` (comma-separated list, e.g. `"1, 3-А, 6, 6-А"`), `typeOff`.
+- **The dates are Kyiv wall-clock time with a fake `+00:00` label** (the site formats them with `timeZone: "UTC"`):
+  `08:30+00:00` means 08:30 Europe/Kyiv. The adapter keeps the clock fields, attaches Europe/Kyiv and converts to a real
+  UTC instant. The `datePlanIn[after]` filter value is likewise Kyiv wall time without offset, e.g. `2026-10-17T21:40:00`.
+- The filter is on `datePlanIn`, the planned end, so a work that has already started but not ended is still returned.
+- `typeOff` is not confirmed for this endpoint; the domain and the texts ignore it.
+- The adapter guards the wall-clock assumption: an item with a non-zero offset is skipped with a warning (a sign the
+  site changed its format). A malformed item is skipped; a page where no item matches the format raises `ApiSchemaError`.
+- Filtering by `datePlanIn[after]` works (checked on August data). On 2026-10-17 Ternopil had no planned works after
+  September, so the feature was verified on the recorded sample only.
+- Sample (three items, no personal addresses): `pw_accident_planeds_1032_sample.json`.
 
 ## Fixtures
 
@@ -150,5 +170,6 @@ the user choose which of them to get pushes for (the others can still be viewed)
 | `a_gpv_g_no_key.json` | `hydra:member: []` (no `X-debug-key`) |
 | `a_gpv_g_not_included.json` | «Не входить» building still gets 4.1 |
 | `pw_accident_planeds_1032_9985.json` | empty planned works |
+| `pw_accident_planeds_1032_sample.json` | three real planned works for Ternopil |
 
 No personal data: public catalog data and the SPEC sample address only.

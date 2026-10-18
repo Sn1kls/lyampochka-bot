@@ -51,6 +51,18 @@ class Building:
 
 
 @dataclass(frozen=True)
+class PlannedWork:
+    """Aware UTC instants; an empty `building_names` means the whole street."""
+
+    id: int
+    street_id: int
+    starts_at: datetime
+    ends_at: datetime
+    reason: str
+    building_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class DaySchedule:
     """`slots`: Kyiv wall-clock "HH:MM" -> raw value. Show `created_at` without tz conversion."""
 
@@ -65,6 +77,7 @@ class MessageKind(StrEnum):
     REMINDER_OFF = "reminder_off"
     REMINDER_ON = "reminder_on"
     SUBQUEUES_CHANGED = "subqueues_changed"
+    PLANNED_WORK = "planned_work"
 
 
 @dataclass(frozen=True)
@@ -82,6 +95,11 @@ class Subscription:
     remind_before_off_min: int
     remind_before_on_min: int
     created_at: datetime
+
+    @property
+    def instance_key(self) -> str:
+        """Id plus creation time: SQLite may reuse the id of a deleted subscription."""
+        return f"{self.id}.{int(self.created_at.timestamp())}"
 
 
 @dataclass(frozen=True)

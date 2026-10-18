@@ -320,7 +320,28 @@ def probe_building(city_id: int, street_id: int, building_name: str) -> int:
     return 0
 
 
+def probe_planned(city_id: int, after: str | None = None) -> int:
+    """Show the shape of planned works for a city; prints only."""
+    params: dict[str, object] = {"page": 1, "city.id": city_id}
+    if after:
+        params["datePlanIn[after]"] = after
+    _, headers, works = get("/pw_accident_planeds", params)
+    items = members(works)
+    print(f"  dates on page: {sorted({item['dateEvent'][:10] for item in items})}")
+    print(f"  type={type(works).__name__} items on page 1: {len(items)}")
+    print(
+        f"  total header/hydra: {works.get('hydra:totalItems') if isinstance(works, dict) else '-'}"
+    )
+    for item in items[:2]:
+        print(json.dumps(item, ensure_ascii=False))
+    if items:
+        save(f"pw_accident_planeds_{city_id}_sample.json", items[:3])
+    return 0
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["planned"]:
+        sys.exit(probe_planned(int(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else None))
     if sys.argv[1:2] == ["building"]:
         sys.exit(probe_building(int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]))
     sys.exit(main())

@@ -90,3 +90,21 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Open questions: none.
 - Deferred to phase 6: circuit breaker, admin alerts, graceful shutdown, `/status`.
 - Next step: phase 5 (planned works, optional) or phase 6 (deploy).
+
+## 2026-10-17 — phase 5 (planned works)
+
+- Done:
+  - `ToeClient.planned_works`: paginated, filtered by `datePlanIn[after]`, dates read as Kyiv wall-clock time.
+  - `PlannedWorks.check`, hourly: one request per street. It pushes «🛠 Дім: планові роботи 22.08 з 08:30 до 17:30 — Ремонт ПЛ» when the work lists the building, or lists no buildings at all.
+  - Renderer and notifier route. 252 tests; `make check` green.
+- Not checked live: Ternopil has no future planned works right now (the API has data only up to August). Tests use real recorded items (`pw_accident_planeds_1032_sample.json`).
+- Decisions:
+  - The dates are Kyiv wall time with a fake `+00:00` label; the site formats them in UTC. An item with a real offset is skipped as a format-change signal.
+  - A malformed item is skipped. If no item on a page matches the format, the page raises `ApiSchemaError`.
+  - The reason is kept to one line, at most 300 chars.
+  - A rescheduled work is announced again: the dedupe key holds its times.
+  - Dedupe keys use `Subscription.instance_key` (id + creation time), because SQLite reuses the ids of deleted subscriptions. Reminders use it too.
+  - Planned-work pushes follow the same switch as schedule updates; the settings text says so.
+  - `normalise` moved to `core/domain/text.py`.
+- Known limits: pagination always costs one extra empty-page request; there is a 10-page cap with a warning.
+- Next step: `/phase 6`.

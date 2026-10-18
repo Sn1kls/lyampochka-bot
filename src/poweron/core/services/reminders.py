@@ -77,5 +77,5 @@ def _message(
             "earliest": earliest,
             "latest": None if event.latest is None else event.latest.isoformat(),
         },
-        dedupe_key=f"remind:{subscription.id}:{cherg_gpv}:{earliest}:{kind.value}",
+        dedupe_key=f"remind:{subscription.instance_key}:{cherg_gpv}:{earliest}:{kind.value}",
     )

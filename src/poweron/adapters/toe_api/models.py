@@ -68,6 +68,19 @@ class BuildingNames(BaseModel):
     buildingNames: list[RawBuilding]
 
 
+class RawStreetRef(BaseModel):
+    id: int
+
+
+class RawPlannedWork(BaseModel):
+    id: int
+    street: RawStreetRef
+    dateEvent: AwareDatetime
+    datePlanIn: AwareDatetime
+    koment: str | None = None
+    buildingNames: str | None = None
+
+
 class BuildingGroup(BaseModel):
     chergGpv: str | None = None
 
@@ -80,4 +93,5 @@ SCHEDULES_ADAPTER = TypeAdapter(GpvCollection)
 CITIES_ADAPTER = TypeAdapter(list[RawCity])
 STREETS_ADAPTER = TypeAdapter(list[RawStreet])
 BUILDINGS_ADAPTER = TypeAdapter(BuildingNames)
+PLANNED_WORK_ADAPTER = TypeAdapter(RawPlannedWork)
 BUILDING_GROUPS_ADAPTER = TypeAdapter(BuildingGroups)

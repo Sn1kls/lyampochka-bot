@@ -1,19 +1,13 @@
-import re
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from datetime import datetime, timedelta
 
 from poweron.core.domain.models import Building, City, Street
+from poweron.core.domain.text import normalise
 from poweron.core.ports import CatalogSource, Repository, SourceError
 
 CACHE_TTL = timedelta(hours=24)
 FAILED_REFRESH_BACKOFF = timedelta(minutes=5)
-# Apostrophes, Ukrainian/Russian spelling variants and Latin letters typed instead of Cyrillic
-SPELLING = str.maketrans(
-    {"ʼ": "'", "’": "'", "‘": "'", "`": "'", "ё": "е", "є": "е"}
-    | dict(zip("aeiocpxk", "аеіосрхк", strict=True))
-)
-TYPE_PREFIX = re.compile(r"^(вул|просп|пров|бул|пл|м|с|смт|буд)\.?\s+")
 
 
 class Catalog:
@@ -77,21 +71,16 @@ class Catalog:
 
 def find_by_name[Item: (City, Street, Building)](items: list[Item], text: str) -> Item | None:
     """The item whose name is exactly what the user typed, if there is exactly one."""
-    wanted = _normalise(text)
-    matches = [item for item in items if _normalise(item.name) == wanted]
+    wanted = normalise(text)
+    matches = [item for item in items if normalise(item.name) == wanted]
     return matches[0] if len(matches) == 1 else None
 
 
-def _normalise(text: str) -> str:
-    text = text.casefold().translate(SPELLING)
-    return TYPE_PREFIX.sub("", " ".join(text.split()))
-
-
 def _search[Item: (City, Street)](items: list[Item], query: str) -> list[Item]:
-    wanted = _normalise(query)
+    wanted = normalise(query)
     if not wanted:
         return []
-    matches = [(_normalise(item.name), item) for item in items]
+    matches = [(normalise(item.name), item) for item in items]
     matches = [match for match in matches if wanted in match[0]]
     matches.sort(key=lambda match: (not match[0].startswith(wanted), match[0]))
     return [item for _, item in matches]

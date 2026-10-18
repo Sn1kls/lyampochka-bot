@@ -15,6 +15,7 @@ from poweron.core.domain.models import (
     Building,
     City,
     DaySchedule,
+    PlannedWork,
     Street,
 )
 from poweron.core.ports import ApiSchemaError, SourceUnavailable
@@ -295,3 +296,164 @@ async def test_building_subqueues_rejects_an_unexpected_shape(client: ToeClient)
 
     with pytest.raises(ApiSchemaError):
         await client.building_subqueues(1, 7, "96")
+
+
+PLANNED = load_fixture("pw_accident_planeds_1032_sample.json")
+LIFT_STREET_ID = 44479
+
+
+@respx.mock
+async def test_planned_works_are_parsed_with_kyiv_wall_clock_times(client: ToeClient) -> None:
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=PLANNED), httpx.Response(200, json=[])]
+    )
+
+    works = await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+    assert works == [
+        PlannedWork(
+            id=2421,
+            street_id=LIFT_STREET_ID,
+            starts_at=datetime(2026, 8, 22, 5, 30, tzinfo=UTC),
+            ends_at=datetime(2026, 8, 22, 14, 30, tzinfo=UTC),
+            reason="Ремонт ПЛ",
+            building_names=("1", "3-А", "6", "6-А", "6-Б", "8"),
+        )
+    ]
+
+
+@respx.mock
+async def test_planned_works_in_winter_time_use_utc_plus_two(client: ToeClient) -> None:
+    winter = copy.deepcopy(PLANNED[0])
+    winter["dateEvent"] = "2026-12-22T08:30:00+00:00"
+    winter["datePlanIn"] = "2026-12-22T17:30:00+00:00"
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=[winter]), httpx.Response(200, json=[])]
+    )
+
+    (work,) = await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+    assert work.starts_at == datetime(2026, 12, 22, 6, 30, tzinfo=UTC)
+
+
+@respx.mock
+async def test_planned_work_without_buildings_or_reason_is_whole_street(client: ToeClient) -> None:
+    bare = copy.deepcopy(PLANNED[0]) | {"buildingNames": None, "koment": None}
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=[bare]), httpx.Response(200, json=[])]
+    )
+
+    (work,) = await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+    assert work.building_names == ()
+    assert work.reason == ""
+
+
+@respx.mock
+async def test_planned_work_reason_is_one_line(client: ToeClient) -> None:
+    messy = copy.deepcopy(PLANNED[2]) | {"street": {"id": LIFT_STREET_ID, "name": "x"}}
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=[messy]), httpx.Response(200, json=[])]
+    )
+
+    (work,) = await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+    assert work.reason == "ТП 400071 тр-р № 1 камера тр-ра № 1 Заміна тр-ра"
+
+
+@respx.mock
+async def test_planned_works_follow_pages_until_an_empty_one(client: ToeClient) -> None:
+    second = copy.deepcopy(PLANNED[0]) | {"id": 2500}
+    route = respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[
+            httpx.Response(200, json=[PLANNED[0]]),
+            httpx.Response(200, json=[second]),
+            httpx.Response(200, json=[]),
+        ]
+    )
+
+    works = await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+    assert [work.id for work in works] == [2421, 2500]
+    assert [call.request.url.params["page"] for call in route.calls] == ["1", "2", "3"]
+
+
+@respx.mock
+async def test_planned_works_stop_after_ten_pages(client: ToeClient) -> None:
+    route = respx.get(f"{API}/pw_accident_planeds").respond(json=[PLANNED[0]])
+
+    await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+    assert route.call_count == 10
+
+
+@respx.mock
+async def test_planned_works_request_filters_by_street_and_kyiv_wall_time(
+    client: ToeClient,
+) -> None:
+    route = respx.get(f"{API}/pw_accident_planeds").respond(json=[])
+
+    await client.planned_works(1032, LIFT_STREET_ID, datetime(2026, 10, 17, 18, 40, tzinfo=UTC))
+
+    params = route.calls.last.request.url.params
+    assert params["city.id"] == "1032"
+    assert params["street.id"] == str(LIFT_STREET_ID)
+    assert params["datePlanIn[after]"] == "2026-10-17T21:40:00"
+    assert params["page"] == "1"
+
+
+@respx.mock
+async def test_planned_works_of_other_streets_are_dropped(client: ToeClient) -> None:
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=PLANNED), httpx.Response(200, json=[])]
+    )
+
+    works = await client.planned_works(1032, 10057, NOW)
+
+    assert [work.id for work in works] == [1571]
+
+
+@respx.mock
+async def test_planned_works_with_an_unexpected_shape_raise_schema_error(
+    client: ToeClient,
+) -> None:
+    respx.get(f"{API}/pw_accident_planeds").respond(json=[{"id": 1}])
+    with pytest.raises(ApiSchemaError):
+        await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+
+@respx.mock
+async def test_a_malformed_planned_work_is_skipped_not_the_whole_street(client: ToeClient) -> None:
+    broken = copy.deepcopy(PLANNED[0]) | {"datePlanIn": None, "id": 9}
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=[broken, PLANNED[0]]), httpx.Response(200, json=[])]
+    )
+
+    works = await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+    assert [work.id for work in works] == [2421]
+
+
+@respx.mock
+async def test_a_real_time_offset_breaks_the_wall_clock_assumption_and_is_skipped(
+    client: ToeClient,
+) -> None:
+    shifted = copy.deepcopy(PLANNED[0]) | {"dateEvent": "2026-08-22T08:30:00+03:00"}
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=[shifted]), httpx.Response(200, json=[])]
+    )
+
+    assert await client.planned_works(1032, LIFT_STREET_ID, NOW) == []
+
+
+@respx.mock
+async def test_a_long_planned_work_reason_is_cut(client: ToeClient) -> None:
+    wordy = copy.deepcopy(PLANNED[0]) | {"koment": "ремонт " * 200}
+    respx.get(f"{API}/pw_accident_planeds").mock(
+        side_effect=[httpx.Response(200, json=[wordy]), httpx.Response(200, json=[])]
+    )
+
+    (work,) = await client.planned_works(1032, LIFT_STREET_ID, NOW)
+
+    assert len(work.reason) <= 300
+    assert work.reason.endswith("…")

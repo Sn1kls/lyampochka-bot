@@ -86,6 +86,13 @@ SUBQUEUES = {
     "current": ["2.2#3", "4.1#7"],
     "tracked": ["4.1#7"],
 }
+PLANNED_WORK = {
+    "subscription_id": 1,
+    "label": "Дім",
+    "starts_at": "2026-08-22T05:30:00+00:00",
+    "ends_at": "2026-08-22T14:30:00+00:00",
+    "reason": "Ремонт ПЛ",
+}
 
 
 @pytest.mark.parametrize(
@@ -94,6 +101,7 @@ SUBQUEUES = {
         ("reminder_off", REMINDER, "⏰ <b>Дім</b>: за 15 хв можуть вимкнути світло"),
         ("reminder_on", REMINDER, "💡 <b>Дім</b>: за 15 хв мають дати світло"),
         ("subqueues_changed", SUBQUEUES, "🔄 Для <b>Дім</b> змінилися черги."),
+        ("planned_work", PLANNED_WORK, "🛠 <b>Дім</b>: планові роботи 22.08 з 08:30 до 17:30"),
     ],
 )
 async def test_new_kinds_are_rendered_and_sent(

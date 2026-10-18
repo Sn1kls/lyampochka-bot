@@ -8,7 +8,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from poweron.core.domain.models import MessageKind
 from poweron.core.ports import DeliveryTargetGone
 
-from .render import render_reminder, render_subqueues_changed, render_update
+from .render import render_planned_work, render_reminder, render_subqueues_changed, render_update
 
 SEND_INTERVAL = 0.04
 CHAT_GONE_MARKERS = ("chat not found", "user not found")
@@ -24,6 +24,8 @@ def _render(kind: str, payload: Mapping[str, Any]) -> str:
             return render_reminder(payload, power_on=True)
         case MessageKind.SUBQUEUES_CHANGED:
             return render_subqueues_changed(payload)
+        case MessageKind.PLANNED_WORK:
+            return render_planned_work(payload)
         case _:
             raise ValueError(f"unknown message kind {kind!r}")
 

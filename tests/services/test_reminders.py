@@ -83,7 +83,7 @@ async def test_off_reminder_fires_only_inside_the_window_and_only_once(
         "latest": kyiv(TODAY, 20).isoformat(),
     }
     assert message.dedupe_key == (
-        f"remind:{subscription.id}:4.1:{kyiv(TODAY, 20).isoformat()}:reminder_off"
+        f"remind:{subscription.instance_key}:4.1:{kyiv(TODAY, 20).isoformat()}:reminder_off"
     )
 
 
