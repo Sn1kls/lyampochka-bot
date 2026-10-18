@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from pathlib import Path
@@ -300,6 +302,21 @@ class SqlRepository:
     async def count_users(self) -> int:
         async with self._engine.connect() as connection:
             return await connection.scalar(select(func.count()).select_from(users)) or 0
+
+    async def snapshot(self) -> bytes:
+        if self._engine.dialect.name != "sqlite":
+            raise NotImplementedError("snapshots are implemented for SQLite only")
+        copy = sqlite3.connect(":memory:", check_same_thread=False)
+        try:
+            async with self._engine.connect() as connection:
+                driver = (await connection.get_raw_connection()).driver_connection
+                if driver is None:
+                    raise RuntimeError("the database connection is closed")
+                # SQLite's online backup API: consistent even while the bot keeps writing.
+                await driver.backup(copy)
+            return await asyncio.to_thread(copy.serialize)
+        finally:
+            copy.close()
 
     async def user_ids_on(self, channel: str) -> list[int]:
         async with self._engine.connect() as connection:

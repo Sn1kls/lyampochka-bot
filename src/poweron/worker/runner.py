@@ -5,6 +5,8 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 
+from poweron.core.ports import Heartbeat
+from poweron.core.services.backups import Backups
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.planned_works import PlannedWorks
@@ -18,6 +20,7 @@ NEW_SUBQUEUE_INTERVAL = 10.0
 REMINDER_INTERVAL = 60.0
 CHECK_SUBQUEUES_INTERVAL = 3600.0
 PLANNED_WORKS_INTERVAL = 3600.0
+BACKUP_INTERVAL = 600.0
 POLL_JITTER = 20.0
 MIN_DELAY = 1.0
 
@@ -30,6 +33,8 @@ async def run_worker(
     planned_works: PlannedWorks,
     poll_interval: float,
     stop: asyncio.Event,
+    heartbeat: Heartbeat | None = None,
+    backups: Backups | None = None,
 ) -> None:
     """Runs the jobs until `stop` is set.
 
@@ -38,12 +43,14 @@ async def run_worker(
     async with asyncio.TaskGroup() as group:
         group.create_task(
             repeat(
-                lambda: polling.poll(datetime.now(UTC), stop.is_set),
+                lambda: poll_then_beat(polling, heartbeat, stop),
                 stop,
                 poll_interval,
                 POLL_JITTER,
             )
         )
+        if backups is not None:
+            group.create_task(repeat(lambda: backups.run(datetime.now(UTC)), stop, BACKUP_INTERVAL))
         group.create_task(
             repeat(
                 lambda: polling.poll_new(datetime.now(UTC), stop.is_set),
@@ -71,6 +78,15 @@ async def run_worker(
                 PLANNED_WORKS_INTERVAL,
             )
         )
+
+
+async def poll_then_beat(
+    polling: Polling, heartbeat: Heartbeat | None, stop: asyncio.Event
+) -> None:
+    """The heartbeat follows a finished poll: it says the worker runs, not that every fetch worked."""
+    await polling.poll(datetime.now(UTC), stop.is_set)
+    if heartbeat is not None:
+        await heartbeat.beat()
 
 
 async def repeat(
