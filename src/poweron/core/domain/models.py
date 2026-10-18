@@ -78,6 +78,7 @@ class MessageKind(StrEnum):
     REMINDER_ON = "reminder_on"
     SUBQUEUES_CHANGED = "subqueues_changed"
     PLANNED_WORK = "planned_work"
+    MENU_UPDATED = "menu_updated"
 
 
 @dataclass(frozen=True)

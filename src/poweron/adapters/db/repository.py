@@ -225,10 +225,9 @@ class SqlRepository:
             for message in messages:
                 await _enqueue(connection, message)
 
-    async def enqueue_messages(self, messages: list[OutboxMessage]) -> None:
+    async def enqueue_messages(self, messages: list[OutboxMessage]) -> int:
         async with self._engine.begin() as connection:
-            for message in messages:
-                await _enqueue(connection, message)
+            return sum([await _enqueue(connection, message) for message in messages])
 
     async def last_polled_at(self, cherg_gpv: str) -> datetime | None:
         async with self._engine.connect() as connection:
@@ -301,6 +300,17 @@ class SqlRepository:
     async def count_users(self) -> int:
         async with self._engine.connect() as connection:
             return await connection.scalar(select(func.count()).select_from(users)) or 0
+
+    async def user_ids_on(self, channel: str) -> list[int]:
+        async with self._engine.connect() as connection:
+            return list(
+                await connection.scalars(
+                    select(delivery_targets.c.user_id)
+                    .where(delivery_targets.c.channel == channel, delivery_targets.c.is_active)
+                    .distinct()
+                    .order_by(delivery_targets.c.user_id)
+                )
+            )
 
     async def count_pending_messages(self, max_attempts: int) -> int:
         async with self._engine.connect() as connection:
@@ -403,19 +413,21 @@ async def _insert_subqueues(
     )
 
 
-async def _enqueue(connection: AsyncConnection, message: OutboxMessage) -> None:
+async def _enqueue(connection: AsyncConnection, message: OutboxMessage) -> bool:
     duplicate = await connection.scalar(
         select(func.count()).where(outbox.c.dedupe_key == message.dedupe_key)
     )
-    if not duplicate:
-        await connection.execute(
-            outbox.insert().values(
-                user_id=message.user_id,
-                kind=message.kind,
-                payload=message.payload,
-                dedupe_key=message.dedupe_key,
-            )
+    if duplicate:
+        return False
+    await connection.execute(
+        outbox.insert().values(
+            user_id=message.user_id,
+            kind=message.kind,
+            payload=message.payload,
+            dedupe_key=message.dedupe_key,
         )
+    )
+    return True
 
 
 async def _load(
