@@ -139,6 +139,13 @@ outbox = Table(
     Index("ix_outbox_pending", "sent_at", "next_attempt_at"),
 )
 
+subqueue_polls = Table(
+    "subqueue_polls",
+    metadata,
+    Column("cherg_gpv", String(32), primary_key=True),
+    Column("polled_at", UtcDateTime, nullable=False),
+)
+
 catalog_cache = Table(
     "catalog_cache",
     metadata,

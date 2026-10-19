@@ -51,15 +51,15 @@ class Polling:
         """
         # Shares the lock with poll() so a subqueue is never fetched twice at once.
         async with self._lock:
-            never_polled = {
+            without_versions = {
                 cherg_gpv: subscribers
                 for cherg_gpv, subscribers in (await self._by_subqueue()).items()
-                if await self._repository.last_polled_at(cherg_gpv) is None
+                if await self._repository.last_version_at(cherg_gpv) is None
                 and now - self._new_attempts.get(cherg_gpv, datetime.min.replace(tzinfo=UTC))
                 >= NEW_SUBQUEUE_RETRY
             }
-            self._new_attempts.update(dict.fromkeys(never_polled, now))
-            await self._poll_each(never_polled, now, should_stop)
+            self._new_attempts.update(dict.fromkeys(without_versions, now))
+            await self._poll_each(without_versions, now, should_stop)
 
     async def _by_subqueue(self) -> dict[str, list[Subscription]]:
         """Every queue of a building is fetched, so that the untracked ones can be viewed too."""
@@ -103,18 +103,20 @@ class Polling:
     ) -> tuple[int, int]:
         """Returns how many versions were new and how many messages were queued."""
         schedules = await self._source.fetch_schedules(subscribers[0].address, cherg_gpv)
-        last_polled_at = await self._repository.last_polled_at(cherg_gpv)
-        # A change is news only to subscribers who already had the previous poll's data;
-        # for everyone else (and on the very first poll) this poll is their first load.
+        previous_poll = await self._repository.polled_at(cherg_gpv)
+        # A change is news only to subscribers who already had the previous poll's data, even
+        # an empty one; for everyone else (and on the very first poll) this is their first load.
         recipients = [
             subscription
             for subscription in subscribers
             if subscription.notify_on_update
             and cherg_gpv in subscription.tracked_subqueues
-            and last_polled_at is not None
-            and subscription.created_at <= last_polled_at
+            and previous_poll is not None
+            and subscription.created_at <= previous_poll
         ]
         stored = [await self._store(schedule, recipients, now) for schedule in schedules]
+        # Recorded after the stores, so a poll that crashes while saving still looks stale.
+        await self._repository.mark_polled(cherg_gpv, now)
         return sum(is_new for is_new, _ in stored), sum(count for _, count in stored)
 
     async def _store(

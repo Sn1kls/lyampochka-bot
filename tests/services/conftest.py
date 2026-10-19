@@ -3,8 +3,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
 
-from poweron.core.domain.models import Address, DaySchedule
+from poweron.adapters.db.repository import SqlRepository
+from poweron.core.domain.models import Address, Building, City, DaySchedule, Street
 from poweron.core.ports import SourceUnavailable
+from poweron.core.services.subscriptions import Subscriptions
 
 TODAY = date(2026, 10, 17)
 TOMORROW = date(2026, 10, 18)
@@ -43,3 +45,16 @@ class FakeNotifier:
         if self.errors:
             raise self.errors.pop(0)
         self.sent.append((address, kind, payload))
+
+
+async def subscribe(repository: SqlRepository, external_id: str = "101") -> int:
+    """One subscription to subqueue 4.1, created at NOW."""
+    subscriptions = Subscriptions(repository)
+    user_id = await subscriptions.register("telegram", external_id, "telegram", external_id)
+    city, street = (
+        City(id=1032, name="Тернопіль", otg_name=None),
+        Street(id=9985, name="вул. Садова"),
+    )
+    building = Building(1, "1", "4.1")
+    await subscriptions.add(user_id, "Дім", city, street, building, ["4.1"], ["4.1"], NOW)
+    return user_id

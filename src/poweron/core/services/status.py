@@ -17,7 +17,11 @@ class Status:
         subscriptions = await self._repository.all_subscriptions()
         subqueues = sorted({cherg_gpv for item in subscriptions for cherg_gpv in item.subqueues})
         polled = [
-            SubqueueStatus(cherg_gpv, await self._repository.last_polled_at(cherg_gpv))
+            SubqueueStatus(
+                cherg_gpv,
+                await self._repository.polled_at(cherg_gpv),
+                await self._repository.latest_schedule_day(cherg_gpv),
+            )
             for cherg_gpv in subqueues
         ]
         return StatusReport(

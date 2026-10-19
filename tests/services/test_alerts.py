@@ -6,7 +6,6 @@ import pytest
 from poweron.adapters.db.repository import SqlRepository
 from poweron.core.domain.models import (
     AlertKind,
-    Building,
     City,
     MessageKind,
     OutboxMessage,
@@ -21,7 +20,7 @@ from poweron.core.services.polling import Polling
 from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
 from tests.fakes import FakeAlerter
-from tests.services.conftest import NOW
+from tests.services.conftest import NOW, subscribe
 
 TERNOPIL = City(id=1032, name="Тернопіль", otg_name=None)
 SADOVA = Street(id=9985, name="вул. Садова")
@@ -50,14 +49,6 @@ def alerter() -> FakeAlerter:
 @pytest.fixture
 def alerts(alerter: FakeAlerter) -> Alerts:
     return Alerts(alerter)
-
-
-async def subscribe(repository: SqlRepository, external_id: str = "101") -> int:
-    subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", external_id, "telegram", external_id)
-    building = Building(1, "1", "4.1")
-    await subscriptions.add(user_id, "Дім", TERNOPIL, SADOVA, building, ["4.1"], ["4.1"], NOW)
-    return user_id
 
 
 async def test_one_alert_per_kind_per_interval(alerter: FakeAlerter, alerts: Alerts) -> None:
@@ -189,4 +180,8 @@ async def test_status_counts_what_is_pending(repository: SqlRepository) -> None:
     assert report.stale_after == timedelta(minutes=15)
     assert (report.users, report.subscriptions, report.pending_messages) == (2, 2, 1)
     [subqueue] = report.subqueues
-    assert (subqueue.cherg_gpv, subqueue.last_polled_at) == ("4.1", None)
+    assert (subqueue.cherg_gpv, subqueue.polled_at, subqueue.latest_schedule_day) == (
+        "4.1",
+        None,
+        None,
+    )

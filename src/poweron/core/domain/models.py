@@ -165,7 +165,8 @@ class AlertKind(StrEnum):
 @dataclass(frozen=True)
 class SubqueueStatus:
     cherg_gpv: str
-    last_polled_at: datetime | None
+    polled_at: datetime | None
+    latest_schedule_day: date | None
 
 
 @dataclass(frozen=True)
