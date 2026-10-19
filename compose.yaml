@@ -1,6 +1,9 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
     env_file: .env
     environment:
       DATABASE_URL: sqlite+aiosqlite:////data/poweron.sqlite3

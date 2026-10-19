@@ -12,5 +12,6 @@ class Settings(BaseSettings):
     poll_interval_sec: float = 300
     contact: str = "n/a"
     log_level: str = "INFO"
+    git_sha: str = "dev"
     healthcheck_url: SecretStr | None = None
     backup_password: SecretStr | None = None

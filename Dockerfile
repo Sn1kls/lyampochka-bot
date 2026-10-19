@@ -16,4 +16,8 @@ USER app
 ENV PATH="/app/.venv/bin:$PATH" \
     DATABASE_URL="sqlite+aiosqlite:////data/poweron.sqlite3"
 
+# Last, so a new commit only rebuilds this layer.
+ARG GIT_SHA=dev
+ENV GIT_SHA=$GIT_SHA
+
 CMD ["python", "-m", "poweron", "all"]
