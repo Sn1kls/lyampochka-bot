@@ -328,13 +328,21 @@ def render_status(report: StatusReport, now: datetime) -> str:
         ),
     ]
     for subqueue in report.subqueues:
-        polled = subqueue.last_polled_at
-        stale = polled is None or now - polled > report.stale_after
+        label = subqueue_label(subqueue.cherg_gpv)
+        polled, day = subqueue.polled_at, subqueue.latest_schedule_day
+        if polled is None:
+            lines.append(texts.STATUS_NEVER_POLLED.format(label=label))
+            continue
+        stale = now - polled > report.stale_after
         template = texts.STATUS_SUBQUEUE_STALE if stale else texts.STATUS_SUBQUEUE
-        polled_text = (
-            texts.STATUS_NEVER_POLLED
-            if polled is None
-            else f"{polled.astimezone(KYIV):%d.%m %H:%M}"
+        schedule = (
+            texts.STATUS_NO_SCHEDULE
+            if day is None
+            else texts.STATUS_LAST_SCHEDULE.format(day=f"{day:%d.%m}")
         )
-        lines.append(template.format(label=subqueue_label(subqueue.cherg_gpv), polled=polled_text))
+        lines.append(
+            template.format(
+                label=label, polled=f"{polled.astimezone(KYIV):%d.%m %H:%M}", schedule=schedule
+            )
+        )
     return "\n".join(lines)

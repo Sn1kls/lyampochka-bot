@@ -180,6 +180,18 @@ async def test_registering_twice_returns_the_same_user(repository: SqlRepository
     assert await subscriptions.register("telegram", "101", "telegram", "101") == first
 
 
+async def test_a_subscriber_who_joined_while_the_source_was_empty_gets_the_first_schedule(
+    repository: SqlRepository, source: FakeSource, notifier: FakeNotifier
+) -> None:
+    await subscribe(repository, "101")
+    await cycle(repository, source, notifier)  # the source has nothing yet
+
+    source.schedules = {"4.1": [day_schedule(outages={"11:00": "1"})]}
+    await cycle(repository, source, notifier, NOW + timedelta(minutes=5))
+
+    assert [(address, kind) for address, kind, _ in notifier.sent] == [("101", "schedule_updated")]
+
+
 async def test_new_subscriber_to_an_abandoned_subqueue_gets_no_stale_update(
     repository: SqlRepository, source: FakeSource, notifier: FakeNotifier
 ) -> None:

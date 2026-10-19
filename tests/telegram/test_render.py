@@ -483,16 +483,16 @@ def test_planned_work_escapes_label_and_reason() -> None:
     assert text.endswith("a &lt; b &amp; c")
 
 
-def test_status_flags_stale_and_unpolled_subqueues() -> None:
+def test_status_separates_the_last_poll_from_the_last_schedule() -> None:
     report = StatusReport(
         version="0.1.0",
         users=2,
         subscriptions=3,
         pending_messages=1,
         subqueues=(
-            SubqueueStatus("4.1#7", NOW - timedelta(minutes=5)),
-            SubqueueStatus("2.2#1", NOW - timedelta(minutes=16)),
-            SubqueueStatus("1.1", None),
+            SubqueueStatus("4.1#7", NOW - timedelta(minutes=5), date(2026, 10, 15)),
+            SubqueueStatus("2.2#1", NOW - timedelta(minutes=16), None),
+            SubqueueStatus("1.1", None, None),
         ),
         stale_after=timedelta(minutes=15),
     )
@@ -500,8 +500,8 @@ def test_status_flags_stale_and_unpolled_subqueues() -> None:
     assert render_status(report, NOW) == (
         "📊 <b>Лямпочка 0.1.0</b>\n"
         "Користувачів: 2, адрес: 3, у черзі розсилки: 1\n"
-        "4.1: 17.10 17:15\n"
-        "⚠️ 2.2: 17.10 17:04\n"
+        "4.1: опитано 17.10 17:15, останній графік на 15.10\n"
+        "⚠️ 2.2: опитано 17.10 17:04, графіків ще немає\n"
         "⚠️ 1.1: ще не опитувалась"
     )
 
@@ -512,7 +512,7 @@ def test_status_stale_threshold_comes_from_the_report() -> None:
         users=1,
         subscriptions=1,
         pending_messages=0,
-        subqueues=(SubqueueStatus("4.1", NOW - timedelta(minutes=16)),),
+        subqueues=(SubqueueStatus("4.1", NOW - timedelta(minutes=16), None),),
         stale_after=timedelta(minutes=20),
     )
 
