@@ -18,6 +18,7 @@ from poweron.adapters.db.tables import (
     identities,
     outbox,
     schedule_versions,
+    subqueue_polls,
     subscription_subqueues,
     subscriptions,
     users,
@@ -231,14 +232,50 @@ class SqlRepository:
         async with self._engine.begin() as connection:
             return sum([await _enqueue(connection, message) for message in messages])
 
-    async def last_polled_at(self, cherg_gpv: str) -> datetime | None:
+    async def last_version_at(self, cherg_gpv: str) -> datetime | None:
         async with self._engine.connect() as connection:
-            polled_at: datetime | None = await connection.scalar(
+            fetched_at: datetime | None = await connection.scalar(
                 select(func.max(schedule_versions.c.fetched_at)).where(
                     schedule_versions.c.cherg_gpv == cherg_gpv
                 )
             )
-            return polled_at
+            return fetched_at
+
+    async def mark_polled(self, cherg_gpv: str, at: datetime) -> None:
+        if await self._update_poll(cherg_gpv, at):
+            return
+        try:
+            async with self._engine.begin() as connection:
+                await connection.execute(
+                    subqueue_polls.insert().values(cherg_gpv=cherg_gpv, polled_at=at)
+                )
+        except IntegrityError:  # a concurrent writer inserted the row first
+            await self._update_poll(cherg_gpv, at)
+
+    async def _update_poll(self, cherg_gpv: str, at: datetime) -> bool:
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                update(subqueue_polls)
+                .where(subqueue_polls.c.cherg_gpv == cherg_gpv)
+                .values(polled_at=at)
+            )
+            return result.rowcount > 0
+
+    async def latest_schedule_day(self, cherg_gpv: str) -> date | None:
+        async with self._engine.connect() as connection:
+            day: date | None = await connection.scalar(
+                select(func.max(schedule_versions.c.date_graph)).where(
+                    schedule_versions.c.cherg_gpv == cherg_gpv
+                )
+            )
+            return day
+
+    async def polled_at(self, cherg_gpv: str) -> datetime | None:
+        async with self._engine.connect() as connection:
+            polled: datetime | None = await connection.scalar(
+                select(subqueue_polls.c.polled_at).where(subqueue_polls.c.cherg_gpv == cherg_gpv)
+            )
+            return polled
 
     async def latest_version(self, cherg_gpv: str, day: date) -> ScheduleVersion | None:
         async with self._engine.connect() as connection:

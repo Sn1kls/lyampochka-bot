@@ -187,6 +187,8 @@ BACKUP_CAPTION = "🗄 Бекап бази {name}, зашифрований па
 
 STATUS_TITLE = "📊 <b>Лямпочка {version}</b>"
 STATUS_COUNTS = "Користувачів: {users}, адрес: {subscriptions}, у черзі розсилки: {pending}"
-STATUS_SUBQUEUE = "{label}: {polled}"
-STATUS_SUBQUEUE_STALE = "⚠️ {label}: {polled}"
-STATUS_NEVER_POLLED = "ще не опитувалась"
+STATUS_SUBQUEUE = "{label}: опитано {polled}, {schedule}"
+STATUS_SUBQUEUE_STALE = "⚠️ {label}: опитано {polled}, {schedule}"
+STATUS_NEVER_POLLED = "⚠️ {label}: ще не опитувалась"
+STATUS_LAST_SCHEDULE = "останній графік на {day}"
+STATUS_NO_SCHEDULE = "графіків ще немає"

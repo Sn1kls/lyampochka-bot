@@ -185,3 +185,22 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - The heartbeat means "the worker runs", not "the API answers". API trouble already has its own alerts.
   - Backups are SQLite-only; with another database they are switched off with a log line.
 - Reviews: simplify, code-review, security-review (no findings).
+
+## 2026-10-19: real poll times in /status
+
+- Bug: `/status` showed ⚠️ for every subqueue and «ще не опитувалась» for a new one, although the worker polled every 5 minutes.
+  - "Last poll" was the newest stored schedule version (phase 6 decision).
+  - Since 18.10 Ternopiloblenergo publishes no schedules for our queues, so nothing new was stored.
+- Fix: a successful fetch, with or without schedules, records its time in the new `subqueue_polls` table (migration `3a7c1e9d5b20`).
+  - `/status` shows the poll time and the newest schedule day: «4.1: опитано 19.10 22:45, останній графік на 17.10» or «графіків ще немає».
+  - ⚠️ now means the bot really stopped reaching the source: no successful poll for 3 intervals. A failed fetch is not a poll.
+- The poll time is recorded after the schedules are stored, so a poll that crashes while saving still shows ⚠️.
+- Also fixed (found by code review):
+  - Before, a user who subscribed while the source published nothing got no push when schedules came back: the first schedule counted as their "first load".
+  - Push recipients are now everyone subscribed before the previous successful poll, even an empty one.
+  - Test: `test_a_subscriber_who_joined_while_the_source_was_empty_gets_the_first_schedule`.
+- `Repository.last_polled_at` is renamed to `last_version_at`. Only `poll_new` uses it now, to retry subqueues that have no versions yet.
+- Backups after the first night:
+  - one test backup was sent by hand on 18.10;
+  - the first automatic one came on 19.10 at 04:03 Kyiv;
+  - from now on, one a night between 04:00 and ~04:10.
