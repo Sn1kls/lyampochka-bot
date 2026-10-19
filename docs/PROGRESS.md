@@ -204,3 +204,11 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - one test backup was sent by hand on 18.10;
   - the first automatic one came on 19.10 at 04:03 Kyiv;
   - from now on, one a night between 04:00 and ~04:10.
+
+## 2026-10-19: versioning
+
+- Version 0.2.0 (was 0.1.0 since phase 1). `/status` shows `0.2.0 (<commit>)`: `deploy.sh` passes `git rev-parse --short HEAD` as the `GIT_SHA` build arg. A local `make up` shows `dev`.
+- Release process (SemVer, 0.x while the bot is personal):
+  - minor (0.3.0) for a release with features, patch (0.2.1) for fixes only;
+  - the bump commit goes into `develop` before the release PR;
+  - after the deploy, tag `vX.Y.Z` on `main` and create a GitHub Release whose notes list the merged PRs.

@@ -3,7 +3,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-docker compose up -d --build --remove-orphans
+GIT_SHA=$(git rev-parse --short HEAD) docker compose up -d --build --remove-orphans
 # A crash on startup shows up as "restarting", not "running", once the container has had time to fail.
 sleep 20
 docker compose ps

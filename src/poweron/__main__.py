@@ -76,7 +76,7 @@ async def run(role: str, settings: Settings) -> None:
                     Schedules(repository),
                     status=Status(
                         repository,
-                        version("poweron"),
+                        f"{version('poweron')} ({settings.git_sha})",
                         timedelta(seconds=settings.poll_interval_sec),
                     ),
                     admin_chat_id=settings.admin_chat_id,
