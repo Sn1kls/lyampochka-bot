@@ -1,103 +1,107 @@
-# Лямпочка
+# Lyampochka
 
-Telegram-бот `@lyampochka_bot`, який показує графіки погодинних відключень світла (ГПВ) Тернопільобленерго, пише, коли оновився графік, і нагадує перед вимкненням та поверненням світла. Бот лише перший клієнт ядра `poweron`; повна специфікація в `docs/SPEC.md`.
+During scheduled power outages in Ukraine, the question "when will the lights go out today?" comes up several times a day. The answer is on the utility's website, but you have to remember to check it, find your address, and check again when the schedule changes.
 
-## Створення бота
+Lyampochka ([@lyampochka_bot](https://t.me/lyampochka_bot)) does that for you. You give it your address once, and it:
 
-1. У Telegram відкрий [@BotFather](https://t.me/BotFather) і надішли `/newbot`. Обери ім'я та username, збережи токен.
-2. Опційно: `/setjoingroups` → вимкнути. Бот працює лише в особистих чатах.
+- shows the outage schedule for that address;
+- lets you know when the schedule has been updated;
+- reminds you shortly before the power goes off and before it comes back.
 
-## Налаштування
+Right now it works for the Ternopil region, using data from Ternopiloblenergo. More regions are next (see [Roadmap](#roadmap)).
+
+## How it's built
+
+The Telegram bot is the first client of a small core called `poweron`. The core knows about addresses, schedules and reminders, but nothing about Telegram, HTTP or databases. Everything external plugs in through a few interfaces:
+
+- `ScheduleSource` / `CatalogSource`: where schedules and addresses come from. Today that's the Ternopiloblenergo API (`adapters/toe_api`). Another region means another adapter, with no changes to the core.
+- `Repository`: storage (SQLite through async SQLAlchemy).
+- `Notifier` and `Clock`: sending messages and telling the time, so the core can be tested without Telegram or a real clock.
+
+`import-linter` checks these boundaries in CI, and `mypy --strict` runs on the core.
+
+**Stack:** Python (asyncio), aiogram 3, httpx, SQLAlchemy 2 (async) + Alembic, SQLite, pydantic, Docker, GitHub Actions, ruff, mypy, import-linter, pytest.
+
+The utility's API is unofficial and can change without warning. When its format changes or it stops responding, the bot sends me an alert in Telegram, at most once an hour per problem.
+
+The database stores people's addresses, so the nightly backup the bot sends me is encrypted (scrypt + Fernet).
+
+Every push to `main` runs the checks and deploys over SSH. The deploy key on the server can only pull `main` and restart the bot.
+
+The worker pings [healthchecks.io](https://healthchecks.io) after every poll. If the server or the worker goes down, the pings stop and healthchecks.io alerts me.
+
+The full spec (in Ukrainian) is in [`docs/SPEC.md`](docs/SPEC.md).
+
+## Run it yourself
+
+You'll need Docker and a bot token from [@BotFather](https://t.me/BotFather) (`/newbot`).
 
 ```bash
-cp .env.example .env
+cp .env.example .env   # fill in BOT_TOKEN, ADMIN_CHAT_ID, CONTACT
+make up                # build and start in the background
+make logs              # watch what's happening
+make down              # stop
 ```
 
-| Змінна | Що це |
+| Variable | What it's for |
 | --- | --- |
-| `BOT_TOKEN` | токен від BotFather |
-| `ADMIN_CHAT_ID` | твій chat id: сюди приходять алерти, і лише тут працює `/status`. Дізнатися його можна в [@userinfobot](https://t.me/userinfobot); для особистого чату він збігається з твоїм user id |
-| `CONTACT` | твій контакт (email чи @username): іде в User-Agent запитів до API обленерго, щоб його власники могли з тобою зв'язатися |
-| `POLL_INTERVAL_SEC` | як часто опитувати API, за замовчуванням 300 |
+| `BOT_TOKEN` | the token from BotFather |
+| `ADMIN_CHAT_ID` | your own chat id: alerts and `/status` go here. [@userinfobot](https://t.me/userinfobot) will tell you yours |
+| `CONTACT` | your email or @username. It goes into the User-Agent, so the utility can reach you if the bot bothers their API |
+| `POLL_INTERVAL_SEC` | how often to check for new schedules, 300 seconds by default |
 
-Решта змінних у `.env.example` мають робочі значення.
+Everything else in `.env.example` works out of the box. Data lives in the `data` Docker volume, and the bot needs about 200 MB of RAM.
 
-## Запуск
-
-```bash
-make up     # зібрати образ і запустити у фоні
-make logs   # дивитися логи
-make down   # зупинити
-```
-
-Дані (SQLite) живуть у docker volume `data`. Бот споживає близько 200 МБ пам'яті (сам aiogram важить близько 120 МБ), ліміт контейнера 512 МБ.
-
-## Деплой на сервері
-
-Підійде будь-який VPS, що працює постійно. Вхідні порти відкривати не треба: бот працює через long polling.
+For development:
 
 ```bash
-# встанови Docker (https://docs.docker.com/engine/install/)
-git clone <адреса репозиторію> poweron && cd poweron
-cp .env.example .env   # заповни BOT_TOKEN, ADMIN_CHAT_ID, CONTACT
-make up
+uv sync
+make check   # format, lint, mypy, layer rules, tests
+make run     # bot and worker in one process
 ```
 
-Оновлення: `git pull && make up`. Міграції бази застосовуються самі при старті.
+## Running it on a server
 
-### Автодеплой
+Any always-on VPS works, and no inbound ports are needed because the bot uses long polling. Clone the repo, fill in `.env`, and run `make up`. To update: `git pull && make up` (migrations run on startup).
 
-Після кожного пушу в `main` CI проганяє `make check`, а тоді job `deploy` заходить на сервер по SSH. Ключ деплою на сервері обмежений однією командою, тож навіть якщо він витече, ним можна лише задеплоїти те, що вже лежить у `main`. У `~/.ssh/authorized_keys` на сервері він виглядає так:
+<details>
+<summary>Automatic deploy from GitHub Actions</summary>
+
+After every push to `main`, CI runs `make check` and then the `deploy` job connects over SSH. On the server the deploy key is limited to a single command, so even a leaked key can only deploy what's already in `main`:
 
 ```
 restrict,command="cd /home/ubuntu/lyampochka-bot && git pull --ff-only -q && exec ./scripts/deploy.sh" ssh-ed25519 AAAA... github-actions-deploy
 ```
 
-Секрети репозиторію: `DEPLOY_SSH_KEY` (приватний ключ), `DEPLOY_KNOWN_HOSTS` (рядок сервера з `known_hosts`), `DEPLOY_TARGET` (`ubuntu@<IP>`). Ручний запуск: Actions → check → Run workflow на гілці `main`.
+Repository secrets: `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_TARGET` (`ubuntu@<IP>`).
+</details>
 
-## Бекап
+<details>
+<summary>Backups and restoring</summary>
 
-```bash
-make backup
-```
+`make backup` writes a consistent copy of the database to `backups/` (even while the bot is running). Backups contain users' addresses, so keep them private.
 
-Цілісна копія бази, навіть поки бот працює (через `sqlite3.backup`), лягає в `backups/poweron-РРРРммдд-ГГххсс.sqlite3`. Бекапи містять персональні дані (адреси користувачів), тож каталог `backups/` має права 700; не копіюй їх у публічні місця.
-
-Відновлення:
+If `ADMIN_CHAT_ID` and `BACKUP_PASSWORD` are set, the bot also sends an encrypted backup to the admin chat every day around 04:00 Kyiv time. Keep the password in a password manager: without it the backup can't be restored. To restore one:
 
 ```bash
+uv run python scripts/restore_backup.py poweron-YYYY-MM-DD.sqlite3.enc backups/restored.sqlite3
 make down
 docker compose run --rm --no-deps -v "$PWD/backups:/backups" bot \
-    cp /backups/poweron-РРРРммдд-ГГххсс.sqlite3 /data/poweron.sqlite3
+    cp /backups/restored.sqlite3 /data/poweron.sqlite3
 make up
 ```
+</details>
 
-### Щоденний бекап у Telegram
+<details>
+<summary>Admin commands</summary>
 
-Якщо в `.env` задані `ADMIN_CHAT_ID` і `BACKUP_PASSWORD`, бот щодня близько 04:00 (Київ) надсилає в адмін-чат файл `poweron-РРРР-ММ-ДД.sqlite3.enc`.
-- Файл зашифрований паролем `BACKUP_PASSWORD` (scrypt + Fernet). Збережи пароль у менеджері паролів: без нього бекап не відновити.
-- Якщо о 4-й бот не працював, бекап за цей день пропускається.
+`/status` works only from `ADMIN_CHAT_ID`: version, number of users and addresses, queued notifications, and for each outage group when the utility was last polled and which day the latest schedule covers. A ⚠️ shows up only if the bot really can't reach the utility. New users are announced in the same chat ("👤 New user: Name @username"); names aren't stored.
+</details>
 
-Відновлення з такого файлу:
+## Roadmap
 
-```bash
-uv run python scripts/restore_backup.py poweron-РРРР-ММ-ДД.sqlite3.enc backups/restored.sqlite3
-```
+- More regions, starting with Volyn. My notes on the Volynoblenergo website are in [`docs/volyn-notes.md`](docs/volyn-notes.md). It has no JSON API, so it will need a different kind of adapter.
+- Other regional utilities, each as its own adapter next to `toe_api`.
+- More clients for the same core, for example a mobile app on top of an HTTP API.
 
-Скрипт спитає пароль (або візьме `BACKUP_PASSWORD` з оточення) і перевірить цілісність бази. Далі — кроки відновлення вище, з цим файлом.
-
-## Моніторинг
-
-Якщо задано `HEALTHCHECK_URL`, воркер після кожного опитування (раз на ~5 хв) пінгує його. На [healthchecks.io](https://healthchecks.io) створи check з Period 5 хв і Grace 10 хв і підключи сповіщення. Якщо сервер, контейнер чи воркер ляже, пінги припиняться, і прийде алерт, навіть коли бот сам уже нічого надіслати не може.
-
-## Адмінка
-
-`/status` (лише з `ADMIN_CHAT_ID`, у меню команд його немає): версія, кількість користувачів і адрес, розсилки в черзі і по кожній підчерзі коли бот востаннє успішно опитав обленерго і на який день є останній графік. ⚠️ з'являється, лише якщо останнє опитування старше трьох інтервалів, тобто бот справді не може достукатися до обленерго. Якщо обленерго просто не публікує графіків (відключень немає), рядок виглядає так: «4.1: опитано 19.10 22:45, останній графік на 17.10». Коли API обленерго змінює формат або довго не відповідає, у той самий чат приходить алерт, не частіше разу на годину для кожного типу. Про кожного нового користувача (перший `/start`) туди ж приходить «👤 Новий користувач: Ім'я @username»; ім'я ніде не зберігається.
-
-## Розробка
-
-```bash
-uv sync
-make check   # формат, лінт, mypy, перевірка шарів, тести
-make run     # бот і воркер в одному процесі (потрібен .env)
-```
+Ideas and bug reports are welcome in Issues.
