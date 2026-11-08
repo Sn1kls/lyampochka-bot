@@ -8,8 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/sh</string>
-        <string>-c</string>
-        <string>__REPO__/scripts/sync_volyn_queues.sh</string>
+        <string>__DIR__/sync_volyn_queues.sh</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
