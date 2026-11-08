@@ -12,7 +12,7 @@ from poweron.core.domain.models import (
     StatusReport,
     Subscription,
 )
-from poweron.core.domain.providers import plain_subqueue
+from poweron.core.domain.providers import TOE, VOE, plain_subqueue, provider_of
 
 from . import texts
 
@@ -24,6 +24,20 @@ STATE_LINES = {
     SlotState.SWITCHING: texts.LINE_SWITCHING,
     SlotState.UNKNOWN: texts.LINE_UNKNOWN,
 }
+
+
+def _site(provider: str) -> tuple[str, str]:
+    """The oblenergo's schedule page."""
+    return {TOE: texts.SITE_TERNOPIL, VOE: texts.SITE_VOLYN}[provider]
+
+
+def _note(provider: str) -> str:
+    return texts.NOTE.format(site=_site(provider)[1])
+
+
+def _link(provider: str) -> str:
+    url, site = _site(provider)
+    return texts.UPDATE_LINK.format(url=url, site=site)
 
 
 def queue_name(cherg_gpv: str) -> str:
@@ -103,7 +117,7 @@ def render_day(
     by_queue = {view.cherg_gpv: view for view in views}
     shown = list(queues or subscription.tracked_subqueues)
     if not views and len(subscription.subqueues) <= 1:
-        return "\n\n".join([title, missing, texts.NOTE])
+        return "\n\n".join([title, missing, _note(subscription.provider)])
     not_loaded = texts.QUEUE_NOT_LOADED if day <= today else texts.NO_SCHEDULE_TOMORROW
     blocks = [
         _queue_block(by_queue[queue], day, now)
@@ -113,9 +127,9 @@ def render_day(
     ]
     if len(blocks) == 1:
         header, *rest = blocks[0]
-        return "\n\n".join([f"{title}\n{header}", *rest, texts.NOTE])
+        return "\n\n".join([f"{title}\n{header}", *rest, _note(subscription.provider)])
     texts_per_queue = [f"{header}\n" + "\n\n".join(rest) for header, *rest in blocks]
-    return "\n\n".join([title, *texts_per_queue, texts.NOTE])
+    return "\n\n".join([title, *texts_per_queue, _note(subscription.provider)])
 
 
 def _queue_block(view: DayView, day: date, now: datetime) -> list[str]:
@@ -197,7 +211,8 @@ def render_update(payload: Mapping[str, Any]) -> str:
             intervals = _intervals(payload[key])
             if intervals:
                 parts.append(f"{heading}\n{_lines(intervals, day)}")
-    parts += [texts.NOTE, texts.UPDATE_LINK]
+    provider = provider_of(payload["cherg_gpv"])
+    parts += [_note(provider), _link(provider)]
     return "\n\n".join(parts)
 
 
@@ -230,7 +245,9 @@ def render_reminder(payload: Mapping[str, Any], *, power_on: bool) -> str:
 
 def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
     if not payload["current"]:
-        return texts.SUBQUEUES_GONE.format(label=escape(payload["label"]))
+        return texts.SUBQUEUES_GONE.format(
+            label=escape(payload["label"]), link=_link(provider_of(payload["previous"][0]))
+        )
     return texts.SUBQUEUES_CHANGED.format(
         label=escape(payload["label"]),
         previous=_queue_list(payload["previous"]),
