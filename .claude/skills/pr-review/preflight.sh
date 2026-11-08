@@ -32,7 +32,16 @@ RANGE="$BASE..HEAD"
 NOT_REVIEWED=(':!uv.lock' ':!tests/fixtures/**' ':!*.png' ':!*.jpg' ':!*.jpeg' ':!*.gif' ':!*.ico' ':!*.pdf')
 PATCH="$(git rev-parse --absolute-git-dir)/pr-review/diff.patch"
 mkdir -p "$(dirname "$PATCH")"
-git diff "$RANGE" -- . "${NOT_REVIEWED[@]}" > "$PATCH"
+# Each hunk line is prefixed with its line number in the new file (blank for removed lines),
+# so findings cite file lines, not patch lines.
+git diff "$RANGE" -- . "${NOT_REVIEWED[@]}" | awk '
+  /^diff --git / { in_hunk = 0 }
+  /^@@/ { match($0, /\+[0-9]+/); line = substr($0, RSTART + 1, RLENGTH - 1) + 0; in_hunk = 1; print; next }
+  !in_hunk { print; next }
+  /^-/ { printf "      %s\n", $0; next }
+  /^\\/ { print; next }
+  { printf "%5d %s\n", line, $0; line++ }
+' > "$PATCH"
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
