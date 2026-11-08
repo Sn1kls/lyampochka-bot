@@ -147,7 +147,7 @@ jobs:
           PR_BASE_REF: ${{ needs.context.outputs.base_ref }}
         # The SDK itself is pinned, its dependencies are not: this step holds the Anthropic key.
         run: >-
-          uv run --no-project --no-config --with claude-agent-sdk==0.2.167
+          uv run --no-project --no-config --with claude-agent-sdk==0.2.179
           python "$RUNNER_TEMP/run_ai_review.py" --schema "$RUNNER_TEMP/report.schema.json"
 
       - name: Measure run cost
