@@ -10,7 +10,7 @@
 set -eu
 : "${VOE_SYNC_TARGET:?set VOE_SYNC_TARGET=user@server}"
 cd "$(dirname "$0")/.."
-export_file="$(mktemp -t volyn-queues).jsonl.gz"
+export_file="$(mktemp -t volyn-queues)"
 trap 'rm -f "$export_file"' EXIT
 
 uv run python scripts/export_volyn_queues.py "$export_file"

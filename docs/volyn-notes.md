@@ -151,6 +151,9 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
 - Import:
   - one transaction (~2 s on the Mac for 257 k rows); SQLite's busy timeout is raised to 30 s so the bot waits instead of failing;
   - refused below 80 % of the stored buildings unless `--force`;
-  - reports «N будинків (було M), змінилось K» to stdout and, if anything changed, to the admin chat.
+  - a row with an empty or over-long name is skipped and counted, so one odd address does not block every import; a file not in the export format is refused;
+  - the cached Volyn lists (`voe:*` in `catalog_cache`) are dropped in the same transaction, so the wizard sees the new catalogue at once;
+  - runs as `python -m poweron.import_voe` in a short-lived container (`docker compose run --rm`), without aiogram: peak ~310 MB, was ~700 MB;
+  - reports «N buildings (was M), K changed, S rows skipped» to stdout and, if anything changed, to the admin chat.
 - `VoeCatalogAge`: a daily admin alert when there was no import yet or the last one is older than 10 days.
 - The database grows by ~29 MB with the catalogue. The nightly backup goes to Telegram, whose bot upload limit is 50 MB, so watch the size.

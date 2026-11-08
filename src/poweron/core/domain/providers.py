@@ -6,8 +6,10 @@ other providers' subqueues are namespaced ("voe:6.1").
 
 TOE = "toe"
 VOE = "voe"
+# catalog_cache keys of the Volyn lists; every import clears them.
+VOE_CACHE_PREFIX = "voe:"
 # The catalog_cache row whose `fetched_at` is the last Volyn catalogue import.
-VOE_CATALOG_IMPORTED_KEY = "voe:imported"
+VOE_CATALOG_IMPORTED_KEY = VOE_CACHE_PREFIX + "imported"
 
 
 def provider_of(cherg_gpv: str) -> str:

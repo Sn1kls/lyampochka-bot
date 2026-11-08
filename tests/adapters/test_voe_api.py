@@ -240,6 +240,23 @@ async def test_server_errors_are_retried_then_unavailable(client: VoeClient) -> 
 
 
 @respx.mock
+async def test_a_failed_pass_is_not_retried_by_every_subqueue(
+    client: VoeClient, clock: FakeClock
+) -> None:
+    listing = respx.get(LIST_URL).respond(503)
+
+    for subqueue in ("voe:1.1", "voe:1.2"):
+        with pytest.raises(SourceUnavailable):
+            await client.fetch_schedules(ADDRESS, subqueue)
+    assert listing.call_count == 3
+
+    clock.monotonic_now += 61
+    with pytest.raises(SourceUnavailable):
+        await client.fetch_schedules(ADDRESS, "voe:1.1")
+    assert listing.call_count == 6
+
+
+@respx.mock
 async def test_client_errors_are_not_retried(client: VoeClient) -> None:
     listing = respx.get(LIST_URL).respond(404)
 

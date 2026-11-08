@@ -17,11 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from poweron.adapters.db.tables import catalog_cache, voe_buildings
 from poweron.core.domain.models import Building, City, Street
-from poweron.core.domain.providers import VOE, VOE_CATALOG_IMPORTED_KEY, scoped_subqueue
+from poweron.core.domain.providers import (
+    VOE,
+    VOE_CACHE_PREFIX,
+    VOE_CATALOG_IMPORTED_KEY,
+    scoped_subqueue,
+)
 
 SUBQUEUE = re.compile(r"^[1-6]\.[12]$")
 MAX_NAME_LENGTHS = (64, 128, 128, 64)  # district, settlement, street, building
 MAX_EXPORT_BYTES = 200_000_000
+MAX_LINE_BYTES = 4096
 MIN_KEPT_SHARE = 0.8
 IMPORT_CHUNK = 5000
 
@@ -46,30 +52,44 @@ class ImportSummary:
     changed: int  # buildings whose queues differ from the previous import, new ones included
 
 
-def parse_export(compressed: bytes) -> list[CatalogRow]:
-    """Validate a `scripts/export_volyn_queues.py` file; raise CatalogImportRefused if malformed."""
+def parse_export(compressed: bytes) -> tuple[list[CatalogRow], int]:
+    """Rows of a `scripts/export_volyn_queues.py` file and how many were skipped.
+
+    A row with an empty or over-long name is skipped, so one odd address on the site does not
+    block every weekly import (MIN_KEPT_SHARE still catches a broken export). A file that is
+    not in the export format is refused.
+    """
+    rows: list[CatalogRow] = []
+    skipped = size = 0
     try:
+        # Read line by line with bounded reads: neither a gzip bomb nor the whole
+        # document ever sits in memory.
         with gzip.GzipFile(fileobj=io.BytesIO(compressed)) as unpacked:
-            raw = unpacked.read(MAX_EXPORT_BYTES + 1)  # bounded: never inflate a gzip bomb
-        if len(raw) > MAX_EXPORT_BYTES:
-            raise CatalogImportRefused("export is too large")
-        # One JSON array per line, parsed line by line: the whole document never sits in memory.
-        rows = [_row(json.loads(line)) for line in raw.decode().splitlines() if line]
+            while line := unpacked.readline(MAX_LINE_BYTES + 1):
+                size += len(line)
+                if size > MAX_EXPORT_BYTES or len(line) > MAX_LINE_BYTES:
+                    raise CatalogImportRefused("export is too large")
+                if not line.strip():
+                    continue
+                if row := _row(json.loads(line)):
+                    rows.append(row)
+                else:
+                    skipped += 1
     except (OSError, EOFError, ValueError) as error:
         raise CatalogImportRefused(f"not an export file: {error}") from error
     if not rows:
         raise CatalogImportRefused("the export is empty")
-    return rows
+    return rows, skipped
 
 
-def _row(item: Any) -> CatalogRow:
+def _row(item: Any) -> CatalogRow | None:
     if not (isinstance(item, list) and len(item) == 5):
         raise CatalogImportRefused(f"bad row: {item!r}")
     district, settlement, street, building, subqueue = item
     names = (district, settlement, street, building)
     for name, max_length in zip(names, MAX_NAME_LENGTHS, strict=True):
         if not (isinstance(name, str) and 0 < len(name) <= max_length):
-            raise CatalogImportRefused(f"bad name in row: {item!r}")
+            return None
     if subqueue is not None and not (isinstance(subqueue, str) and SUBQUEUE.match(subqueue)):
         raise CatalogImportRefused(f"bad subqueue in row: {item!r}")
     # The same district, settlement and street names repeat in thousands of rows.
@@ -161,10 +181,10 @@ class VoeCatalog:
             for start in range(0, len(rows), IMPORT_CHUNK):  # chunks keep the peak memory low
                 chunk = [_values(row) for row in rows[start : start + IMPORT_CHUNK]]
                 await connection.execute(voe_buildings.insert(), chunk)
-            # Written here rather than through the repository, so the marker and the
-            # catalogue change in the same transaction.
+            # Written here rather than through the repository, so the cached lists, the marker
+            # and the catalogue change in the same transaction.
             await connection.execute(
-                delete(catalog_cache).where(catalog_cache.c.key == VOE_CATALOG_IMPORTED_KEY)
+                delete(catalog_cache).where(catalog_cache.c.key.startswith(VOE_CACHE_PREFIX))
             )
             await connection.execute(
                 catalog_cache.insert().values(

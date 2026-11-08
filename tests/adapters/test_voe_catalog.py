@@ -49,9 +49,27 @@ async def kivertsi_nezalezhnosti(catalog: VoeCatalog) -> tuple[int, int]:
 
 
 def test_parse_export_reads_the_export_format() -> None:
-    rows = parse_export(export([["Луцький", "Ківерці", "Незалежності", "19", "6.1"]]))
+    parsed = parse_export(export([["Луцький", "Ківерці", "Незалежності", "19", "6.1"]]))
 
-    assert rows == [CatalogRow("Луцький", "Ківерці", "Незалежності", "19", "6.1")]
+    assert parsed == ([CatalogRow("Луцький", "Ківерці", "Незалежності", "19", "6.1")], 0)
+
+
+def test_a_row_with_an_odd_name_is_skipped_not_fatal() -> None:
+    good = ["Луцький", "Ківерці", "Незалежності", "19", None]
+    rows, skipped = parse_export(
+        export(
+            [good, ["Луцький", "Бахів", "", "1", "1.1"], ["Луцький", "Бахів", "x", "y" * 65, None]]
+        )
+    )
+
+    assert (len(rows), skipped) == (1, 2)
+
+
+def test_a_gzip_bomb_is_refused_without_inflating_it() -> None:
+    bomb = gzip.compress(b"[" + b" " * 10_000)  # one endless line
+
+    with pytest.raises(CatalogImportRefused, match="too large"):
+        parse_export(bomb)
 
 
 @pytest.mark.parametrize(
@@ -63,8 +81,7 @@ def test_parse_export_reads_the_export_format() -> None:
         export([{"rows": []}]),
         export([["Луцький", "Ківерці", "Незалежності", "19"]]),
         export([["Луцький", "Ківерці", "Незалежності", "19", "7.1"]]),
-        export([["Луцький", "", "Незалежності", "19", "6.1"]]),
-        export([["Луцький", "Ківерці", "Незалежності", "x" * 65, "6.1"]]),
+        export([["Луцький", "", "Незалежності", "19", "6.1"]]),  # nothing left after skipping
     ],
 )
 def test_parse_export_refuses_a_malformed_file(broken: bytes) -> None:
@@ -120,6 +137,18 @@ async def test_a_reimport_replaces_rows_and_counts_changed_buildings(
     assert await catalog.building_subqueues(city_id, street_id, "19") == ["voe:5.2"]
     cached = await repository.cached_catalog(VOE_CATALOG_IMPORTED_KEY)
     assert cached is not None and cached[1] == NOW
+
+
+async def test_a_reimport_drops_the_cached_volyn_lists(
+    catalog: VoeCatalog, repository: SqlRepository
+) -> None:
+    await repository.store_catalog("voe:cities", [], NOW)
+    await repository.store_catalog("cities", [{"id": 1}], NOW)
+
+    await catalog.replace(ROWS, NOW)
+
+    assert await repository.cached_catalog("voe:cities") is None
+    assert await repository.cached_catalog("cities") is not None
 
 
 async def test_a_much_smaller_export_is_refused_unless_forced(catalog: VoeCatalog) -> None:

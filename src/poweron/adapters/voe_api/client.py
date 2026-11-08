@@ -14,7 +14,7 @@ from pydantic import AwareDatetime, BaseModel, Field, StringConstraints, Validat
 from poweron.adapters.voe_api.image import SUBQUEUES, decode_schedule
 from poweron.core.domain.models import KYIV, Address, DaySchedule
 from poweron.core.domain.providers import plain_subqueue
-from poweron.core.ports import ApiSchemaError, SourceUnavailable
+from poweron.core.ports import ApiSchemaError, SourceError, SourceUnavailable
 
 ATTEMPTS = 3
 RETRY_STATUSES = {429, 500, 502, 503, 504}
@@ -65,6 +65,7 @@ class VoeClient:
         self._cache_lock = asyncio.Lock()
         self._current: tuple[float, date, dict[date, tuple[datetime, dict[str, str]]]] | None = None
         self._images: OrderedDict[str, dict[str, str]] = OrderedDict()
+        self._failure: tuple[float, SourceError] | None = None
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -95,20 +96,32 @@ class VoeClient:
                 expires_at, cached_day, grids = self._current
                 if cached_day == today and self._monotonic() < expires_at:
                     return grids
-            newest: dict[date, _Item] = {}
-            tomorrow = today + timedelta(days=1)
-            for item in await self._items(today, tomorrow):
-                day = item.dateGraph.date()
-                if day not in (today, tomorrow):  # the server ignores a filter it cannot parse
-                    continue
-                if day not in newest or item.dateCreate > newest[day].dateCreate:
-                    newest[day] = item
-            grids = {
-                day: (item.dateCreate, await self._grid(item.imageUrl.contentUrl))
-                for day, item in newest.items()
-            }
+            # One failed pass is enough: the other subqueues of this poll fail at once
+            # instead of each retrying for ~10 s under the request lock.
+            if self._failure and self._monotonic() < self._failure[0]:
+                raise type(self._failure[1])(str(self._failure[1]))
+            try:
+                grids = await self._fetch_grids(today)
+            except SourceError as error:
+                self._failure = (self._monotonic() + LIST_CACHE_SECONDS, error)
+                raise
+            self._failure = None
             self._current = (self._monotonic() + LIST_CACHE_SECONDS, today, grids)
             return grids
+
+    async def _fetch_grids(self, today: date) -> dict[date, tuple[datetime, dict[str, str]]]:
+        newest: dict[date, _Item] = {}
+        tomorrow = today + timedelta(days=1)
+        for item in await self._items(today, tomorrow):
+            day = item.dateGraph.date()
+            if day not in (today, tomorrow):  # the server ignores a filter it cannot parse
+                continue
+            if day not in newest or item.dateCreate > newest[day].dateCreate:
+                newest[day] = item
+        return {
+            day: (item.dateCreate, await self._grid(item.imageUrl.contentUrl))
+            for day, item in newest.items()
+        }
 
     async def _items(self, first_day: date, last_day: date) -> list[_Item]:
         params: dict[str, Any] = {

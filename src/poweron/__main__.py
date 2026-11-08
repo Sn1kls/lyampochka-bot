@@ -17,7 +17,7 @@ from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.adapters.toe_api.client import ToeClient
 from poweron.adapters.voe_api.client import VoeClient
 from poweron.config import Settings
-from poweron.core.domain.providers import TOE, VOE
+from poweron.core.domain.providers import TOE, VOE, VOE_CACHE_PREFIX
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.backups import Backups
 from poweron.core.services.catalog import Catalog
@@ -80,7 +80,7 @@ async def run(role: str, settings: Settings) -> None:
                     Subscriptions(repository, alerts),
                     {
                         TOE: Catalog(repository, toe_client),
-                        VOE: Catalog(repository, voe_catalog, cache_prefix="voe:"),
+                        VOE: Catalog(repository, voe_catalog, cache_prefix=VOE_CACHE_PREFIX),
                     },
                     Schedules(repository),
                     status=Status(

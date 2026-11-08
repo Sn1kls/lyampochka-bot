@@ -25,14 +25,14 @@ def main() -> None:
     settings = Settings()  # values come from the environment
     run_migrations(settings.database_url)
     try:
-        rows = parse_export(sys.stdin.buffer.read())
+        rows, skipped = parse_export(sys.stdin.buffer.read())
         summary = asyncio.run(_replace(settings.database_url, rows, "--force" in sys.argv))
     except CatalogImportRefused as error:
         sys.exit(f"import refused: {error}")
     del rows  # free the catalogue before aiogram is loaded for the admin message
     report = (
-        f"{summary.buildings} будинків (було {summary.previous_buildings}), "
-        f"змінилось {summary.changed}"
+        f"{summary.buildings} buildings (was {summary.previous_buildings}), "
+        f"{summary.changed} changed, {skipped} rows skipped"
     )
     print(report)
     if summary.changed and settings.admin_chat_id is not None:
