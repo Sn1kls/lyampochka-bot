@@ -212,3 +212,14 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - minor (0.3.0) for a release with features, patch (0.2.1) for fixes only;
   - the bump commit goes into `develop` before the release PR;
   - after the deploy, tag `vX.Y.Z` on `main` and create a GitHub Release whose notes list the merged PRs.
+
+## 2026-11-08: Volyn, second look
+
+- Reopened Volynoblenergo: the owner now lives in Ківерці and wants the whole oblast. Full findings and the agreed plan are in `docs/volyn-notes.md`.
+- Found:
+  - the queue lookup (`cherga/`) gives `6.1`-style subqueues per address;
+  - the schedule search needs a fresh PHP session per search;
+  - the inneti API behind the archive has no schedule data (PNG images only);
+  - no outages were scheduled in Volyn, so the schedule result format is still unseen.
+- Added `scripts/probe_volyn.py` and `tests/fixtures/voe_*.html`.
+- **Blocked:** from the production server energy.volyn.ua answers a Cloudflare challenge (403). We don't get around it. The owner has to choose: ask Volynoblenergo for access, fetch from a device in Ukraine, or move hosting.
