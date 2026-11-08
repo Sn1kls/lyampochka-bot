@@ -62,6 +62,7 @@ type = "independence"
 modules = [
     "poweron.adapters.db",
     "poweron.adapters.toe_api",
+    "poweron.adapters.voe_api",
     "poweron.adapters.telegram",
     "poweron.adapters.healthcheck",
 ]
