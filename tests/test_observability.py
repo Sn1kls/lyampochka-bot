@@ -31,13 +31,15 @@ def settings(**values: Any) -> Settings:
 
 
 @pytest.fixture
-def transport() -> Iterator[CapturingTransport]:
+def transport(monkeypatch: pytest.MonkeyPatch) -> Iterator[CapturingTransport]:
     options = sentry_options(settings(sentry_dsn="https://key@o1.ingest.sentry.io/2"))
     assert options is not None
     capturing = CapturingTransport()
     sentry_sdk.init(**options, transport=capturing)
     yield capturing
-    sentry_sdk.init()  # back to a disabled client
+    # Back to a disabled client: init() without a DSN would read SENTRY_DSN from the environment.
+    monkeypatch.delenv("SENTRY_DSN", raising=False)
+    sentry_sdk.init()
 
 
 def test_sentry_is_off_without_a_dsn() -> None:
@@ -57,6 +59,7 @@ async def test_an_error_reaches_sentry_without_addresses_or_secrets(
     async with httpx.AsyncClient() as client:
         await client.get("https://api.example.test/a_gpv_g", params={"time": ADDRESS})
     logging.getLogger("poweron.worker").warning("telegram said no to bot%s", TOKEN)
+    logging.getLogger("poweron.worker").warning("encoded: %s", TOKEN.replace(":", "%3A"))
 
     try:
         failing_job()
@@ -71,10 +74,29 @@ async def test_an_error_reaches_sentry_without_addresses_or_secrets(
             frame.pop(key, None)
     sent = json.dumps(event, ensure_ascii=False)
     breadcrumbs = event["breadcrumbs"]["values"]
-    assert [crumb["category"] for crumb in breadcrumbs] == ["poweron.worker"]
+    assert {crumb["category"] for crumb in breadcrumbs} == {"poweron.worker"}
+    assert isinstance(event["timestamp"], str) and "T" in event["timestamp"]
     assert event["release"].startswith("poweron@") and event["release"].endswith("+abc1234")
     assert "RuntimeError" in sent
     assert ADDRESS not in sent  # no local variables, no httpx breadcrumb with the URL
     assert "api.example.test" not in sent
     assert TOKEN not in sent
+    assert TOKEN.partition(":")[2] not in sent
     assert all("vars" not in frame for frame in frames)
+
+
+def test_a_schema_error_names_fields_not_the_values_it_got() -> None:
+    from pydantic import BaseModel, ValidationError
+
+    from poweron.core.ports import ApiSchemaError
+
+    class Building(BaseModel):
+        id: int
+
+    try:
+        Building.model_validate({"id": "Незалежності 19"})
+    except ValidationError as error:
+        schema_error = ApiSchemaError.from_validation("toe api", error)
+
+    assert "id" in str(schema_error)
+    assert "Незалежності" not in str(schema_error)

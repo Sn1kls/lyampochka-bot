@@ -53,3 +53,20 @@ async def test_migration_keeps_the_queue_of_an_existing_subscription(tmp_path: P
     [subscription] = await repository.all_subscriptions()
     assert subscription.subqueues == ("4.1",)
     assert subscription.tracked_subqueues == ("4.1",)
+
+
+async def test_database_errors_do_not_carry_row_values(database_url: str) -> None:
+    """Errors reach logs and Sentry; their text must not hold addresses or chat ids."""
+    engine = create_engine(database_url)
+    insert = text("INSERT INTO catalog_cache (key, value, fetched_at) VALUES (:key, '[]', :now)")
+    try:
+        async with engine.begin() as connection:
+            values = {"key": "вул. Незалежності 19", "now": "2026-11-08 00:00:00"}
+            await connection.execute(insert, values)
+            with pytest.raises(Exception) as caught:
+                await connection.execute(insert, values)
+    finally:
+        await engine.dispose()
+
+    assert "UNIQUE" in str(caught.value)
+    assert "Незалежності" not in str(caught.value)
