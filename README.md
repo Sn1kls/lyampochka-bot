@@ -77,6 +77,14 @@ Repository secrets: `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_TARGET` (`ub
 </details>
 
 <details>
+<summary>AI review on pull requests</summary>
+
+`.github/workflows/ai-pr-review.yml` reviews a PR when it is opened, reopened or marked ready, and again on a `/ai-review` comment. It runs the `pr-review` skill (`.claude/skills/pr-review/`) through the Claude Agent SDK and posts inline comments for critical findings plus one summary comment. It is advisory and never blocks a merge. The skill and scripts are always taken from the base branch, never from the PR.
+
+Repository secret: `ANTHROPIC_API_KEY`. Optional variable: `AI_REVIEW_MODEL` (default `claude-sonnet-5-5`).
+</details>
+
+<details>
 <summary>Backups and restoring</summary>
 
 `make backup` writes a consistent copy of the database to `backups/` (even while the bot is running). Backups contain users' addresses, so keep them private.
