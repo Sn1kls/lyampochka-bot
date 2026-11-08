@@ -517,3 +517,18 @@ def test_status_stale_threshold_comes_from_the_report() -> None:
     )
 
     assert "⚠️" not in render_status(report, NOW)
+
+
+def test_a_volyn_address_points_to_volynoblenergo_not_ternopil() -> None:
+    volyn = replace(SUBSCRIPTION, subqueues=("voe:6.1",), tracked_subqueues=("voe:6.1",))
+    slots = {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
+    update = update_payload(None, slots | {"23:00": "1"}) | {"cherg_gpv": "voe:6.1"}
+    gone = {"label": "Дім", "previous": ["voe:6.1"], "current": [], "tracked": ["voe:6.1"]}
+
+    for text in (
+        render_day(volyn, [], TOMORROW, NOW),
+        render_update(update),
+        render_subqueues_changed(gone),
+    ):
+        assert "energy.volyn.ua" in text
+        assert "toe.com.ua" not in text

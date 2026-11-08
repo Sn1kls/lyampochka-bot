@@ -53,11 +53,17 @@ backup:
 sync-volyn:
 	VOE_SYNC_TARGET=$(TARGET) scripts/sync_volyn_queues.sh
 
+VOLYN_SYNC_DIR = $(HOME)/.local/share/lyampochka-volyn-sync
+
 install-volyn-sync:
 	@test -n "$(TARGET)" || (echo "usage: make install-volyn-sync TARGET=user@server" && exit 1)
-	sed -e "s|__REPO__|$(CURDIR)|" -e "s|__TARGET__|$(TARGET)|" -e "s|__HOME__|$(HOME)|" \
+	@# launchd jobs may not read /Volumes/*, so the job runs copies kept in the home folder.
+	mkdir -p $(VOLYN_SYNC_DIR)
+	cp scripts/sync_volyn_queues.sh scripts/export_volyn_queues.py $(VOLYN_SYNC_DIR)/
+	sed -e "s|__DIR__|$(VOLYN_SYNC_DIR)|" -e "s|__TARGET__|$(TARGET)|" -e "s|__HOME__|$(HOME)|" \
 		scripts/volyn-sync.plist.template > ~/Library/LaunchAgents/ua.lyampochka.volyn-sync.plist
 	launchctl bootout gui/$$(id -u)/ua.lyampochka.volyn-sync 2>/dev/null || true
 	launchctl bootstrap gui/$$(id -u) ~/Library/LaunchAgents/ua.lyampochka.volyn-sync.plist
 	@echo "installed: every Monday 10:00, log in ~/Library/Logs/lyampochka-volyn-sync.log"
+	@echo "rerun after changing either script: the job uses the copies in $(VOLYN_SYNC_DIR)"
 

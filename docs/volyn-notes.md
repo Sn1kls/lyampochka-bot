@@ -148,6 +148,8 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
 - `scripts/sync_volyn_queues.sh`: export, then `ssh … docker compose run --rm --no-deps -T bot python -m poweron.import_voe < file`.
   - `make sync-volyn TARGET=…` runs it once.
   - `make install-volyn-sync TARGET=…` installs a launchd job: Mondays 10:00, run on wake if missed, log in `~/Library/Logs/lyampochka-volyn-sync.log`.
+  - macOS does not let launchd jobs read external volumes (`/Volumes/SSD`: «Operation not permitted», exit 126). So the install copies `sync_volyn_queues.sh` and the stdlib-only `export_volyn_queues.py` to `~/.local/share/lyampochka-volyn-sync/`, and the job runs those copies. Rerun the install after changing either script.
+  - Checked on 2026-11-08 with `launchctl kickstart`: exit 0, 204 s, «257035 buildings (was 257035), 0 changed».
 - Import:
   - one transaction (~2 s on the Mac for 257 k rows); SQLite's busy timeout is raised to 30 s so the bot waits instead of failing;
   - refused below 80 % of the stored buildings unless `--force`;

@@ -11,6 +11,7 @@ from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.core.ports import DeliveryTargetGone
 
 PAYLOAD = {
+    "cherg_gpv": "4.1",
     "day": "2026-10-17",
     "label": "Дім",
     "previous": None,

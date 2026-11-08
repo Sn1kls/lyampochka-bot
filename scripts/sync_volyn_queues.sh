@@ -6,14 +6,16 @@
 #
 #   VOE_SYNC_TARGET=ubuntu@<server> scripts/sync_volyn_queues.sh
 #
-# Installed as a launchd job by `make install-volyn-sync`.
+# Installed as a launchd job by `make install-volyn-sync`, which copies this script and
+# export_volyn_queues.py out of the repo: macOS does not let launchd jobs read external
+# volumes such as /Volumes/SSD. Both files must sit side by side; the export is stdlib only.
 set -eu
 : "${VOE_SYNC_TARGET:?set VOE_SYNC_TARGET=user@server}"
-cd "$(dirname "$0")/.."
-export_file="$(mktemp -t volyn-queues)"
+here="$(cd "$(dirname "$0")" && pwd)"
+export_file="$(mktemp "${TMPDIR:-/tmp}/volyn-queues.XXXXXX")"
 trap 'rm -f "$export_file"' EXIT
 
-uv run python scripts/export_volyn_queues.py "$export_file"
+python3 "$here/export_volyn_queues.py" "$export_file"
 ssh "$VOE_SYNC_TARGET" \
     'cd ~/lyampochka-bot && docker compose run --rm --no-deps -T bot python -m poweron.import_voe' \
     < "$export_file"

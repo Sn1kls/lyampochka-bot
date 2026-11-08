@@ -1,5 +1,10 @@
 BRAND = "Лямпочка"
-SITE_URL = "https://poweron.toe.com.ua"
+# Each oblenergo's own schedule page: (link, what the user sees).
+SITE_TERNOPIL = ("https://poweron.toe.com.ua", "poweron.toe.com.ua")
+SITE_VOLYN = (
+    "https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/hrafik-vidkliuchen/",
+    "energy.volyn.ua",
+)
 
 MENU_SCHEDULE = "📅 Графік"
 MENU_NEXT = "⏭ Що далі"
@@ -112,7 +117,7 @@ NO_SCHEDULE_TODAY = (
 )
 NO_SCHEDULE_TOMORROW = "Графіка на завтра ще немає — щойно з'явиться, напишу."
 STALE_DATA = "⚠️ Дані могли застаріти: востаннє з сайту оновлено {checked}."
-NOTE = "Графік може змінюватися впродовж дня, тож поглядай і на poweron.toe.com.ua"
+NOTE = "Графік може змінюватися впродовж дня, тож поглядай і на {site}"
 
 NEXT_OFF = "світло вимкнуть о {latest} (через {delta})"
 NEXT_OFF_WINDOW = "світло можуть вимкнути з {earliest}, точно — о {latest} (через {delta})"
@@ -132,7 +137,7 @@ UPDATE_NEW_DAY_EMPTY = "З'явився графік на {date}: без від�
 UPDATE_CHANGED_DAY = "Зміни на {date}:"
 UPDATE_ADDED = "Додано:"
 UPDATE_REMOVED = "Прибрано:"
-UPDATE_LINK = f'<a href="{SITE_URL}">poweron.toe.com.ua</a>'
+UPDATE_LINK = '<a href="{url}">{site}</a>'
 
 REMINDER_OFF_WINDOW = "⏰ <b>{label}</b>{queue}: за {minutes} хв можуть вимкнути світло (з {earliest}, точно — о {latest})"
 REMINDER_OFF_EXACT = "⏰ <b>{label}</b>{queue}: за {minutes} хв вимкнуть світло (о {latest})"
@@ -152,8 +157,7 @@ SUBQUEUES_CHANGED = (
 )
 SUBQUEUES_GONE = (
     "⚠️ За даними обленерго, графіки відключень для <b>{label}</b>, схоже, більше не діють "
-    "на цю адресу.\nМожливо, це збій у даних, тож нічого не змінюю — перевір на "
-    f"{UPDATE_LINK}"
+    "на цю адресу.\nМожливо, це збій у даних, тож нічого не змінюю — перевір на {link}"
 )
 
 MENU_UPDATED = "🔄 Оновив меню: тепер усе під кнопками внизу 👇"
