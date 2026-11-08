@@ -11,9 +11,13 @@ FAILED_REFRESH_BACKOFF = timedelta(minutes=5)
 
 
 class Catalog:
-    def __init__(self, repository: Repository, source: CatalogSource) -> None:
+    def __init__(
+        self, repository: Repository, source: CatalogSource, *, cached: bool = True
+    ) -> None:
+        """`cached=False` for a source that is already local, like the imported Volyn table."""
         self._repository = repository
         self._source = source
+        self._use_cache = cached
         self._failed_refresh_at: dict[str, datetime] = {}
 
     async def find_cities(self, query: str, now: datetime) -> list[City]:
@@ -48,6 +52,8 @@ class Catalog:
         fetch: Callable[[], Awaitable[list[Item]]],
         now: datetime,
     ) -> list[Item]:
+        if not self._use_cache:
+            return await fetch()
         cached = await self._repository.cached_catalog(key)
         if cached is not None:
             stored, fetched_at = cached

@@ -26,6 +26,8 @@ USER_AGENT = "poweron-bot (personal use; weekly queue export)"
 VOWELS = "аеиіоуяюєї"
 HEADER = ["Район", "Нас. пункт", "Вулиця", "Будинок", "Черга у ГПВ", "Черга у ГАВ"]
 SUBQUEUE = re.compile(r"^[1-6]\.[12]$")
+NUMBER_WITH_LETTER = re.compile(r"(\d+)-?([^\W\d_])")
+LATIN_LOOKALIKES = str.maketrans("ABCEHIKMOPTXaceiopx", "АВСЕНІКМОРТХасеіорх")
 NOT_INCLUDED = "Не залучено"
 REQUEST_INTERVAL = 1.5
 ATTEMPTS = 3
@@ -79,9 +81,18 @@ def lookup(settlement: str, street: str) -> list[list[str]]:
 
 
 def buildings(cell: str) -> list[str]:
-    """`16, 19, 22 а, <>` → ["16", "19", "22а"]; `<>` is the site's placeholder."""
-    names = ("".join(part.split()) for part in cell.split(","))
+    """`16, 19, 22 а, 6-a, <>` → ["16", "19", "22А", "6А"]; `<>` is the site's placeholder."""
+    names = (building_name(part) for part in cell.split(","))
     return [name for name in names if name and name != "<>"]
+
+
+def building_name(raw: str) -> str:
+    """One spelling per building: "22 а", "22-а" and "22A" (Latin) all become "22А"."""
+    name = "".join(raw.split()).strip("-.")
+    if match := NUMBER_WITH_LETTER.fullmatch(name):
+        number, letter = match.groups()
+        return number + letter.translate(LATIN_LOOKALIKES).upper()
+    return name
 
 
 def subqueue(cell: str) -> str | None:

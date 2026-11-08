@@ -39,10 +39,13 @@ from poweron.core.domain.models import (
 logger = logging.getLogger(__name__)
 
 MIGRATIONS = Path(__file__).parent / "migrations"
+SQLITE_BUSY_TIMEOUT = 30.0
 
 
 def create_engine(url: str) -> AsyncEngine:
-    engine = create_async_engine(url)
+    # The weekly Volyn catalogue import holds the write lock for several seconds on a small VM.
+    connect_args = {"timeout": SQLITE_BUSY_TIMEOUT} if url.startswith("sqlite") else {}
+    engine = create_async_engine(url, connect_args=connect_args)
     if engine.dialect.name == "sqlite":
         event.listen(engine.sync_engine, "connect", _enable_sqlite_foreign_keys)
     return engine

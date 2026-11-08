@@ -12,6 +12,7 @@ from poweron.core.domain.models import (
     StatusReport,
     Subscription,
 )
+from poweron.core.domain.providers import plain_subqueue
 
 from . import texts
 
@@ -27,7 +28,7 @@ STATE_LINES = {
 
 def subqueue_label(cherg_gpv: str) -> str:
     """HTML-safe: the value comes from the API."""
-    return escape(cherg_gpv.split("#")[0])
+    return escape(plain_subqueue(cherg_gpv).split("#")[0])
 
 
 def render_address(city_name: str, street_name: str, building_name: str) -> str:

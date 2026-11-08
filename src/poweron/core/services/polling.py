@@ -2,17 +2,19 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 
 from poweron.core.domain.diff import ScheduleChange, data_hash, schedule_change
 from poweron.core.domain.models import (
+    Address,
     DaySchedule,
     MessageKind,
     OutboxMessage,
     ScheduleVersion,
     Subscription,
 )
+from poweron.core.domain.providers import provider_of
 from poweron.core.ports import Repository, ScheduleSource, SourceError
 from poweron.core.services.alerts import Alerts, report_source_error
 
@@ -165,3 +167,13 @@ def _messages(
         )
         for subscription in recipients
     ]
+
+
+class SchedulesByProvider:
+    """A `ScheduleSource` that sends each subqueue to its oblenergo's source."""
+
+    def __init__(self, sources: Mapping[str, ScheduleSource]) -> None:
+        self._sources = sources
+
+    async def fetch_schedules(self, address: Address, cherg_gpv: str) -> list[DaySchedule]:
+        return await self._sources[provider_of(cherg_gpv)].fetch_schedules(address, cherg_gpv)

@@ -30,6 +30,7 @@ from poweron.core.domain.models import (
     Street,
     Subscription,
 )
+from poweron.core.domain.providers import TOE, VOE
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.schedules import Schedules
@@ -61,6 +62,22 @@ class FakeCatalogSource:
         self, city_id: int, street_id: int, building_name: str
     ) -> list[str]:
         return ["2.2", "4.1"] if building_name == "96" else ["4.1"]
+
+
+class FakeVolynSource:
+    async def cities(self) -> list[City]:
+        return [City(7, "Ківерці", "Луцький р-н")]
+
+    async def streets(self, city_id: int) -> list[Street]:
+        return [Street(8, "Незалежності")]
+
+    async def buildings(self, city_id: int, street_id: int) -> list[Building]:
+        return [Building(9, "19", "voe:6.1"), Building(10, "22", None)]
+
+    async def building_subqueues(
+        self, city_id: int, street_id: int, building_name: str
+    ) -> list[str]:
+        return ["voe:6.1"] if building_name == "19" else []
 
 
 class RecordingSession(BaseSession):
@@ -132,7 +149,10 @@ class Chat:
         self.bot = Bot("123:abc", session=self.session)
         self.dispatcher: Dispatcher = build_dispatcher(
             self.subscriptions,
-            Catalog(repository, FakeCatalogSource()),
+            {
+                TOE: Catalog(repository, FakeCatalogSource()),
+                VOE: Catalog(repository, FakeVolynSource(), cached=False),
+            },
             Schedules(repository),
             status=status,
             admin_chat_id=admin_chat_id,
@@ -238,7 +258,7 @@ async def test_the_add_button_under_the_greeting_starts_the_wizard(chat: Chat) -
     await chat.say("/start")
     await chat.press_button(texts.MENU_ADD)
 
-    assert chat.sent_texts()[-1] == texts.ASK_CITY
+    assert chat.sent_texts()[-1] == texts.ASK_REGION
 
 
 async def test_a_returning_user_with_addresses_is_not_asked_to_add_one(chat: Chat) -> None:
@@ -265,9 +285,10 @@ async def test_an_inline_action_leaves_an_open_wizard(chat: Chat) -> None:
     await chat.press_button(texts.BUTTON_SAVE)
     await chat.say(texts.MENU_LIST)
     await chat.press_button(texts.MENU_ADD)
-    assert chat.sent_texts()[-1] == texts.ASK_CITY
+    assert chat.sent_texts()[-1] == texts.ASK_REGION
+    await chat.press(keyboards.Region(provider="toe"))
 
-    await chat.press_button(texts.MENU_REMOVE)
+    await chat.press(keyboards.Action(name="remove"))
     sent_before = len(chat.sent_texts())
     await chat.say("бережани")  # would be the city search if the wizard were still open
 
@@ -279,7 +300,7 @@ async def test_an_empty_list_offers_the_add_button(chat: Chat) -> None:
     await chat.say(texts.MENU_SCHEDULE)
     await chat.press_button(texts.MENU_ADD)
 
-    assert chat.sent_texts()[-2:] == [texts.NO_SUBSCRIPTIONS, texts.ASK_CITY]
+    assert chat.sent_texts()[-2:] == [texts.NO_SUBSCRIPTIONS, texts.ASK_REGION]
 
 
 async def test_start_announces_a_new_user_to_the_admin(repository: SqlRepository) -> None:
@@ -311,6 +332,7 @@ async def test_stale_button_does_not_bring_a_forgotten_user_back(chat: Chat) -> 
 async def start_city_search(chat: Chat, *queries: str) -> None:
     await chat.say("/start")
     await chat.say("/add")
+    await chat.press(keyboards.Region(provider="toe"))
     for query in queries:
         await chat.say(query)
 
@@ -321,9 +343,9 @@ async def test_button_of_an_older_search_is_stale(chat: Chat) -> None:
     await chat.press(keyboards.Pick(kind="city", index=0, generation=1))
 
     assert chat.alerts() == [texts.STALE_BUTTON]
-    assert chat.edited_texts() == []
+    assert chat.edited_texts() == [texts.ASK_CITY]  # the region button turned into the question
     await chat.press(keyboards.Pick(kind="city", index=0, generation=2))
-    assert "Бережани" in chat.edited_texts()[0]
+    assert "Бережани" in chat.edited_texts()[1]
 
 
 async def test_page_button_of_an_older_search_is_stale(chat: Chat) -> None:
@@ -345,6 +367,7 @@ async def test_button_index_outside_the_list_is_stale(chat: Chat) -> None:
 async def test_buttons_of_a_finished_wizard_do_not_match_the_next_one(chat: Chat) -> None:
     await start_city_search(chat, "тер")
     await chat.say("/add")
+    await chat.press(keyboards.Region(provider="toe"))
     await chat.say("бер")
 
     await chat.press(keyboards.Pick(kind="city", index=0, generation=1))
@@ -476,6 +499,7 @@ async def test_each_menu_button_runs_the_command_handler(
 async def test_menu_button_in_the_middle_of_the_wizard_leaves_it(chat: Chat, button: str) -> None:
     await chat.say("/start")
     await chat.say("/add")
+    await chat.press(keyboards.Region(provider="toe"))
     await chat.say("бережани")
     assert chat.sent_texts()[-1] == texts.ASK_STREET.format(city="Бережани")
 
@@ -650,3 +674,40 @@ async def test_status_is_ignored_in_other_chats(repository: SqlRepository) -> No
     await chat.say("/status")
 
     assert chat.sent_texts() == [texts.GREETING, texts.ADD_FIRST]
+
+
+async def test_a_volyn_address_is_saved_with_its_namespaced_queue(chat: Chat) -> None:
+    await chat.say("/start")
+    await chat.say("/add")
+    await chat.press(keyboards.Region(provider="voe"))
+    await chat.say("ківерці")
+    await chat.say("незалежності")
+    await chat.say("19")
+
+    assert "6.1" in chat.sent_texts()[-1]
+    assert "voe" not in chat.sent_texts()[-1]
+    await chat.press_button(texts.BUTTON_SAVE)
+    user_id = await chat.subscriptions.find_user("telegram", "1")
+    assert user_id is not None
+    [home] = await chat.subscriptions.of_user(user_id)
+    assert (home.city_name, home.subqueues) == ("Ківерці", ("voe:6.1",))
+
+
+async def test_a_volyn_building_outside_the_schedules_is_refused(chat: Chat) -> None:
+    await chat.say("/start")
+    await chat.say("/add")
+    await chat.press(keyboards.Region(provider="voe"))
+    for text in ("ківерці", "незалежності", "22"):
+        await chat.say(text)
+
+    assert chat.sent_texts()[-1] == texts.NO_SCHEDULE_FOR_ADDRESS.format(
+        address="Ківерці, Незалежності, 22"
+    )
+
+
+async def test_an_unknown_region_button_is_stale(chat: Chat) -> None:
+    await chat.say("/start")
+    await chat.say("/add")
+    await chat.press(keyboards.Region(provider="xyz"))
+
+    assert chat.alerts() == [texts.STALE_BUTTON]

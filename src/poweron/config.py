@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     admin_chat_id: int | None = None
     database_url: str = "sqlite+aiosqlite:///./data/poweron.sqlite3"
     api_base: str = "https://api-poweron.toe.com.ua/api"
+    voe_api_base: str = "https://api-voe-poweron.inneti.net"
     poll_interval_sec: float = 300
     contact: str = "n/a"
     log_level: str = "INFO"

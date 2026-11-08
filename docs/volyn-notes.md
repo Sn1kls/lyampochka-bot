@@ -1,8 +1,8 @@
 # Volynoblenergo: research notes
 
-Status: **source found, not built** (2026-11-08).
-- The schedule images from the inneti API are reachable from the server and decode reliably (see "Schedule images").
-- Only the address → queue lookup on energy.volyn.ua is blocked from the server by a Cloudflare challenge (see "Server access").
+Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
+- Schedules: the PNG images from the inneti API, decoded from pixels on the server (see "Schedule images").
+- Address → queue: exported weekly on the owner's Mac and imported into the bot (see "Weekly catalogue"). Only this part needs a Ukrainian IP.
 - First researched 2026-10-18 and postponed. Reopened 2026-11-08: the owner lives in Ківерці (Volyn oblast) now and wants schedules for the whole oblast.
 
 ## Sources checked
@@ -126,36 +126,31 @@ Status: **source found, not built** (2026-11-08).
 - The schedule result format: whether results are per address or per queue, and how hours, half-hours and "switching" are shown.
 - Whether the server can be given access (see "Server access").
 
-## Agreed plan (2026-11-08, on hold until access is solved)
+## How it is built
 
-The owner chose:
-- build in parts;
-- a "catcher" in the server worker;
-- an `/add` flow of region → text → buttons.
+- `adapters/voe_api`: `VoeClient` (`ScheduleSource`).
+  - It reads the archive list for today and tomorrow, takes the newest revision per day, and decodes the image (stdlib PNG reader + grid scan, ~1.3 s, in a thread).
+  - The list is cached for 60 s, so one poll pass over 12 subqueues costs one list request; decoded images are cached by URL.
+  - Slots use toe's raw codes ("1" OFF, "0" ON). The image has no "switching" colour.
+- Subqueue keys are namespaced: `voe:6.1` (`core/domain/providers.py`). Ternopil keys stay plain, so no stored data moved.
+  - A subscription's region is the prefix of its queues (`Subscription.provider`); every subscription has at least one queue.
+  - `SchedulesByProvider` routes polling; `SubqueueChecker` takes one catalogue per region; planned works are Ternopil-only.
+- `voe_buildings` table (migration `5c2d8e4f1a90`) + `adapters/db/voe_catalog.py`: `VoeCatalog` is the Volyn `CatalogSource`.
+  - Ids are crc32 of the names (31 bits), so they stay the same across imports and the daily queue re-check finds the building again.
+  - «Не залучено» rows are stored with no queue; a building with a queue in another row counts as in that queue.
+- `/add` starts with a region button; the rest of the wizard is shared.
 
-1. Region in data:
-   - migration `subscriptions.provider` (`toe` / `voe`); existing rows become `toe`;
-   - Volyn subqueue keys are namespaced (`voe:6.1`), so `schedule_versions`, `subqueue_polls` and `subscription_subqueues` need no change; display strips the prefix;
-   - Volyn subscriptions store city and street names (there are no numeric ids).
-2. Adapter `adapters/voe_site`:
-   - httpx + stdlib `html.parser`, no new dependency;
-   - 1 req/s, a fresh session per schedule search;
-   - `ApiSchemaError` on any layout change;
-   - parses the queue table, including duplicate rows, `<>` and «Не залучено».
-3. core:
-   - a port for the address → queue lookup;
-   - polling, the queue re-check and planned works skip Volyn subscriptions: there is no schedule source yet, the queue is fixed for a year, and there is no planned-works API.
-4. Catcher in the worker:
-   - hourly, today and tomorrow, for the cities of Volyn subscriptions (Луцьк if there are none);
-   - «не знайдено» is ignored;
-   - any other page goes to the admin chat as a file, once per content.
-5. Telegram:
-   - `/add` starts with a region choice;
-   - Volyn: city as text → street as text → building buttons (with the street name when several streets match) → queue → confirm;
-   - «Не залучено» is explained;
-   - «Графік» for a Volyn address says there are no Volyn schedules yet.
-6. Stage 2, after the first captured schedule: parse it into `DaySchedule`. Pushes, reminders and `/next` then work unchanged.
+## Weekly catalogue
 
-Risks:
-- The free-text search can match several settlements or streets.
-- Ternopil users get one extra tap in `/add`.
+- `scripts/export_volyn_queues.py`: 10 × 10 vowel grid over the lookup, 1.5 s between requests, ~3 min.
+  - Building names are unified: «22 а», «22-а» and «22A» (Latin) all become «22А».
+  - Output: gzip JSON, ~0.8 MB.
+- `scripts/sync_volyn_queues.sh`: export, then `ssh … docker compose exec -T bot python -m poweron import-voe-queues < file`.
+  - `make sync-volyn TARGET=…` runs it once.
+  - `make install-volyn-sync TARGET=…` installs a launchd job: Mondays 10:00, run on wake if missed, log in `~/Library/Logs/lyampochka-volyn-sync.log`.
+- Import:
+  - one transaction (~2 s on the Mac for 257 k rows); SQLite's busy timeout is raised to 30 s so the bot waits instead of failing;
+  - refused below 80 % of the stored buildings unless `--force`;
+  - reports «N будинків (було M), змінилось K» to stdout and, if anything changed, to the admin chat.
+- `VoeCatalogAge`: a daily admin alert when there was no import yet or the last one is older than 10 days.
+- The database grows by ~29 MB with the catalogue. The nightly backup goes to Telegram, whose bot upload limit is 50 MB, so watch the size.

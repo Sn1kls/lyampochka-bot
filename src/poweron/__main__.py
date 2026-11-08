@@ -2,26 +2,31 @@ import asyncio
 import logging
 import signal
 import sys
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from importlib.metadata import version
 
 from aiogram import Bot, Dispatcher
 
 from poweron.adapters.db.repository import SqlRepository, create_engine, run_migrations
+from poweron.adapters.db.voe_catalog import CatalogImportRefused, VoeCatalog, parse_export
 from poweron.adapters.healthcheck import HealthcheckPinger
 from poweron.adapters.telegram.alerts import TelegramAdminAlerter
 from poweron.adapters.telegram.backup import TelegramBackupSink
 from poweron.adapters.telegram.bot import build_dispatcher, create_bot
 from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.adapters.toe_api.client import ToeClient
+from poweron.adapters.voe_api.client import VoeClient
 from poweron.config import Settings
+from poweron.core.domain.models import AlertKind
+from poweron.core.domain.providers import TOE, VOE
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.backups import Backups
 from poweron.core.services.catalog import Catalog
+from poweron.core.services.catalog_age import VoeCatalogAge
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.planned_works import PlannedWorks
-from poweron.core.services.polling import Polling
+from poweron.core.services.polling import Polling, SchedulesByProvider
 from poweron.core.services.reminders import Reminders
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
@@ -31,13 +36,17 @@ from poweron.worker.runner import run_worker
 logger = logging.getLogger(__name__)
 
 ROLES = ("bot", "worker", "all")
+IMPORT_VOE_QUEUES = "import-voe-queues"
 STOP_RETRY_DELAY = 0.1
 
 
 def main() -> None:
     role = sys.argv[1] if len(sys.argv) > 1 else "all"
-    if role not in ROLES:
-        sys.exit(f"usage: python -m poweron [{'|'.join(ROLES)}]")
+    if role not in (*ROLES, IMPORT_VOE_QUEUES):
+        sys.exit(
+            f"usage: python -m poweron [{'|'.join(ROLES)}]\n"
+            f"       python -m poweron {IMPORT_VOE_QUEUES} [--force] < export.json.gz"
+        )
     settings = Settings()  # values come from the environment
     logging.basicConfig(
         level=settings.log_level,
@@ -47,13 +56,18 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     # Alembic runs its own event loop, so migrate before ours starts.
     run_migrations(settings.database_url)
-    asyncio.run(run(role, settings))
+    if role == IMPORT_VOE_QUEUES:
+        asyncio.run(import_voe_queues(settings, sys.stdin.buffer.read(), "--force" in sys.argv))
+    else:
+        asyncio.run(run(role, settings))
 
 
 async def run(role: str, settings: Settings) -> None:
     engine = create_engine(settings.database_url)
     repository = SqlRepository(engine)
     toe_client = ToeClient(settings.api_base, contact=settings.contact)
+    voe_client = VoeClient(settings.voe_api_base)
+    voe_catalog = VoeCatalog(engine)
     bot = create_bot(settings.bot_token.get_secret_value())
     alerts = (
         None
@@ -72,7 +86,10 @@ async def run(role: str, settings: Settings) -> None:
             if role in ("bot", "all"):
                 dispatcher = build_dispatcher(
                     Subscriptions(repository, alerts),
-                    Catalog(repository, toe_client),
+                    {
+                        TOE: Catalog(repository, toe_client),
+                        VOE: Catalog(repository, voe_catalog, cached=False),
+                    },
                     Schedules(repository),
                     status=Status(
                         repository,
@@ -89,21 +106,54 @@ async def run(role: str, settings: Settings) -> None:
                 notifications = Notifications(repository, {"telegram": TelegramNotifier(bot)})
                 group.create_task(
                     run_worker(
-                        Polling(repository, toe_client, alerts),
+                        Polling(
+                            repository,
+                            SchedulesByProvider({TOE: toe_client, VOE: voe_client}),
+                            alerts,
+                        ),
                         notifications,
                         Reminders(repository, Schedules(repository)),
-                        SubqueueChecker(repository, toe_client, alerts),
+                        SubqueueChecker(repository, {TOE: toe_client, VOE: voe_catalog}, alerts),
                         PlannedWorks(repository, toe_client, alerts),
                         settings.poll_interval_sec,
                         stop,
                         heartbeat,
                         _backups(settings, repository, bot, alerts),
+                        None if alerts is None else VoeCatalogAge(repository, alerts),
                     )
                 )
     finally:
         await toe_client.aclose()
+        await voe_client.aclose()
         await bot.session.close()
         await engine.dispose()
+
+
+async def import_voe_queues(settings: Settings, export: bytes, force: bool) -> None:
+    """Replace the Volyn address → queue catalogue with a `scripts/export_volyn_queues.py` file."""
+    try:
+        rows = parse_export(export)
+    except CatalogImportRefused as error:
+        sys.exit(f"import refused: {error}")
+    engine = create_engine(settings.database_url)
+    try:
+        summary = await VoeCatalog(engine).replace(rows, datetime.now(UTC), force)
+    except CatalogImportRefused as error:
+        sys.exit(f"import refused: {error}")
+    finally:
+        await engine.dispose()
+    report = (
+        f"{summary.buildings} будинків (було {summary.previous_buildings}), "
+        f"змінилось {summary.changed}"
+    )
+    print(report)
+    if summary.changed and settings.admin_chat_id is not None:
+        bot = create_bot(settings.bot_token.get_secret_value())
+        try:
+            alerter = TelegramAdminAlerter(bot, settings.admin_chat_id)
+            await Alerts(alerter).send(AlertKind.VOE_CATALOG_IMPORTED, report)
+        finally:
+            await bot.session.close()
 
 
 def _backups(

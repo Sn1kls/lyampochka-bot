@@ -223,3 +223,23 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - no outages were scheduled in Volyn, so the schedule result format is still unseen.
 - Added `scripts/probe_volyn.py` and `tests/fixtures/voe_*.html`.
 - **Blocked:** from the production server energy.volyn.ua answers a Cloudflare challenge (403). We don't get around it. The owner has to choose: ask Volynoblenergo for access, fetch from a device in Ukraine, or move hosting.
+
+## 2026-11-08: Volyn region
+
+- Done: Volynoblenergo schedules for the whole oblast. Details in `docs/volyn-notes.md` ("How it is built", "Weekly catalogue").
+  - Schedules come from the inneti archive PNGs and are decoded from pixels on the server (stdlib PNG reader, no AI). The server is not challenged there.
+  - The address → queue table comes from energy.volyn.ua. Cloudflare challenges the server there, so the owner's Mac exports it weekly via launchd and pipes it into `python -m poweron import-voe-queues`.
+  - `/add` starts with a region choice.
+  - Subqueue keys are namespaced (`voe:6.1`), so only the new `voe_buildings` table needed a migration.
+- Work split: the image adapter was built by a Sonnet agent in a worktree; core, DB, import, bot and wiring by me.
+- Decisions:
+  - Pixels instead of a vision LLM: the image is machine-drawn with two exact colours. Pixels are deterministic, free and need no prompt-injection review.
+  - Pure-stdlib PNG decoding instead of Pillow: ~1.3 s per new revision, in a thread.
+  - A subscription's region is derived from its queue prefix; no `provider` column.
+  - Catalogue ids are crc32 of the names, stable across imports.
+- Known limits:
+  - The Volyn image has no "switching" state.
+  - Volyn has no planned-works feed.
+  - The catalogue is only as fresh as the last Mac sync; there is an alert after 10 days.
+  - The DB is ~29 MB bigger, which matters for the 50 MB Telegram backup limit.
+- After deploy: run `make sync-volyn TARGET=…` once, then `make install-volyn-sync TARGET=…`.

@@ -25,6 +25,8 @@ COMMANDS = (
     ("help", "що я вмію"),
 )
 
+ASK_REGION = "У якій області адреса?"
+REGIONS = {"toe": "Тернопільська", "voe": "Волинська"}
 ASK_CITY = "З якого ти міста чи села? Напиши кілька літер назви."
 CHOOSE_CITY = "Обери зі списку або напиши назву ще раз:"
 ASK_STREET = "Місто: <b>{city}</b>.\nТепер напиши кілька літер назви вулиці."
@@ -183,6 +185,11 @@ ALERT_NEW_USER = "👤 Новий користувач: {details}"
 ALERT_BACKUP_FAILED = (
     "🗄 Не вдалося зробити щоденний бекап бази, спробую ще раз.\n<code>{details}</code>"
 )
+ALERT_VOE_CATALOG_STALE = (
+    "📒 Довідник черг Волині давно не оновлювався ({details}). "
+    "Перевір щотижневе вивантаження на Mac: <code>scripts/sync_volyn_queues.sh</code>"
+)
+ALERT_VOE_CATALOG_IMPORTED = "📒 Довідник черг Волині оновлено: {details}"
 BACKUP_CAPTION = "🗄 Бекап бази {name}, зашифрований паролем BACKUP_PASSWORD"
 
 STATUS_TITLE = "📊 <b>Лямпочка {version}</b>"

@@ -6,7 +6,7 @@ from poweron.adapters.telegram.bot import build_dispatcher, create_bot, publish_
 
 
 def test_dispatcher_carries_services_and_bot_defaults_to_html() -> None:
-    services: dict[str, object] = {"subscriptions": 1, "catalog": 2, "schedules": 3}
+    services: dict[str, object] = {"subscriptions": 1, "catalogs": 2, "schedules": 3}
     dispatcher = build_dispatcher(**services)  # type: ignore[arg-type]
 
     assert dispatcher.workflow_data == {**services, "status": None, "admin_chat_id": None}

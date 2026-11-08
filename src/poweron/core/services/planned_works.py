@@ -4,6 +4,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from poweron.core.domain.models import MessageKind, OutboxMessage, PlannedWork, Subscription
+from poweron.core.domain.providers import TOE
 from poweron.core.domain.text import normalise
 from poweron.core.ports import PlannedWorkSource, Repository, SourceError
 from poweron.core.services.alerts import Alerts, report_source_error
@@ -29,7 +30,7 @@ class PlannedWorks:
     async def check(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
         by_street: dict[tuple[int, int], list[Subscription]] = defaultdict(list)
         for subscription in await self._repository.all_subscriptions():
-            if subscription.notify_on_update:
+            if subscription.notify_on_update and subscription.provider == TOE:
                 address = subscription.address
                 by_street[(address.city_id, address.street_id)].append(subscription)
         queued = 0
