@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 
 from poweron.core.domain.models import MessageKind, OutboxMessage, Subscription
@@ -22,24 +22,30 @@ class SubqueueChecker:
     """
 
     def __init__(
-        self, repository: Repository, source: CatalogSource, alerts: Alerts | None = None
+        self,
+        repository: Repository,
+        catalogs: Mapping[str, CatalogSource],
+        alerts: Alerts | None = None,
     ) -> None:
         self._repository = repository
-        self._source = source
+        self._catalogs = catalogs
         self._alerts = alerts
 
     async def check(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
-        by_building: dict[tuple[int, int, str], list[Subscription]] = defaultdict(list)
+        by_building: dict[tuple[str, int, int, str], list[Subscription]] = defaultdict(list)
         for subscription in await self._repository.stale_subscriptions(now - RECHECK_AFTER):
             address = subscription.address
-            key = (address.city_id, address.street_id, address.building_name)
+            key = (subscription.provider, address.city_id, address.street_id, address.building_name)
             by_building[key].append(subscription)
         changed = 0
-        for (city_id, street_id, building_name), subscribers in by_building.items():
+        for (provider, city_id, street_id, building_name), subscribers in by_building.items():
             if should_stop():
                 break
+            catalog = self._catalogs.get(provider)
+            if catalog is None:
+                continue
             try:
-                found = await self._source.building_subqueues(city_id, street_id, building_name)
+                found = await catalog.building_subqueues(city_id, street_id, building_name)
             except SourceError as error:
                 logger.warning("subqueue re-check failed for a building: %s", error)
                 await report_source_error(self._alerts, error, now)

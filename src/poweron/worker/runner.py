@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from poweron.core.ports import Heartbeat
 from poweron.core.services.backups import Backups
+from poweron.core.services.catalog_age import VoeCatalogAge
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.planned_works import PlannedWorks
@@ -21,6 +22,7 @@ REMINDER_INTERVAL = 60.0
 CHECK_SUBQUEUES_INTERVAL = 3600.0
 PLANNED_WORKS_INTERVAL = 3600.0
 BACKUP_INTERVAL = 600.0
+VOE_CATALOG_AGE_INTERVAL = 86400.0
 POLL_JITTER = 20.0
 MIN_DELAY = 1.0
 
@@ -35,6 +37,7 @@ async def run_worker(
     stop: asyncio.Event,
     heartbeat: Heartbeat | None = None,
     backups: Backups | None = None,
+    voe_catalog_age: VoeCatalogAge | None = None,
 ) -> None:
     """Runs the jobs until `stop` is set.
 
@@ -49,6 +52,14 @@ async def run_worker(
                 POLL_JITTER,
             )
         )
+        if voe_catalog_age is not None:
+            group.create_task(
+                repeat(
+                    lambda: voe_catalog_age.check(datetime.now(UTC)),
+                    stop,
+                    VOE_CATALOG_AGE_INTERVAL,
+                )
+            )
         if backups is not None:
             group.create_task(repeat(lambda: backups.run(datetime.now(UTC)), stop, BACKUP_INTERVAL))
         group.create_task(

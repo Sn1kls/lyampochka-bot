@@ -4,6 +4,8 @@ from enum import StrEnum
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from poweron.core.domain.providers import provider_of
+
 KYIV = ZoneInfo("Europe/Kyiv")
 
 
@@ -98,6 +100,11 @@ class Subscription:
     created_at: datetime
 
     @property
+    def provider(self) -> str:
+        """A subscription always has queues, and all of them belong to one oblenergo."""
+        return provider_of(self.subqueues[0])
+
+    @property
     def instance_key(self) -> str:
         """Id plus creation time: SQLite may reuse the id of a deleted subscription."""
         return f"{self.id}.{int(self.created_at.timestamp())}"
@@ -160,6 +167,8 @@ class AlertKind(StrEnum):
     API_DOWN = "api_down"
     NEW_USER = "new_user"
     BACKUP_FAILED = "backup_failed"
+    VOE_CATALOG_STALE = "voe_catalog_stale"
+    VOE_CATALOG_IMPORTED = "voe_catalog_imported"
 
 
 @dataclass(frozen=True)

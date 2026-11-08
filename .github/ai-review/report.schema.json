@@ -1,0 +1,49 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary_markdown", "counts", "checks", "findings"],
+  "properties": {
+    "verdict": {"type": "string", "enum": ["request_changes", "comment", "approve"]},
+    "summary_markdown": {"type": "string"},
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["CRITICAL", "WARNING", "SUGGESTION"],
+      "properties": {
+        "CRITICAL": {"type": "integer", "minimum": 0},
+        "WARNING": {"type": "integer", "minimum": 0},
+        "SUGGESTION": {"type": "integer", "minimum": 0}
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status"],
+        "properties": {
+          "name": {"type": "string"},
+          "status": {"type": "string"},
+          "detail": {"type": "string"}
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "category", "title", "file", "start_line", "rationale", "confidence"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["CRITICAL", "WARNING", "SUGGESTION"]},
+          "category": {"type": "string", "enum": ["bug", "security", "perf", "style", "test"]},
+          "title": {"type": "string"},
+          "file": {"type": "string"},
+          "start_line": {"type": "integer", "minimum": 1},
+          "end_line": {"type": "integer", "minimum": 1},
+          "rationale": {"type": "string"},
+          "suggestion": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    }
+  }
+}

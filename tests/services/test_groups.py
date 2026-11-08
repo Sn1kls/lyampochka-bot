@@ -14,6 +14,7 @@ from poweron.core.domain.models import (
     Street,
     Subscription,
 )
+from poweron.core.domain.providers import TOE
 from poweron.core.ports import SourceUnavailable
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.subscriptions import Subscriptions
@@ -69,7 +70,7 @@ def buildings() -> FakeBuildings:
 
 @pytest.fixture
 def checker(repository: SqlRepository, buildings: FakeBuildings) -> SubqueueChecker:
-    return SubqueueChecker(repository, buildings)
+    return SubqueueChecker(repository, {TOE: buildings})
 
 
 async def test_unchanged_queues_only_record_the_check(

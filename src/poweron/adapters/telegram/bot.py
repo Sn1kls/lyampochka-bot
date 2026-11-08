@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Mapping
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -27,7 +28,7 @@ def create_bot(token: str) -> Bot:
 
 def build_dispatcher(
     subscriptions: Subscriptions,
-    catalog: Catalog,
+    catalogs: Mapping[str, Catalog],
     schedules: Schedules,
     *,
     status: Status | None = None,
@@ -36,7 +37,7 @@ def build_dispatcher(
     dispatcher = Dispatcher(
         storage=MemoryStorage(),
         subscriptions=subscriptions,
-        catalog=catalog,
+        catalogs=catalogs,
         schedules=schedules,
         status=status,
         admin_chat_id=admin_chat_id,
