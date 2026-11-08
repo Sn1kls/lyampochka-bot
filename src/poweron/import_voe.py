@@ -19,10 +19,12 @@ from poweron.adapters.db.voe_catalog import (
     parse_export,
 )
 from poweron.config import Settings
+from poweron.observability import init_sentry
 
 
 def main() -> None:
     settings = Settings()  # values come from the environment
+    init_sentry(settings)
     run_migrations(settings.database_url)
     try:
         rows, skipped = parse_export(sys.stdin.buffer.read())

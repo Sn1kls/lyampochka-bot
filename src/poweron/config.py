@@ -17,4 +17,3 @@ class Settings(BaseSettings):
     healthcheck_url: SecretStr | None = None
     backup_password: SecretStr | None = None
     sentry_dsn: SecretStr | None = None
-    sentry_environment: str = "production"

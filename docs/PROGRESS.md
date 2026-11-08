@@ -246,7 +246,7 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 
 ## 2026-11-08: Sentry
 
-- Done: optional error reports to Sentry (`SENTRY_DSN`, `SENTRY_ENVIRONMENT`), in `src/poweron/observability.py`, started in `__main__.main()`.
+- Done: optional error reports to Sentry (`SENTRY_DSN`; `SENTRY_ENVIRONMENT` is read by the SDK), in `src/poweron/observability.py`, started by both entry points (`__main__`, `import_voe`).
   - `logger.exception(...)` and uncaught exceptions become events; the release is `poweron@<version>+<git sha>`.
 - Privacy decisions:
   - Handlers hold addresses in local variables, so `include_local_variables=False`.
