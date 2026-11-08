@@ -18,8 +18,7 @@ class VoeCatalogAge:
 
     async def check(self, now: datetime) -> None:
         imported = await self._repository.cached_catalog(VOE_CATALOG_IMPORTED_KEY)
-        if imported is None:
-            await self._alerts.report(AlertKind.VOE_CATALOG_STALE, "ще жодного імпорту", now)
-        elif now - imported[1] > STALE_AFTER:
-            days = (now - imported[1]).days
-            await self._alerts.report(AlertKind.VOE_CATALOG_STALE, f"{days} дн. тому", now)
+        age = None if imported is None else now - imported[1]
+        if age is None or age > STALE_AFTER:
+            details = "ще жодного імпорту" if age is None else f"{age.days} дн. тому"
+            await self._alerts.report(AlertKind.VOE_CATALOG_STALE, details, now)

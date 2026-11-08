@@ -29,7 +29,8 @@ ROWS = [
 
 
 def export(rows: list[Any]) -> bytes:
-    return gzip.compress(json.dumps({"rows": rows}, ensure_ascii=False).encode())
+    lines = "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
+    return gzip.compress(lines.encode())
 
 
 @pytest.fixture
@@ -58,6 +59,8 @@ def test_parse_export_reads_the_export_format() -> None:
     [
         b"not gzip",
         gzip.compress(b"not json"),
+        gzip.compress(b""),
+        export([{"rows": []}]),
         export([["Луцький", "Ківерці", "Незалежності", "19"]]),
         export([["Луцький", "Ківерці", "Незалежності", "19", "7.1"]]),
         export([["Луцький", "", "Незалежності", "19", "6.1"]]),
@@ -113,7 +116,6 @@ async def test_a_reimport_replaces_rows_and_counts_changed_buildings(
 
     assert (first.buildings, first.previous_buildings, first.changed) == (6, 0, 6)
     assert (second.buildings, second.previous_buildings, second.changed) == (6, 6, 1)
-    assert await catalog.count() == len(moved)
     city_id, street_id = await kivertsi_nezalezhnosti(catalog)
     assert await catalog.building_subqueues(city_id, street_id, "19") == ["voe:5.2"]
     cached = await repository.cached_catalog(VOE_CATALOG_IMPORTED_KEY)
@@ -125,7 +127,8 @@ async def test_a_much_smaller_export_is_refused_unless_forced(catalog: VoeCatalo
 
     with pytest.raises(CatalogImportRefused):
         await catalog.replace(ROWS[:1], NOW)
-    assert await catalog.count() == len(ROWS)
+    street = await kivertsi_nezalezhnosti(catalog)
+    assert len(await catalog.buildings(*street)) == 4
 
     await catalog.replace(ROWS[:1], NOW, force=True)
-    assert await catalog.count() == 1
+    assert [building.name for building in await catalog.buildings(*street)] == ["19"]

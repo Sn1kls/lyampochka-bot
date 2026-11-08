@@ -228,7 +228,7 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 
 - Done: Volynoblenergo schedules for the whole oblast. Details in `docs/volyn-notes.md` ("How it is built", "Weekly catalogue").
   - Schedules come from the inneti archive PNGs and are decoded from pixels on the server (stdlib PNG reader, no AI). The server is not challenged there.
-  - The address → queue table comes from energy.volyn.ua. Cloudflare challenges the server there, so the owner's Mac exports it weekly via launchd and pipes it into `python -m poweron import-voe-queues`.
+  - The address → queue table comes from energy.volyn.ua. Cloudflare challenges the server there, so the owner's Mac exports it weekly via launchd and pipes it into `python -m poweron.import_voe`, run in a short-lived container.
   - `/add` starts with a region choice.
   - Subqueue keys are namespaced (`voe:6.1`), so only the new `voe_buildings` table needed a migration.
 - Work split: the image adapter was built by a Sonnet agent in a worktree; core, DB, import, bot and wiring by me.

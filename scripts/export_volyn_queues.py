@@ -8,7 +8,8 @@ Both lookup fields match substrings and results are not capped, so a grid of
 "vowel in the settlement" × "vowel in the street" covers every row in ~100 requests.
 Stdlib only, sequential, at least 1.5 s between requests.
 
-Output: gzip JSON `{"rows": [[district, settlement, street, building, subqueue|null], ...]}`.
+Output: gzip JSON Lines, one `[district, settlement, street, building, subqueue|null]` per line,
+so the bot can import it without holding the whole document in memory.
 """
 
 import gzip
@@ -105,7 +106,7 @@ def subqueue(cell: str) -> str | None:
 
 def main() -> None:
     if len(sys.argv) != 2:
-        raise SystemExit("usage: export_volyn_queues.py OUTPUT.json.gz")
+        raise SystemExit("usage: export_volyn_queues.py OUTPUT.jsonl.gz")
     found: set[tuple[str, str, str, str, str | None]] = set()
     started = time.monotonic()
     for settlement_vowel in VOWELS:
@@ -118,7 +119,8 @@ def main() -> None:
             time.sleep(REQUEST_INTERVAL)
     rows_out = sorted(found, key=lambda row: (*row[:4], row[4] or ""))
     with gzip.open(sys.argv[1], "wt", encoding="utf-8") as output:
-        json.dump({"rows": rows_out}, output, ensure_ascii=False)
+        for row in rows_out:
+            output.write(json.dumps(row, ensure_ascii=False) + "\n")
     settlements = {row[:2] for row in rows_out}
     print(
         f"done in {time.monotonic() - started:.0f} s: {len(rows_out)} buildings, "

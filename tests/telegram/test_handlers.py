@@ -151,7 +151,7 @@ class Chat:
             self.subscriptions,
             {
                 TOE: Catalog(repository, FakeCatalogSource()),
-                VOE: Catalog(repository, FakeVolynSource(), cached=False),
+                VOE: Catalog(repository, FakeVolynSource(), cache_prefix="voe:"),
             },
             Schedules(repository),
             status=status,

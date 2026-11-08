@@ -12,12 +12,12 @@ FAILED_REFRESH_BACKOFF = timedelta(minutes=5)
 
 class Catalog:
     def __init__(
-        self, repository: Repository, source: CatalogSource, *, cached: bool = True
+        self, repository: Repository, source: CatalogSource, *, cache_prefix: str = ""
     ) -> None:
-        """`cached=False` for a source that is already local, like the imported Volyn table."""
+        """`cache_prefix` keeps each oblenergo's cached lists apart (their ids overlap)."""
         self._repository = repository
         self._source = source
-        self._use_cache = cached
+        self._cache_prefix = cache_prefix
         self._failed_refresh_at: dict[str, datetime] = {}
 
     async def find_cities(self, query: str, now: datetime) -> list[City]:
@@ -52,8 +52,7 @@ class Catalog:
         fetch: Callable[[], Awaitable[list[Item]]],
         now: datetime,
     ) -> list[Item]:
-        if not self._use_cache:
-            return await fetch()
+        key = self._cache_prefix + key
         cached = await self._repository.cached_catalog(key)
         if cached is not None:
             stored, fetched_at = cached

@@ -11,11 +11,10 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from poweron.core.domain.models import Subscription
-from poweron.core.domain.providers import plain_subqueue
 from poweron.core.services.subscriptions import REMINDER_MINUTES
 
 from . import texts
-from .render import minutes_text
+from .render import minutes_text, queue_name
 
 PAGE_SIZE = 8
 SETTING_VALUES = {
@@ -155,7 +154,7 @@ def queue_keyboard(subqueues: Sequence[str], generation: int) -> InlineKeyboardM
     builder = InlineKeyboardBuilder()
     for index, queue in enumerate(subqueues):
         builder.button(
-            text=texts.BUTTON_QUEUE.format(queue=_plain_label(queue)),
+            text=texts.BUTTON_QUEUE.format(queue=queue_name(queue)),
             callback_data=QueueChoice(index=index, generation=generation),
         )
     builder.button(
@@ -180,17 +179,13 @@ def day_keyboard(
             if queue not in subscription.tracked_subqueues and queue != shown_subqueue:
                 builder.row(
                     InlineKeyboardButton(
-                        text=texts.BUTTON_QUEUE.format(queue=_plain_label(queue)),
+                        text=texts.BUTTON_QUEUE.format(queue=queue_name(queue)),
                         callback_data=DayChoice(
                             subscription_id=subscription.id, offset=shown_offset, subqueue=queue
                         ).pack(),
                     )
                 )
     return builder.as_markup()
-
-
-def _plain_label(cherg_gpv: str) -> str:
-    return plain_subqueue(cherg_gpv).split("#")[0]
 
 
 def subscription_keyboard(

@@ -144,8 +144,8 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
 
 - `scripts/export_volyn_queues.py`: 10 × 10 vowel grid over the lookup, 1.5 s between requests, ~3 min.
   - Building names are unified: «22 а», «22-а» and «22A» (Latin) all become «22А».
-  - Output: gzip JSON, ~0.8 MB.
-- `scripts/sync_volyn_queues.sh`: export, then `ssh … docker compose exec -T bot python -m poweron import-voe-queues < file`.
+  - Output: gzip JSON Lines, ~0.8 MB.
+- `scripts/sync_volyn_queues.sh`: export, then `ssh … docker compose run --rm --no-deps -T bot python -m poweron.import_voe < file`.
   - `make sync-volyn TARGET=…` runs it once.
   - `make install-volyn-sync TARGET=…` installs a launchd job: Mondays 10:00, run on wake if missed, log in `~/Library/Logs/lyampochka-volyn-sync.log`.
 - Import:

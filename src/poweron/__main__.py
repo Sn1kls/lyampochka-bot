@@ -2,13 +2,13 @@ import asyncio
 import logging
 import signal
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from importlib.metadata import version
 
 from aiogram import Bot, Dispatcher
 
 from poweron.adapters.db.repository import SqlRepository, create_engine, run_migrations
-from poweron.adapters.db.voe_catalog import CatalogImportRefused, VoeCatalog, parse_export
+from poweron.adapters.db.voe_catalog import VoeCatalog
 from poweron.adapters.healthcheck import HealthcheckPinger
 from poweron.adapters.telegram.alerts import TelegramAdminAlerter
 from poweron.adapters.telegram.backup import TelegramBackupSink
@@ -17,7 +17,6 @@ from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.adapters.toe_api.client import ToeClient
 from poweron.adapters.voe_api.client import VoeClient
 from poweron.config import Settings
-from poweron.core.domain.models import AlertKind
 from poweron.core.domain.providers import TOE, VOE
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.backups import Backups
@@ -36,17 +35,13 @@ from poweron.worker.runner import run_worker
 logger = logging.getLogger(__name__)
 
 ROLES = ("bot", "worker", "all")
-IMPORT_VOE_QUEUES = "import-voe-queues"
 STOP_RETRY_DELAY = 0.1
 
 
 def main() -> None:
     role = sys.argv[1] if len(sys.argv) > 1 else "all"
-    if role not in (*ROLES, IMPORT_VOE_QUEUES):
-        sys.exit(
-            f"usage: python -m poweron [{'|'.join(ROLES)}]\n"
-            f"       python -m poweron {IMPORT_VOE_QUEUES} [--force] < export.json.gz"
-        )
+    if role not in ROLES:
+        sys.exit(f"usage: python -m poweron [{'|'.join(ROLES)}]")
     settings = Settings()  # values come from the environment
     logging.basicConfig(
         level=settings.log_level,
@@ -56,10 +51,7 @@ def main() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     # Alembic runs its own event loop, so migrate before ours starts.
     run_migrations(settings.database_url)
-    if role == IMPORT_VOE_QUEUES:
-        asyncio.run(import_voe_queues(settings, sys.stdin.buffer.read(), "--force" in sys.argv))
-    else:
-        asyncio.run(run(role, settings))
+    asyncio.run(run(role, settings))
 
 
 async def run(role: str, settings: Settings) -> None:
@@ -88,7 +80,7 @@ async def run(role: str, settings: Settings) -> None:
                     Subscriptions(repository, alerts),
                     {
                         TOE: Catalog(repository, toe_client),
-                        VOE: Catalog(repository, voe_catalog, cached=False),
+                        VOE: Catalog(repository, voe_catalog, cache_prefix="voe:"),
                     },
                     Schedules(repository),
                     status=Status(
@@ -127,33 +119,6 @@ async def run(role: str, settings: Settings) -> None:
         await voe_client.aclose()
         await bot.session.close()
         await engine.dispose()
-
-
-async def import_voe_queues(settings: Settings, export: bytes, force: bool) -> None:
-    """Replace the Volyn address → queue catalogue with a `scripts/export_volyn_queues.py` file."""
-    try:
-        rows = parse_export(export)
-    except CatalogImportRefused as error:
-        sys.exit(f"import refused: {error}")
-    engine = create_engine(settings.database_url)
-    try:
-        summary = await VoeCatalog(engine).replace(rows, datetime.now(UTC), force)
-    except CatalogImportRefused as error:
-        sys.exit(f"import refused: {error}")
-    finally:
-        await engine.dispose()
-    report = (
-        f"{summary.buildings} будинків (було {summary.previous_buildings}), "
-        f"змінилось {summary.changed}"
-    )
-    print(report)
-    if summary.changed and settings.admin_chat_id is not None:
-        bot = create_bot(settings.bot_token.get_secret_value())
-        try:
-            alerter = TelegramAdminAlerter(bot, settings.admin_chat_id)
-            await Alerts(alerter).send(AlertKind.VOE_CATALOG_IMPORTED, report)
-        finally:
-            await bot.session.close()
 
 
 def _backups(
