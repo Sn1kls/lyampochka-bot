@@ -23,7 +23,9 @@ pytest) runs separately and without the LLM key; never re-report what it enforce
    nothing was reviewed: return the report with the halt reason as `summary_markdown`,
    empty `findings` and `verdict: "comment"`.
 2. **Read** `CLAUDE.md`, then the file at `patch`: the PR's diff, without `uv.lock`,
-   `tests/fixtures/` and binaries. Read the surrounding code of changed files when a
+   `tests/fixtures/` and binaries. Every hunk line starts with its line number in the
+   new file (blank for removed lines): `   42 +added`, `   43  context`, `      -removed`.
+   Read the surrounding code of changed files when a
    judgement needs it (Read, Glob, Grep). `docs/SPEC.md` is the product spec; open the
    sections the change touches when behaviour is in question.
 3. **Review** the patch against the checklist below.
@@ -63,7 +65,8 @@ behaviour, GitHub Actions that expose secrets to PR-controlled code.
 
 Anti-inflation: a speculative issue ("might", "could potentially") is at most WARNING.
 Report only distinct issues this diff introduces or worsens, each on an exact `file`
-and a line on the new side of a hunk in the patch. **Zero findings is a good answer.**
+and a numbered line of the patch: `start_line` is that number, never a line count in the
+patch file itself. **Zero findings is a good answer.**
 Keep a finding's `title` stable for the same issue: the publisher matches findings
 across runs by `file` + `title`.
 

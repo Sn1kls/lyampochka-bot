@@ -111,3 +111,20 @@ def test_the_patch_leaves_out_fixtures_but_lists_them(repo):
 
     assert "tests/fixtures/schedule.json" in report["files"]
     assert "schedule.json" not in Path(report["patch"]).read_text()
+
+
+def test_patch_lines_carry_their_line_number_in_the_new_file(repo):
+    commit(repo, "src/poweron/core/services.py", "".join(f"line {n}\n" for n in range(1, 31)))
+    git(repo, "switch", "-q", "develop")
+    git(repo, "merge", "-q", "feature/x")
+    git(repo, "switch", "-q", "-c", "feature/y")
+    lines = [f"line {n}\n" for n in range(1, 31)]
+    lines[19] = "changed 20\n"
+    commit(repo, "src/poweron/core/services.py", "".join(lines))
+
+    patch = Path(run_preflight(repo)["patch"]).read_text().splitlines()
+
+    assert "   20 +changed 20" in patch
+    assert "      -line 20" in patch
+    assert "   21  line 21" in patch
+    assert "+++ b/src/poweron/core/services.py" in patch
