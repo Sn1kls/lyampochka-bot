@@ -1,4 +1,4 @@
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
@@ -23,6 +23,7 @@ from aiogram.types import (
 )
 
 from poweron.core.domain.models import KYIV, Building, City, Street, Subscription
+from poweron.core.domain.providers import TOE
 from poweron.core.ports import SourceError
 from poweron.core.services.catalog import Catalog, find_by_name
 from poweron.core.services.schedules import Schedules
@@ -52,6 +53,7 @@ NOT_MODIFIED = "message is not modified"
 
 
 class AddFlow(StatesGroup):
+    region = State()
     city = State()
     street = State()
     building = State()
@@ -339,8 +341,27 @@ async def decide_forget(
 @router.message(F.text == texts.MENU_ADD)
 async def add(message: Message, state: FSMContext) -> None:
     await _reset(state)
+    await state.set_state(AddFlow.region)
+    await message.answer(texts.ASK_REGION, reply_markup=keyboards.region_keyboard())
+
+
+@router.callback_query(AddFlow.region, keyboards.Region.filter())
+async def pick_region(
+    callback: CallbackQuery,
+    callback_data: keyboards.Region,
+    state: FSMContext,
+    catalogs: Mapping[str, Catalog],
+) -> None:
+    if callback_data.provider not in catalogs:
+        await callback.answer(texts.STALE_BUTTON, show_alert=True)
+        return
+    await state.update_data(provider=callback_data.provider)
     await state.set_state(AddFlow.city)
-    await message.answer(texts.ASK_CITY)
+    await _respond(callback, texts.ASK_CITY)
+
+
+async def _catalog(state: FSMContext, catalogs: Mapping[str, Catalog]) -> Catalog:
+    return catalogs[(await state.get_data()).get("provider", TOE)]
 
 
 @router.callback_query(keyboards.Action.filter())
@@ -433,7 +454,8 @@ def _choice_label(item: City | Street | Building) -> str:
 
 
 @router.message(AddFlow.city, F.text)
-async def search_city(message: Message, state: FSMContext, catalog: Catalog) -> None:
+async def search_city(message: Message, state: FSMContext, catalogs: Mapping[str, Catalog]) -> None:
+    catalog = await _catalog(state, catalogs)
     cities = await catalog.find_cities(message.text or "", _now())
     exact = find_by_name(cities, message.text or "")
     if exact is not None:
@@ -464,7 +486,10 @@ async def _choose_city(
 
 
 @router.message(AddFlow.street, F.text)
-async def search_street(message: Message, state: FSMContext, catalog: Catalog) -> None:
+async def search_street(
+    message: Message, state: FSMContext, catalogs: Mapping[str, Catalog]
+) -> None:
+    catalog = await _catalog(state, catalogs)
     city = (await state.get_data())["city"]
     streets = await catalog.find_streets(city["id"], message.text or "", _now())
     exact = find_by_name(streets, message.text or "")
@@ -481,12 +506,13 @@ async def pick_street(
     callback: CallbackQuery,
     callback_data: keyboards.Pick,
     state: FSMContext,
-    catalog: Catalog,
+    catalogs: Mapping[str, Catalog],
 ) -> None:
     picked = await _picked_option(callback, callback_data, state)
     if picked is None:
         return
     data, street = picked
+    catalog = await _catalog(state, catalogs)
     await _choose_street(callback, state, catalog, data["city"], street)
 
 
@@ -509,15 +535,22 @@ async def _choose_street(
 
 @router.callback_query(AddFlow.building, keyboards.Pick.filter(F.kind == "building"))
 async def pick_building(
-    callback: CallbackQuery, callback_data: keyboards.Pick, state: FSMContext, catalog: Catalog
+    callback: CallbackQuery,
+    callback_data: keyboards.Pick,
+    state: FSMContext,
+    catalogs: Mapping[str, Catalog],
 ) -> None:
     picked = await _picked_option(callback, callback_data, state)
     if picked is not None:
+        catalog = await _catalog(state, catalogs)
         await _choose_building(callback, state, catalog, Building(**picked[1]))
 
 
 @router.message(AddFlow.building, F.text)
-async def type_building(message: Message, state: FSMContext, catalog: Catalog) -> None:
+async def type_building(
+    message: Message, state: FSMContext, catalogs: Mapping[str, Catalog]
+) -> None:
+    catalog = await _catalog(state, catalogs)
     buildings = [Building(**raw) for raw in (await state.get_data())["options"]]
     building = find_by_name(buildings, message.text or "")
     if building is None:

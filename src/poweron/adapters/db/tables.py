@@ -153,3 +153,20 @@ catalog_cache = Table(
     Column("value", JSON, nullable=False),
     Column("fetched_at", UtcDateTime, nullable=False),
 )
+
+# Volynoblenergo's address → queue table, replaced as a whole by every weekly import.
+# Ids are derived from the names, so they stay the same across imports.
+voe_buildings = Table(
+    "voe_buildings",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("settlement_id", Integer, nullable=False),
+    Column("district", String(64), nullable=False),
+    Column("settlement", String(128), nullable=False),
+    Column("street_id", Integer, nullable=False),
+    Column("street", String(128), nullable=False),
+    Column("building_id", Integer, nullable=False),
+    Column("building", String(64), nullable=False),
+    Column("cherg_gpv", String(32)),
+    Index("ix_voe_buildings_street", "settlement_id", "street_id"),
+)

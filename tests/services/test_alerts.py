@@ -11,6 +11,7 @@ from poweron.core.domain.models import (
     OutboxMessage,
     Street,
 )
+from poweron.core.domain.providers import TOE
 from poweron.core.ports import ApiSchemaError, SourcePaused, SourceUnavailable
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.groups import RECHECK_AFTER, SubqueueChecker
@@ -89,7 +90,7 @@ async def test_a_paused_source_alerts_in_every_job(
     source = BrokenSource(SourcePaused("down"))
 
     await Polling(repository, source, alerts).poll(NOW)
-    await SubqueueChecker(repository, source, alerts).check(NOW + RECHECK_AFTER)
+    await SubqueueChecker(repository, {TOE: source}, alerts).check(NOW + RECHECK_AFTER)
     await PlannedWorks(repository, source, alerts).check(NOW)
 
     assert alerter.alerts == [(AlertKind.API_DOWN, "down")]
@@ -149,7 +150,7 @@ async def test_jobs_work_without_alerts(repository: SqlRepository) -> None:
     source = BrokenSource(SourceUnavailable("down"))
 
     await Polling(repository, source).poll(NOW)
-    await SubqueueChecker(repository, source).check(NOW + RECHECK_AFTER)
+    await SubqueueChecker(repository, {TOE: source}).check(NOW + RECHECK_AFTER)
     await PlannedWorks(repository, source).check(NOW)
 
 

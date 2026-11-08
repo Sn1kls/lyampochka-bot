@@ -8,20 +8,24 @@ from importlib.metadata import version
 from aiogram import Bot, Dispatcher
 
 from poweron.adapters.db.repository import SqlRepository, create_engine, run_migrations
+from poweron.adapters.db.voe_catalog import VoeCatalog
 from poweron.adapters.healthcheck import HealthcheckPinger
 from poweron.adapters.telegram.alerts import TelegramAdminAlerter
 from poweron.adapters.telegram.backup import TelegramBackupSink
 from poweron.adapters.telegram.bot import build_dispatcher, create_bot
 from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.adapters.toe_api.client import ToeClient
+from poweron.adapters.voe_api.client import VoeClient
 from poweron.config import Settings
+from poweron.core.domain.providers import TOE, VOE, VOE_CACHE_PREFIX
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.backups import Backups
 from poweron.core.services.catalog import Catalog
+from poweron.core.services.catalog_age import VoeCatalogAge
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.planned_works import PlannedWorks
-from poweron.core.services.polling import Polling
+from poweron.core.services.polling import Polling, SchedulesByProvider
 from poweron.core.services.reminders import Reminders
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
@@ -54,6 +58,8 @@ async def run(role: str, settings: Settings) -> None:
     engine = create_engine(settings.database_url)
     repository = SqlRepository(engine)
     toe_client = ToeClient(settings.api_base, contact=settings.contact)
+    voe_client = VoeClient(settings.voe_api_base)
+    voe_catalog = VoeCatalog(engine)
     bot = create_bot(settings.bot_token.get_secret_value())
     alerts = (
         None
@@ -72,7 +78,10 @@ async def run(role: str, settings: Settings) -> None:
             if role in ("bot", "all"):
                 dispatcher = build_dispatcher(
                     Subscriptions(repository, alerts),
-                    Catalog(repository, toe_client),
+                    {
+                        TOE: Catalog(repository, toe_client),
+                        VOE: Catalog(repository, voe_catalog, cache_prefix=VOE_CACHE_PREFIX),
+                    },
                     Schedules(repository),
                     status=Status(
                         repository,
@@ -89,19 +98,25 @@ async def run(role: str, settings: Settings) -> None:
                 notifications = Notifications(repository, {"telegram": TelegramNotifier(bot)})
                 group.create_task(
                     run_worker(
-                        Polling(repository, toe_client, alerts),
+                        Polling(
+                            repository,
+                            SchedulesByProvider({TOE: toe_client, VOE: voe_client}),
+                            alerts,
+                        ),
                         notifications,
                         Reminders(repository, Schedules(repository)),
-                        SubqueueChecker(repository, toe_client, alerts),
+                        SubqueueChecker(repository, {TOE: toe_client, VOE: voe_catalog}, alerts),
                         PlannedWorks(repository, toe_client, alerts),
                         settings.poll_interval_sec,
                         stop,
                         heartbeat,
                         _backups(settings, repository, bot, alerts),
+                        None if alerts is None else VoeCatalogAge(repository, alerts),
                     )
                 )
     finally:
         await toe_client.aclose()
+        await voe_client.aclose()
         await bot.session.close()
         await engine.dispose()
 

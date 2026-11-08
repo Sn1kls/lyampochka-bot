@@ -1,4 +1,4 @@
-.PHONY: check test fmt lint typecheck layers run migrate probe up down logs simulate announce-menu backup
+.PHONY: check test fmt lint typecheck layers run migrate probe up down logs simulate announce-menu backup sync-volyn install-volyn-sync
 
 check: lint typecheck layers test
 
@@ -48,3 +48,16 @@ backup:
 	docker compose exec -T bot python -c "import sqlite3; sqlite3.connect('/data/poweron.sqlite3').backup(sqlite3.connect('/data/backup.sqlite3'))"
 	docker compose cp bot:/data/backup.sqlite3 backups/poweron-$$(date +%Y%m%d-%H%M%S).sqlite3
 	docker compose exec -T bot rm /data/backup.sqlite3
+
+# Volyn address → queue catalogue: export on this Mac, import on the server (docs/volyn-notes.md).
+sync-volyn:
+	VOE_SYNC_TARGET=$(TARGET) scripts/sync_volyn_queues.sh
+
+install-volyn-sync:
+	@test -n "$(TARGET)" || (echo "usage: make install-volyn-sync TARGET=user@server" && exit 1)
+	sed -e "s|__REPO__|$(CURDIR)|" -e "s|__TARGET__|$(TARGET)|" -e "s|__HOME__|$(HOME)|" \
+		scripts/volyn-sync.plist.template > ~/Library/LaunchAgents/ua.lyampochka.volyn-sync.plist
+	launchctl bootout gui/$$(id -u)/ua.lyampochka.volyn-sync 2>/dev/null || true
+	launchctl bootstrap gui/$$(id -u) ~/Library/LaunchAgents/ua.lyampochka.volyn-sync.plist
+	@echo "installed: every Monday 10:00, log in ~/Library/Logs/lyampochka-volyn-sync.log"
+

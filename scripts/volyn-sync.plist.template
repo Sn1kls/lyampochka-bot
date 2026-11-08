@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Weekly Volyn queue sync. Installed by `make install-volyn-sync`; runs on wake if the Mac slept through it. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ua.lyampochka.volyn-sync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>__REPO__/scripts/sync_volyn_queues.sh</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:__HOME__/.local/bin:/usr/bin:/bin</string>
+        <key>VOE_SYNC_TARGET</key>
+        <string>__TARGET__</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>10</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/lyampochka-volyn-sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/lyampochka-volyn-sync.log</string>
+</dict>
+</plist>

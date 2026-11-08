@@ -11,10 +11,11 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from poweron.core.domain.models import Subscription
+from poweron.core.domain.providers import TOE, VOE
 from poweron.core.services.subscriptions import REMINDER_MINUTES
 
 from . import texts
-from .render import minutes_text
+from .render import minutes_text, queue_name
 
 PAGE_SIZE = 8
 SETTING_VALUES = {
@@ -56,6 +57,10 @@ class DayChoice(CallbackData, prefix="day"):
     subscription_id: int
     offset: int
     subqueue: str = ""
+
+
+class Region(CallbackData, prefix="rg"):
+    provider: str
 
 
 class QueueChoice(CallbackData, prefix="q"):
@@ -137,11 +142,20 @@ def menu_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def region_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for provider, text in ((TOE, texts.REGION_TERNOPIL), (VOE, texts.REGION_VOLYN)):
+        builder.button(text=text, callback_data=Region(provider=provider))
+    builder.button(text=texts.BUTTON_CANCEL, callback_data=Decision(action="add", accepted=False))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 def queue_keyboard(subqueues: Sequence[str], generation: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for index, queue in enumerate(subqueues):
         builder.button(
-            text=texts.BUTTON_QUEUE.format(queue=_plain_label(queue)),
+            text=texts.BUTTON_QUEUE.format(queue=queue_name(queue)),
             callback_data=QueueChoice(index=index, generation=generation),
         )
     builder.button(
@@ -166,17 +180,13 @@ def day_keyboard(
             if queue not in subscription.tracked_subqueues and queue != shown_subqueue:
                 builder.row(
                     InlineKeyboardButton(
-                        text=texts.BUTTON_QUEUE.format(queue=_plain_label(queue)),
+                        text=texts.BUTTON_QUEUE.format(queue=queue_name(queue)),
                         callback_data=DayChoice(
                             subscription_id=subscription.id, offset=shown_offset, subqueue=queue
                         ).pack(),
                     )
                 )
     return builder.as_markup()
-
-
-def _plain_label(cherg_gpv: str) -> str:
-    return cherg_gpv.split("#")[0]
 
 
 def subscription_keyboard(

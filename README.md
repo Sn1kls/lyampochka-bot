@@ -8,13 +8,16 @@ Lyampochka ([@lyampochka_bot](https://t.me/lyampochka_bot)) does that for you. Y
 - lets you know when the schedule has been updated;
 - reminds you shortly before the power goes off and before it comes back.
 
-Right now it works for the Ternopil region, using data from Ternopiloblenergo. More regions are next (see [Roadmap](#roadmap)).
+Right now it works for the Ternopil region (data from Ternopiloblenergo) and the Volyn region (data from Volynoblenergo). More regions are next (see [Roadmap](#roadmap)).
 
 ## How it's built
 
 The Telegram bot is the first client of a small core called `poweron`. The core knows about addresses, schedules and reminders, but nothing about Telegram, HTTP or databases. Everything external plugs in through a few interfaces:
 
-- `ScheduleSource` / `CatalogSource`: where schedules and addresses come from. Today that's the Ternopiloblenergo API (`adapters/toe_api`). Another region means another adapter, with no changes to the core.
+- `ScheduleSource` / `CatalogSource`: where schedules and addresses come from. Each region is its own adapter, with no changes to the core:
+  - Ternopil: the Ternopiloblenergo API (`adapters/toe_api`).
+  - Volyn: Volynoblenergo publishes each schedule only as a PNG table. `adapters/voe_api` reads the cell colours straight from the pixels, using a small stdlib PNG decoder (no OCR, no AI). The address → queue table is exported weekly from the utility's website and imported into the bot (`adapters/db/voe_catalog.py`).
+  - Subqueue keys are namespaced per region (`4.1` in Ternopil, `voe:6.1` in Volyn), so one table of schedules serves both.
 - `Repository`: storage (SQLite through async SQLAlchemy).
 - `Notifier` and `Clock`: sending messages and telling the time, so the core can be tested without Telegram or a real clock.
 
@@ -101,6 +104,19 @@ make up
 </details>
 
 <details>
+<summary>Volyn queue catalogue (weekly)</summary>
+
+Volynoblenergo's address lookup sits behind a Cloudflare challenge for data-centre IPs, so the server can't query it. Instead a Mac on a Ukrainian connection exports the whole table (~100 requests, ~3 minutes) and pipes it into the bot over SSH:
+
+```bash
+make sync-volyn TARGET=ubuntu@<server>          # once, by hand
+make install-volyn-sync TARGET=ubuntu@<server>  # every Monday at 10:00 via launchd
+```
+
+The import replaces the catalogue in one transaction. It refuses an export that's much smaller than the stored one (`--force` overrides), and reports the number of changed buildings to the admin chat. The daily queue re-check then tells subscribers whose queue moved. If no import arrives for 10 days, the bot alerts the admin. Details are in [`docs/volyn-notes.md`](docs/volyn-notes.md).
+</details>
+
+<details>
 <summary>Admin commands</summary>
 
 `/status` works only from `ADMIN_CHAT_ID`: version, number of users and addresses, queued notifications, and for each outage group when the utility was last polled and which day the latest schedule covers. A ⚠️ shows up only if the bot really can't reach the utility. New users are announced in the same chat ("👤 New user: Name @username"); names aren't stored.
@@ -108,7 +124,6 @@ make up
 
 ## Roadmap
 
-- More regions, starting with Volyn. My notes on the Volynoblenergo website are in [`docs/volyn-notes.md`](docs/volyn-notes.md). It has no JSON API, so it will need a different kind of adapter.
 - Other regional utilities, each as its own adapter next to `toe_api`.
 - More clients for the same core, for example a mobile app on top of an HTTP API.
 
