@@ -11,11 +11,10 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from poweron.core.domain.models import Subscription
-from poweron.core.domain.providers import TOE, VOE
 from poweron.core.services.subscriptions import REMINDER_MINUTES
 
 from . import texts
-from .render import minutes_text, queue_name
+from .render import REGIONS, minutes_text, queue_name
 
 PAGE_SIZE = 8
 SETTING_VALUES = {
@@ -144,7 +143,7 @@ def menu_keyboard() -> ReplyKeyboardMarkup:
 
 def region_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for provider, text in ((TOE, texts.REGION_TERNOPIL), (VOE, texts.REGION_VOLYN)):
+    for provider, text in REGIONS.items():
         builder.button(text=text, callback_data=Region(provider=provider))
     builder.button(text=texts.BUTTON_CANCEL, callback_data=Decision(action="add", accepted=False))
     builder.adjust(1)

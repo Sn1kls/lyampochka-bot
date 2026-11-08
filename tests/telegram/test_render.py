@@ -490,6 +490,7 @@ def test_status_separates_the_last_poll_from_the_last_schedule() -> None:
         subscriptions=3,
         pending_messages=1,
         subqueues=(
+            SubqueueStatus("voe:1.2", NOW - timedelta(minutes=5), None),
             SubqueueStatus("4.1#7", NOW - timedelta(minutes=5), date(2026, 10, 15)),
             SubqueueStatus("2.2#1", NOW - timedelta(minutes=16), None),
             SubqueueStatus("1.1", None, None),
@@ -500,9 +501,12 @@ def test_status_separates_the_last_poll_from_the_last_schedule() -> None:
     assert render_status(report, NOW) == (
         "📊 <b>Лямпочка 0.1.0</b>\n"
         "Користувачів: 2, адрес: 3, у черзі розсилки: 1\n"
+        "\n<b>Тернопільська</b>\n"
         "4.1: опитано 17.10 17:15, останній графік на 15.10\n"
         "⚠️ 2.2: опитано 17.10 17:04, графіків ще немає\n"
-        "⚠️ 1.1: ще не опитувалась"
+        "⚠️ 1.1: ще не опитувалась\n"
+        "\n<b>Волинська</b>\n"
+        "1.2: опитано 17.10 17:15, графіків ще немає"
     )
 
 
