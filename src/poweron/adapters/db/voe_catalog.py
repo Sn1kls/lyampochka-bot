@@ -75,7 +75,7 @@ def parse_export(compressed: bytes) -> tuple[list[CatalogRow], int]:
                     rows.append(row)
                 else:
                     skipped += 1
-    except (OSError, EOFError, ValueError) as error:
+    except (OSError, EOFError, ValueError, zlib.error) as error:
         raise CatalogImportRefused(f"not an export file: {error}") from error
     if not rows:
         raise CatalogImportRefused("the export is empty")

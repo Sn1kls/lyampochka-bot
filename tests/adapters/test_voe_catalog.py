@@ -72,10 +72,15 @@ def test_a_gzip_bomb_is_refused_without_inflating_it() -> None:
         parse_export(bomb)
 
 
+_GOOD = gzip.compress(b'["a", "b", "c", "1", null]\n' * 100)
+CORRUPT_GZIP = _GOOD[:15] + bytes(byte ^ 0xFF for byte in _GOOD[15:40]) + _GOOD[40:]
+
+
 @pytest.mark.parametrize(
     "broken",
     [
         b"not gzip",
+        CORRUPT_GZIP,
         gzip.compress(b"not json"),
         gzip.compress(b""),
         export([{"rows": []}]),
