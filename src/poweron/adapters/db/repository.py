@@ -45,7 +45,9 @@ SQLITE_BUSY_TIMEOUT = 30.0
 def create_engine(url: str) -> AsyncEngine:
     # The weekly Volyn catalogue import holds the write lock for several seconds on a small VM.
     connect_args = {"timeout": SQLITE_BUSY_TIMEOUT} if url.startswith("sqlite") else {}
-    engine = create_async_engine(url, connect_args=connect_args)
+    # Error messages would otherwise list the row values (addresses, chat ids), and errors
+    # end up in the logs and in Sentry.
+    engine = create_async_engine(url, connect_args=connect_args, hide_parameters=True)
     if engine.dialect.name == "sqlite":
         event.listen(engine.sync_engine, "connect", _enable_sqlite_foreign_keys)
     return engine

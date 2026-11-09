@@ -286,4 +286,4 @@ def _validate[Model](adapter: TypeAdapter[Model], data: Any) -> Model:
     try:
         return adapter.validate_python(data)
     except ValidationError as error:
-        raise ApiSchemaError(str(error)) from error
+        raise ApiSchemaError.from_validation("toe api", error) from None

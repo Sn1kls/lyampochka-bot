@@ -7,6 +7,7 @@ holds the whole catalogue in memory on a small VM.
 """
 
 import asyncio
+import logging
 import sys
 from datetime import UTC, datetime
 
@@ -19,15 +20,19 @@ from poweron.adapters.db.voe_catalog import (
     parse_export,
 )
 from poweron.config import Settings
+from poweron.observability import init_sentry
 
 
 def main() -> None:
     settings = Settings()  # values come from the environment
+    init_sentry(settings)
     run_migrations(settings.database_url)
     try:
         rows, skipped = parse_export(sys.stdin.buffer.read())
         summary = asyncio.run(_replace(settings.database_url, rows, "--force" in sys.argv))
     except CatalogImportRefused as error:
+        # Logged as an error, so Sentry reports it: a refused import needs a look.
+        logging.getLogger(__name__).error("import refused: %s", error)
         sys.exit(f"import refused: {error}")
     del rows  # free the catalogue before aiogram is loaded for the admin message
     report = (

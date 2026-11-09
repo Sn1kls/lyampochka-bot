@@ -30,6 +30,7 @@ from poweron.core.services.reminders import Reminders
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
+from poweron.observability import init_sentry
 from poweron.worker.runner import run_worker
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ def main() -> None:
     )
     # httpx logs full request URLs at INFO, and those carry the user's street and building.
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    init_sentry(settings)
     # Alembic runs its own event loop, so migrate before ours starts.
     run_migrations(settings.database_url)
     asyncio.run(run(role, settings))

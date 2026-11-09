@@ -137,8 +137,10 @@ class VoeClient:
             )
             try:
                 page = _Page.model_validate(response.json())
-            except (ValueError, ValidationError) as error:
-                raise ApiSchemaError(f"archive_gpv_graphs: {error}") from error
+            except ValidationError as error:  # a ValueError too, so it goes first
+                raise ApiSchemaError.from_validation("archive_gpv_graphs", error) from None
+            except ValueError as error:
+                raise ApiSchemaError(f"archive_gpv_graphs: not JSON: {error}") from error
             items += page.members
             if not page.members or len(items) >= page.total:
                 return items

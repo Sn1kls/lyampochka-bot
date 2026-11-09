@@ -2,6 +2,8 @@ from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from typing import Any, Protocol
 
+from pydantic import ValidationError
+
 from poweron.core.domain.models import (
     Address,
     AlertKind,
@@ -32,6 +34,18 @@ class SourcePaused(SourceUnavailable):
 
 class ApiSchemaError(SourceError):
     """The response no longer matches the expected format."""
+
+    @classmethod
+    def from_validation(cls, where: str, error: ValidationError) -> "ApiSchemaError":
+        """Field paths and reasons only: the input values can hold street and building names.
+
+        Raise it `from None`: a chained ValidationError would carry those values anyway.
+        """
+        problems = "; ".join(
+            f"{'.'.join(map(str, item['loc']))}: {item['msg']}"
+            for item in error.errors(include_input=False, include_url=False)[:5]
+        )
+        return cls(f"{where}: {error.error_count()} format errors: {problems}")
 
 
 class DeliveryTargetGone(Exception):

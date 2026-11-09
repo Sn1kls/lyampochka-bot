@@ -31,6 +31,8 @@ The database stores people's addresses, so the nightly backup the bot sends me i
 
 Every push to `main` runs the checks and deploys over SSH. The deploy key on the server can only pull `main` and restart the bot.
 
+With `SENTRY_DSN` set, errors go to [Sentry](https://sentry.io) with their stack traces. To keep addresses and the bot token on the server, the bot sends no local variables and runs none of the HTTP or SQL integrations (their breadcrumbs would carry URLs and queries). A last filter also strips the bot token from every event.
+
 The worker pings [healthchecks.io](https://healthchecks.io) after every poll. If the server or the worker goes down, the pings stop and healthchecks.io alerts me.
 
 The full spec (in Ukrainian) is in [`docs/SPEC.md`](docs/SPEC.md).

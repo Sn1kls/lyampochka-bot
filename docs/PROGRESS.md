@@ -243,3 +243,18 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - The catalogue is only as fresh as the last Mac sync; there is an alert after 10 days.
   - The DB is ~29 MB bigger, which matters for the 50 MB Telegram backup limit.
 - After deploy: run `make sync-volyn TARGET=…` once, then `make install-volyn-sync TARGET=…`.
+
+## 2026-11-08: Sentry
+
+- Done: optional error reports to Sentry (`SENTRY_DSN`, `SENTRY_ENVIRONMENT`), in `src/poweron/observability.py`, started by both entry points (`__main__`, `import_voe`).
+  - `logger.exception(...)` and uncaught exceptions become events; the release is `poweron@<version>+<git sha>`.
+- Privacy decisions:
+  - Handlers hold addresses in local variables, so `include_local_variables=False`.
+  - Toe API URLs carry the address and aiogram's Telegram URLs carry the bot token, so `auto_enabling_integrations=False`: no httpx, aiohttp or SQLAlchemy breadcrumbs. The default integrations stay: logging, excepthook, dedupe.
+  - `before_send` replaces the bot token (and its secret half) in every string of an event, keeping the other types.
+  - Found by the security review: SQLAlchemy errors listed the row values (addresses, chat ids), and they reached the logs too. The engine now uses `hide_parameters=True`.
+  - `ApiSchemaError.from_validation` keeps only field paths and reasons, raised `from None`: pydantic's text and a chained ValidationError carry the API's input values.
+  - `import_voe` logs a refused import as an error, so Sentry reports it.
+  - `send_default_pii` is left at its default (off); setting it explicitly is deprecated in sentry-sdk 2.74.
+- Test: one event from a logged exception has no local variables, no address, no API URL and no token, and its only breadcrumb is our own log. Turning off any of the three guards makes it fail (checked).
+- Owner's access: the official Sentry MCP server (`claude mcp add --transport http sentry https://mcp.sentry.dev/mcp/<org>/<project>`, OAuth).
