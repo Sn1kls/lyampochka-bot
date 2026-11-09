@@ -199,6 +199,7 @@ BACKUP_CAPTION = "🗄 Бекап бази {name}, зашифрований па
 
 STATUS_TITLE = "📊 <b>Лямпочка {version}</b>"
 STATUS_COUNTS = "Користувачів: {users}, адрес: {subscriptions}, у черзі розсилки: {pending}"
+STATUS_REGION = "\n<b>{region}</b>"
 STATUS_SUBQUEUE = "{label}: опитано {polled}, {schedule}"
 STATUS_SUBQUEUE_STALE = "⚠️ {label}: опитано {polled}, {schedule}"
 STATUS_NEVER_POLLED = "⚠️ {label}: ще не опитувалась"

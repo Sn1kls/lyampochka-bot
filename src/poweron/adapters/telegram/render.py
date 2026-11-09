@@ -10,6 +10,7 @@ from poweron.core.domain.models import (
     NextEvent,
     SlotState,
     StatusReport,
+    SubqueueStatus,
     Subscription,
 )
 from poweron.core.domain.providers import TOE, VOE, plain_subqueue, provider_of
@@ -24,6 +25,10 @@ STATE_LINES = {
     SlotState.SWITCHING: texts.LINE_SWITCHING,
     SlotState.UNKNOWN: texts.LINE_UNKNOWN,
 }
+
+
+# Regions in display order, by provider.
+REGIONS = {TOE: texts.REGION_TERNOPIL, VOE: texts.REGION_VOLYN}
 
 
 def _site(provider: str) -> tuple[str, str]:
@@ -341,6 +346,10 @@ def _duration(span: timedelta) -> str:
     return " ".join(parts)
 
 
+def _region(subqueue: SubqueueStatus) -> str:
+    return provider_of(subqueue.cherg_gpv)
+
+
 def render_status(report: StatusReport, now: datetime) -> str:
     lines = [
         texts.STATUS_TITLE.format(version=escape(report.version)),
@@ -350,7 +359,12 @@ def render_status(report: StatusReport, now: datetime) -> str:
             pending=report.pending_messages,
         ),
     ]
-    for subqueue in report.subqueues:
+    by_region = sorted(report.subqueues, key=lambda item: list(REGIONS).index(_region(item)))
+    region = None
+    for subqueue in by_region:  # stable: the report's order is kept within a region
+        if _region(subqueue) != region:
+            region = _region(subqueue)
+            lines.append(texts.STATUS_REGION.format(region=REGIONS[region]))
         label = subqueue_label(subqueue.cherg_gpv)
         polled, day = subqueue.polled_at, subqueue.latest_schedule_day
         if polled is None:
