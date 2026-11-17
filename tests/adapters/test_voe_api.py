@@ -7,7 +7,7 @@ import httpx
 import pytest
 import respx
 
-from poweron.adapters.voe_api.client import VoeClient
+from poweron.adapters.voe_api.client import ATTEMPTS, VoeClient
 from poweron.adapters.voe_api.image import decode_schedule
 from poweron.core.domain.models import KYIV, Address
 from poweron.core.ports import ApiSchemaError, SourceUnavailable
@@ -267,11 +267,22 @@ async def test_client_errors_are_not_retried(client: VoeClient) -> None:
 
 
 @respx.mock
-async def test_bad_json_is_a_schema_error(client: VoeClient) -> None:
-    respx.get(LIST_URL).respond(text="<html>")
+async def test_bad_json_is_a_schema_error_after_retries(client: VoeClient) -> None:
+    listing = respx.get(LIST_URL).respond(text="<html>")
 
     with pytest.raises(ApiSchemaError):
         await client.fetch_schedules(ADDRESS, "voe:1.1")
+
+    assert listing.call_count == ATTEMPTS
+
+
+@respx.mock
+async def test_an_answer_that_is_not_json_is_retried(client: VoeClient) -> None:
+    listing, _, _ = mock_archive()
+    listing.side_effect = [httpx.Response(200, text=""), httpx.Response(200, json=ARCHIVE)]
+
+    assert len(await client.fetch_schedules(ADDRESS, "voe:6.1")) == 2
+    assert listing.call_count == 2
 
 
 @respx.mock

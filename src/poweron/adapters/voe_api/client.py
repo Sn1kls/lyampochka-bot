@@ -24,6 +24,7 @@ MAX_PAGES = 10
 MAX_IMAGE_BYTES = 5_000_000
 LIST_CACHE_SECONDS = 60.0
 IMAGES_KEPT = 8
+NOT_JSON = "not JSON"
 
 logger = logging.getLogger(__name__)
 
@@ -134,13 +135,12 @@ class VoeClient:
                 "/api/archive_gpv_graphs",
                 params | {"page": page_number},
                 {"Accept": "application/ld+json"},
+                json=True,
             )
             try:
                 page = _Page.model_validate(response.json())
-            except ValidationError as error:  # a ValueError too, so it goes first
+            except ValidationError as error:
                 raise ApiSchemaError.from_validation("archive_gpv_graphs", error) from None
-            except ValueError as error:
-                raise ApiSchemaError(f"archive_gpv_graphs: not JSON: {error}") from error
             items += page.members
             if not page.members or len(items) >= page.total:
                 return items
@@ -161,7 +161,7 @@ class VoeClient:
         return grid
 
     async def _get(
-        self, path: str, params: dict[str, Any], headers: dict[str, str]
+        self, path: str, params: dict[str, Any], headers: dict[str, str], *, json: bool = False
     ) -> httpx.Response:
         async with self._lock:
             for attempt in range(1, ATTEMPTS + 1):
@@ -175,15 +175,24 @@ class VoeClient:
                     delay = _backoff(attempt)
                 else:
                     if response.status_code == 200:
-                        return response
-                    if response.status_code not in RETRY_STATUSES:
+                        try:
+                            if json:
+                                response.json()
+                            return response
+                        except ValueError:  # a server coming back up can answer 200 with a stub
+                            failure = NOT_JSON
+                            delay = _backoff(attempt)
+                    elif response.status_code not in RETRY_STATUSES:
                         raise SourceUnavailable(f"{path}: HTTP {response.status_code}")
-                    failure = f"HTTP {response.status_code}"
-                    delay = _retry_after(response) or _backoff(attempt)
+                    else:
+                        failure = f"HTTP {response.status_code}"
+                        delay = _retry_after(response) or _backoff(attempt)
                 finally:
                     self._last_request_at = self._monotonic()
                 if attempt < ATTEMPTS:
                     await self._sleep(delay)
+            if failure == NOT_JSON:
+                raise ApiSchemaError(f"{path}: {NOT_JSON} after {ATTEMPTS} attempts")
             raise SourceUnavailable(f"{path}: {failure} after {ATTEMPTS} attempts")
 
 
