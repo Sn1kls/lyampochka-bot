@@ -36,6 +36,7 @@ ATTEMPTS = 3
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 MIN_REQUEST_INTERVAL = 1.0
 MAX_RETRY_AFTER = 60.0
+NOT_JSON = "not JSON"
 MAX_PLANNED_WORK_PAGES = 10
 MAX_REASON_LENGTH = 300
 BREAKER_THRESHOLD = 3
@@ -213,15 +214,22 @@ class ToeClient:
                 delay = _backoff(attempt)
             else:
                 if response.status_code == 200:
-                    return _json(path, response)
-                if response.status_code not in RETRY_STATUSES:
+                    try:
+                        return response.json()
+                    except ValueError:  # a server coming back up can answer 200 with a stub
+                        failure = NOT_JSON
+                        delay = _backoff(attempt)
+                elif response.status_code not in RETRY_STATUSES:
                     raise _Rejected(f"{path}: HTTP {response.status_code}")
-                failure = f"HTTP {response.status_code}"
-                delay = _retry_after(response) or _backoff(attempt)
+                else:
+                    failure = f"HTTP {response.status_code}"
+                    delay = _retry_after(response) or _backoff(attempt)
             finally:
                 self._last_request_at = self._monotonic()
             if attempt < ATTEMPTS:
                 await self._sleep(delay)
+        if failure == NOT_JSON:
+            raise ApiSchemaError(f"{path}: {NOT_JSON} after {ATTEMPTS} attempts")
         raise SourceUnavailable(f"{path}: {failure} after {ATTEMPTS} attempts")
 
 
@@ -267,13 +275,6 @@ def _backoff(attempt: int) -> float:
 def _retry_after(response: httpx.Response) -> float | None:
     value = response.headers.get("Retry-After", "")
     return min(float(value), MAX_RETRY_AFTER) if value.isdigit() else None
-
-
-def _json(path: str, response: httpx.Response) -> Any:
-    try:
-        return response.json()
-    except ValueError as error:
-        raise ApiSchemaError(f"{path}: not JSON") from error
 
 
 def _members(response: Any) -> Any:

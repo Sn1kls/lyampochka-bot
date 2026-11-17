@@ -181,6 +181,15 @@ async def test_unexpected_slot_key_raises_schema_error(client: ToeClient) -> Non
 
 
 @respx.mock
+async def test_an_answer_that_is_not_json_is_retried(client: ToeClient) -> None:
+    route = respx.get(f"{API}/a_gpv_g")
+    route.side_effect = [httpx.Response(200, text=""), httpx.Response(200, json=SCHEDULE)]
+
+    assert len(await client.fetch_schedules(SADOVA_1, "4.1")) == 1
+    assert route.call_count == 2
+
+
+@respx.mock
 async def test_429_honours_retry_after(client: ToeClient, clock: FakeClock) -> None:
     route = respx.get(f"{API}/a_gpv_g")
     route.side_effect = [
@@ -321,7 +330,7 @@ async def test_schema_errors_do_not_open_the_breaker(client: ToeClient) -> None:
     route = respx.get(f"{API}/a_gpv_g")
     route.side_effect = (
         [httpx.Response(503)] * 2 * ATTEMPTS
-        + [httpx.Response(200, text="<html>")]
+        + [httpx.Response(200, text="<html>")] * ATTEMPTS
         + [httpx.Response(503)] * 2 * ATTEMPTS
     )
     await fail(client)
@@ -330,7 +339,7 @@ async def test_schema_errors_do_not_open_the_breaker(client: ToeClient) -> None:
         await client.fetch_schedules(SADOVA_1, "4.1")
     await fail(client)
     await fail(client)
-    assert route.call_count == 4 * ATTEMPTS + 1
+    assert route.call_count == 5 * ATTEMPTS
 
 
 @respx.mock
