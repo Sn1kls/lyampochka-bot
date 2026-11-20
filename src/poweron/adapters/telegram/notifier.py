@@ -5,6 +5,7 @@ from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.types import ReplyParameters
 
 from poweron.core.domain.models import MessageKind
 from poweron.core.ports import DeliveryTargetGone
@@ -47,6 +48,7 @@ class TelegramNotifier:
         text = _render(kind, payload)
         # A reply keyboard only changes when a message brings a new one; that news is not worth a buzz.
         menu_update = kind == MessageKind.MENU_UPDATED
+        reply_to = payload.get("reply_to")
         await self._wait_for_slot()
         try:
             await self._bot.send_message(
@@ -54,6 +56,10 @@ class TelegramNotifier:
                 text,
                 reply_markup=menu_keyboard() if menu_update else None,
                 disable_notification=True if menu_update else None,
+                # Still sent when the user has deleted the message it answers.
+                reply_parameters=None
+                if reply_to is None
+                else ReplyParameters(message_id=reply_to, allow_sending_without_reply=True),
             )
         except TelegramForbiddenError as error:
             raise DeliveryTargetGone(address) from error

@@ -185,9 +185,9 @@ async def test_the_admin_replies_to_the_header_or_the_copy_and_the_user_gets_bot
     await reply_to(chat, copy_id, "Вже виправив", message_id=62)
 
     assert chat.sent_texts()[-2:] == [texts.FEEDBACK_REPLY_SENT] * 2
-    assert await queued(repository) == [
-        ("feedback_reply", {"text": "Дякую"}),
-        ("feedback_reply", {"text": "Вже виправив"}),
+    assert await queued(repository) == [  # both answer the user's message 40
+        ("feedback_reply", {"text": "Дякую", "reply_to": 40}),
+        ("feedback_reply", {"text": "Вже виправив", "reply_to": 40}),
     ]
 
 
@@ -217,7 +217,7 @@ async def test_a_reply_to_a_bot_prompt_still_reaches_the_wizard(chat: Chat) -> N
 async def test_a_reply_to_a_forgotten_user_says_so(chat: Chat) -> None:
     await chat.say("/start")
     other = await chat.subscriptions.register("telegram", "2", "telegram", "2")
-    await chat.dispatcher["feedback"].record(other, ["telegram:1:77"], datetime.now(UTC))
+    await chat.dispatcher["feedback"].record(other, 40, ["telegram:1:77"], datetime.now(UTC))
     await chat.subscriptions.forget(other)
 
     await reply_to(chat, 77)
@@ -246,7 +246,7 @@ async def test_a_reply_outside_the_admin_chat_is_not_an_admin_reply(
 ) -> None:
     chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository))
     await chat.say("/start")
-    await chat.dispatcher["feedback"].record(1, ["telegram:1:77"], datetime.now(UTC))
+    await chat.dispatcher["feedback"].record(1, 40, ["telegram:1:77"], datetime.now(UTC))
 
     await reply_to(chat, 77)
 

@@ -146,6 +146,7 @@ feedback_messages = Table(
     metadata,
     Column("ref", String(128), primary_key=True),
     Column("user_id", ForeignKey("users.id", ondelete="SET NULL")),
+    Column("source_message_id", Integer),
     Column("created_at", UtcDateTime, nullable=False, default=utc_now),
 )
 

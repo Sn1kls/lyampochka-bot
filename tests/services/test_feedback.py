@@ -21,7 +21,7 @@ async def test_the_sixth_feedback_within_an_hour_waits_until_the_first_one_ages_
     for minute in range(5):
         moment = NOW + timedelta(minutes=minute)
         assert feedback.retry_after(user_id, moment) is None
-        await feedback.record(user_id, [f"telegram:1:{minute}"], moment)
+        await feedback.record(user_id, minute, [f"telegram:1:{minute}"], moment)
 
     assert feedback.retry_after(user_id, NOW + timedelta(minutes=10)) == timedelta(minutes=50)
     assert feedback.retry_after(other, NOW + timedelta(minutes=10)) is None
@@ -32,9 +32,9 @@ async def test_every_admin_copy_leads_back_to_its_author(repository: SqlReposito
     user_id = await register(repository, "101")
     feedback = Feedback(repository)
 
-    await feedback.record(user_id, ["telegram:1:50", "telegram:1:51"], NOW)
+    await feedback.record(user_id, 40, ["telegram:1:50", "telegram:1:51"], NOW)
 
-    assert await feedback.thread("telegram:1:51") == FeedbackThread(user_id)
+    assert await feedback.thread("telegram:1:51") == FeedbackThread(user_id, 40)
     assert await feedback.thread("telegram:1:52") is None
 
 
@@ -43,23 +43,26 @@ async def test_a_forgotten_author_leaves_the_thread_without_a_user(
 ) -> None:
     user_id = await register(repository, "101")
     feedback = Feedback(repository)
-    await feedback.record(user_id, ["telegram:1:50"], NOW)
+    await feedback.record(user_id, 40, ["telegram:1:50"], NOW)
 
     await Subscriptions(repository).forget(user_id)
 
-    assert await feedback.thread("telegram:1:50") == FeedbackThread(None)
+    assert await feedback.thread("telegram:1:50") == FeedbackThread(None, 40)
+    assert not await feedback.reply(FeedbackThread(None, 40), "Дякую", "admin:57")
 
 
-async def test_a_reply_reaches_the_user_once_per_reply_key(repository: SqlRepository) -> None:
-    user_id = await register(repository, "101")
+async def test_a_reply_answers_the_users_message_once_per_reply_key(
+    repository: SqlRepository,
+) -> None:
+    thread = FeedbackThread(await register(repository, "101"), 40)
     feedback = Feedback(repository)
     notifier = FakeNotifier()
 
-    assert await feedback.reply(user_id, "Дякую, гляну", "admin:55")
-    assert await feedback.reply(user_id, "Дякую, гляну", "admin:55")
+    assert await feedback.reply(thread, "Дякую, гляну", "admin:55")
+    assert await feedback.reply(thread, "Дякую, гляну", "admin:55")
     await Notifications(repository, {"telegram": notifier}).dispatch(NOW)
 
-    assert notifier.sent == [("101", "feedback_reply", {"text": "Дякую, гляну"})]
+    assert notifier.sent == [("101", "feedback_reply", {"text": "Дякую, гляну", "reply_to": 40})]
 
 
 async def test_a_reply_to_a_user_without_a_chat_is_not_queued(repository: SqlRepository) -> None:
@@ -67,4 +70,4 @@ async def test_a_reply_to_a_user_without_a_chat_is_not_queued(repository: SqlRep
     [target] = await repository.delivery_targets(user_id)
     await repository.deactivate_target(target.id)
 
-    assert not await Feedback(repository).reply(user_id, "Дякую", "admin:56")
+    assert not await Feedback(repository).reply(FeedbackThread(user_id, 40), "Дякую", "admin:56")

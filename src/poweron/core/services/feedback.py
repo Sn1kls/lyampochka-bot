@@ -29,21 +29,24 @@ class Feedback:
             received.popleft()
         return received[0] + self._window - now if len(received) >= self._limit else None
 
-    async def record(self, user_id: int, refs: Sequence[str], now: datetime) -> None:
+    async def record(
+        self, user_id: int, source_message_id: int, refs: Sequence[str], now: datetime
+    ) -> None:
         """Counts one feedback and remembers its admin-side copies."""
         self._received[user_id].append(now)
-        await self._repository.add_feedback_messages(user_id, refs, now)
+        await self._repository.add_feedback_messages(user_id, source_message_id, refs, now)
 
     async def thread(self, ref: str) -> FeedbackThread | None:
         """The author behind an admin-side message; None when it is not a feedback copy."""
         return await self._repository.feedback_thread(ref)
 
-    async def reply(self, user_id: int, text: str, reply_key: str) -> bool:
+    async def reply(self, thread: FeedbackThread, text: str, reply_key: str) -> bool:
         """Queues the admin's reply once per `reply_key`; False when the user cannot be reached."""
-        if not await self._repository.delivery_targets(user_id):
+        if thread.user_id is None or not await self._repository.delivery_targets(thread.user_id):
             return False
+        payload = {"text": text, "reply_to": thread.source_message_id}
         message = OutboxMessage(
-            user_id, MessageKind.FEEDBACK_REPLY, {"text": text}, f"feedback:{reply_key}"
+            thread.user_id, MessageKind.FEEDBACK_REPLY, payload, f"feedback:{reply_key}"
         )
         await self._repository.enqueue_messages([message])
         return True

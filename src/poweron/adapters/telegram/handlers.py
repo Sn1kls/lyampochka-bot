@@ -255,8 +255,8 @@ async def admin_reply(message: Message, thread: FeedbackThread, feedback: Feedba
     if len(message.text) > REPLY_MAX_LENGTH:
         await message.answer(texts.FEEDBACK_REPLY_TOO_LONG.format(limit=REPLY_MAX_LENGTH))
         return
-    delivered = thread.user_id is not None and await feedback.reply(
-        thread.user_id, message.text, _ref(message.chat.id, message.message_id)
+    delivered = await feedback.reply(
+        thread, message.text, _ref(message.chat.id, message.message_id)
     )
     await message.answer(texts.FEEDBACK_REPLY_SENT if delivered else texts.FEEDBACK_USER_GONE)
 
@@ -330,7 +330,7 @@ async def forward_feedback(
     )
     admin_ids = [header.message_id, *(copy.message_id for copy in copied)]
     await feedback.record(
-        user_id, [_ref(admin_chat_id, admin_id) for admin_id in admin_ids], _now()
+        user_id, message_ids[0], [_ref(admin_chat_id, admin_id) for admin_id in admin_ids], _now()
     )
     await message.answer(texts.FEEDBACK_SENT)
 

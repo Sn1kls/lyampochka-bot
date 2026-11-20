@@ -131,9 +131,13 @@ class OutboxMessage:
 
 @dataclass(frozen=True)
 class FeedbackThread:
-    """Who wrote the feedback behind an admin-side message; `user_id` None once they are forgotten."""
+    """Who wrote the feedback behind an admin-side message; `user_id` None once they are forgotten.
+
+    `source_message_id` is the user's own message in their channel, so a reply can quote it.
+    """
 
     user_id: int | None
+    source_message_id: int | None
 
 
 @dataclass(frozen=True)
