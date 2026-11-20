@@ -27,12 +27,12 @@ BUILDING_PAGE_SIZE = 20
 MENU_ROWS = (
     (texts.MENU_SCHEDULE, texts.MENU_NEXT),
     (texts.MENU_LIST, texts.MENU_SETTINGS),
+    (texts.MENU_HELP, texts.MENU_FEEDBACK),
 )
 # Older clients may still show the previous seven-button keyboard, so its labels keep working.
 MENU_LABELS = frozenset(label for row in MENU_ROWS for label in row) | {
     texts.MENU_ADD,
     texts.MENU_REMOVE,
-    texts.MENU_HELP,
 }
 ActionName = Literal["add", "remove"]
 ACTION_LABELS: dict[ActionName, str] = {"add": texts.MENU_ADD, "remove": texts.MENU_REMOVE}
@@ -218,6 +218,12 @@ def remove_confirm_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
 def confirm_keyboard(action: str, accept_text: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=accept_text, callback_data=Decision(action=action, accepted=True))
+    builder.button(text=texts.BUTTON_CANCEL, callback_data=Decision(action=action, accepted=False))
+    return builder.as_markup()
+
+
+def cancel_keyboard(action: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
     builder.button(text=texts.BUTTON_CANCEL, callback_data=Decision(action=action, accepted=False))
     return builder.as_markup()
 

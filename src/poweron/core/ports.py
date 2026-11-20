@@ -11,6 +11,7 @@ from poweron.core.domain.models import (
     City,
     DaySchedule,
     DeliveryTarget,
+    FeedbackThread,
     OutboxMessage,
     PlannedWork,
     QueuedMessage,
@@ -81,7 +82,9 @@ class PlannedWorkSource(Protocol):
 
 
 class Notifier(Protocol):
-    async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> None: ...
+    async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> str | None:
+        """An opaque ref of the delivered message, if the channel has one."""
+        ...
 
 
 class Repository(Protocol):
@@ -185,6 +188,12 @@ class Repository(Protocol):
     async def delivery_targets(self, user_id: int) -> list[DeliveryTarget]: ...
 
     async def deactivate_target(self, target_id: int) -> None: ...
+
+    async def add_feedback_messages(
+        self, user_id: int, source_message_id: int, refs: Sequence[str], now: datetime
+    ) -> None: ...
+
+    async def feedback_thread(self, ref: str) -> FeedbackThread | None: ...
 
     async def mark_sent(self, message_id: int, now: datetime) -> None: ...
 

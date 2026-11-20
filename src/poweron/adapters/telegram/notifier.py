@@ -1,9 +1,11 @@
 import asyncio
 from collections.abc import Mapping
+from html import escape
 from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.types import ReplyParameters
 
 from poweron.core.domain.models import MessageKind
 from poweron.core.ports import DeliveryTargetGone
@@ -30,8 +32,14 @@ def _render(kind: str, payload: Mapping[str, Any]) -> str:
             return render_planned_work(payload)
         case MessageKind.MENU_UPDATED:
             return texts.MENU_UPDATED
+        case MessageKind.FEEDBACK_REPLY:
+            return texts.FEEDBACK_REPLY.format(text=escape(payload["text"]))
         case _:
             raise ValueError(f"unknown message kind {kind!r}")
+
+
+def message_ref(chat_id: int, message_id: int) -> str:
+    return f"telegram:{chat_id}:{message_id}"
 
 
 class TelegramNotifier:
@@ -40,19 +48,30 @@ class TelegramNotifier:
         self._slot_lock = asyncio.Lock()
         self._next_slot = 0.0
 
-    async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> None:
+    async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> str:
         text = _render(kind, payload)
-        # A reply keyboard only changes when a message brings a new one.
-        keyboard = menu_keyboard() if kind == MessageKind.MENU_UPDATED else None
+        # A reply keyboard only changes when a message brings a new one; that news is not worth a buzz.
+        menu_update = kind == MessageKind.MENU_UPDATED
+        reply_to = payload.get("reply_to")
         await self._wait_for_slot()
         try:
-            await self._bot.send_message(int(address), text, reply_markup=keyboard)
+            sent = await self._bot.send_message(
+                int(address),
+                text,
+                reply_markup=menu_keyboard() if menu_update else None,
+                disable_notification=True if menu_update else None,
+                # Still sent when the user has deleted the message it answers.
+                reply_parameters=None
+                if reply_to is None
+                else ReplyParameters(message_id=reply_to, allow_sending_without_reply=True),
+            )
         except TelegramForbiddenError as error:
             raise DeliveryTargetGone(address) from error
         except TelegramBadRequest as error:
             if any(marker in error.message.lower() for marker in CHAT_GONE_MARKERS):
                 raise DeliveryTargetGone(address) from error
             raise
+        return message_ref(int(address), sent.message_id)
 
     async def _wait_for_slot(self) -> None:
         loop = asyncio.get_running_loop()

@@ -6,10 +6,18 @@ from typing import Any
 import pytest
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.base import BaseSession
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage, TelegramMethod
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+from aiogram.methods import (
+    AnswerCallbackQuery,
+    CopyMessages,
+    EditMessageText,
+    SendMessage,
+    TelegramMethod,
+)
 from aiogram.types import (
     InlineKeyboardMarkup,
+    Message,
+    MessageId,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     Update,
@@ -33,6 +41,7 @@ from poweron.core.domain.models import (
 from poweron.core.domain.providers import TOE, VOE
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.catalog import Catalog
+from poweron.core.services.feedback import Feedback
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
@@ -81,12 +90,21 @@ class FakeVolynSource:
 
 
 class RecordingSession(BaseSession):
-    """Records bot API calls instead of sending them; `errors` makes a method type fail."""
+    """Records bot API calls instead of sending them; `errors` makes a method type fail.
+
+    Sent and copied messages get ids from 1000 up, recorded in `results` next to `calls`.
+    Like Telegram, copying skips the message ids in `uncopyable`; sending a message to a chat
+    in `failing_chats` fails.
+    """
 
     def __init__(self) -> None:
         super().__init__()
         self.calls: list[TelegramMethod[Any]] = []
+        self.results: list[Any] = []
         self.errors: dict[type[TelegramMethod[Any]], Exception] = {}
+        self.uncopyable: set[int] = set()
+        self.failing_chats: set[int] = set()
+        self._next_id = 1000
 
     async def close(self) -> None:
         pass
@@ -99,8 +117,26 @@ class RecordingSession(BaseSession):
     ) -> Any:
         self.calls.append(method)
         if type(method) in self.errors:
+            self.results.append(None)
             raise self.errors[type(method)]
-        return True
+        result: Any = True
+        if isinstance(method, SendMessage) and method.chat_id in self.failing_chats:
+            self.results.append(None)
+            raise TelegramRetryAfter(method, "Too Many Requests: retry after 5", retry_after=5)
+        if isinstance(method, SendMessage):
+            chat = {"id": method.chat_id, "type": "private"}
+            result = Message.model_validate(
+                {"message_id": self._take_id(), "date": 0, "chat": chat, "text": method.text}
+            )
+        elif isinstance(method, CopyMessages):
+            copyable = [item for item in method.message_ids if item not in self.uncopyable]
+            result = [MessageId(message_id=self._take_id()) for _ in copyable]
+        self.results.append(result)
+        return result
+
+    def _take_id(self) -> int:
+        self._next_id += 1
+        return self._next_id
 
     async def stream_content(self, *args: Any, **kwargs: Any) -> AsyncGenerator[bytes]:
         yield b""
@@ -143,6 +179,7 @@ class Chat:
         status: Status | None = None,
         admin_chat_id: int | None = None,
         alerts: Alerts | None = None,
+        feedback: Feedback | None = None,
     ) -> None:
         self.subscriptions = SettingsSubscriptions(repository, alerts)
         self.session = RecordingSession()
@@ -154,6 +191,7 @@ class Chat:
                 VOE: Catalog(repository, FakeVolynSource(), cache_prefix="voe:"),
             },
             Schedules(repository),
+            feedback or Feedback(repository),
             status=status,
             admin_chat_id=admin_chat_id,
         )
@@ -170,6 +208,12 @@ class Chat:
             "entities": entities if text.startswith("/") else [],
         }
         await self._feed({"message": message})
+
+    async def send(self, message_id: int = 1, **fields: Any) -> None:
+        """A message of any kind: `fields` are Bot API Message fields such as photo or reply_to_message."""
+        await self._feed(
+            {"message": {"message_id": message_id, "date": 0, "chat": CHAT, "from": USER, **fields}}
+        )
 
     async def press(self, callback_data: keyboards.CallbackData) -> None:
         message = {"message_id": 1, "date": 0, "chat": CHAT, "text": "list"}
@@ -422,6 +466,7 @@ async def test_start_and_a_finished_add_show_the_phone_menu(chat: Chat) -> None:
     assert [[button.text for button in row] for row in markup.keyboard] == [
         ["📅 Графік", "⏭ Що далі"],
         ["📋 Мої адреси", "⚙️ Налаштування"],
+        ["❓ Допомога", "✉️ Відгук"],
     ]
 
     await add_address(chat, "5")
@@ -480,6 +525,7 @@ async def test_removing_an_address_asks_for_confirmation(chat: Chat) -> None:
         (texts.MENU_SETTINGS, "/settings"),
         (texts.MENU_REMOVE, "/remove"),
         (texts.MENU_HELP, "/help"),
+        (texts.MENU_FEEDBACK, "/feedback"),
     ],
 )
 async def test_each_menu_button_runs_the_command_handler(

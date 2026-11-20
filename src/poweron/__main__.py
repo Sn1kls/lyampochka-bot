@@ -22,6 +22,7 @@ from poweron.core.services.alerts import Alerts
 from poweron.core.services.backups import Backups
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.catalog_age import VoeCatalogAge
+from poweron.core.services.feedback import Feedback
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.planned_works import PlannedWorks
@@ -85,6 +86,7 @@ async def run(role: str, settings: Settings) -> None:
                         VOE: Catalog(repository, voe_catalog, cache_prefix=VOE_CACHE_PREFIX),
                     },
                     Schedules(repository),
+                    Feedback(repository),
                     status=Status(
                         repository,
                         f"{version('poweron')} ({settings.git_sha})",

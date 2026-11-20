@@ -75,7 +75,11 @@ def render_queues(subqueues: Sequence[str], tracked: Sequence[str]) -> str:
 
 
 def render_list(subscriptions: Sequence[Subscription]) -> str:
-    lines = [
+    return "\n".join([texts.LIST_HEADER, *_list_items(subscriptions)])
+
+
+def _list_items(subscriptions: Sequence[Subscription]) -> list[str]:
+    return [
         texts.LIST_ITEM.format(
             label=escape(item.label),
             address=render_address(item.city_name, item.street_name, item.address.building_name),
@@ -83,7 +87,14 @@ def render_list(subscriptions: Sequence[Subscription]) -> str:
         )
         for item in subscriptions
     ]
-    return "\n".join([texts.LIST_HEADER, *lines])
+
+
+def render_feedback_header(user_id: int, name: str, subscriptions: Sequence[Subscription]) -> str:
+    return texts.FEEDBACK_HEADER.format(
+        user_id=user_id,
+        name=escape(name),
+        addresses="\n".join(_list_items(subscriptions)) or texts.FEEDBACK_NO_ADDRESSES,
+    )
 
 
 def render_confirm(

@@ -258,3 +258,21 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - `send_default_pii` is left at its default (off); setting it explicitly is deprecated in sentry-sdk 2.74.
 - Test: one event from a logged exception has no local variables, no address, no API URL and no token, and its only breadcrumb is our own log. Turning off any of the three guards makes it fail (checked).
 - Owner's access: the official Sentry MCP server (`claude mcp add --transport http sentry https://mcp.sentry.dev/mcp/<org>/<project>`, OAuth).
+
+## 2026-11-20: Feedback to the developer
+
+- Done: `/feedback` and a third menu row «❓ Допомога | ✉️ Відгук».
+  - The user sends one message of any kind, or one album (its parts are collected for 1 s, since they arrive as concurrent updates).
+  - The admin chat gets a `copyMessages` copy, then a header «✉️ Відгук · користувач #id» with the name and addresses. Nothing is downloaded.
+  - The admin's Reply to the header or to a copy goes back through the outbox (`feedback_reply`, deduplicated by the admin's message id). Replies longer than 4000 characters or not text are refused; a reply to a forgotten user says so.
+  - Messages Telegram cannot copy (polls, dice) are refused and not counted; parts that come after their album was sent are dropped.
+  - The reply is a Telegram Reply to the user's own feedback message (`feedback_messages.source_message_id`), so they see what it answers; it still arrives if they deleted that message.
+  - The user's Reply to a «💬 Відповідь розробника» is a new feedback (same limit), so the conversation goes on without pressing «✉️ Відгук». Its header in the admin chat is a Telegram Reply to the admin's answer it continues.
+  - For that, `Notifier.send` returns a ref of the delivered message, and `Notifications` stores each delivered answer in `feedback_messages` with the admin's message as `source_message_id`. The Reply is matched by that row, not by text.
+- Decisions:
+  - Core `Feedback` service owns the rate limit (5 per hour per user, in memory, reset by a restart) and the reply queueing; the channel keeps the content.
+  - Found by the security review: the first version took the author from «#id» in the replied message's text, and a copy of a user's own text could forge it. Table `feedback_messages` now maps each admin-side message (header and copies) to its author, and only those messages count as feedback. `/forget` sets `user_id` to NULL, so the admin learns the user is gone.
+  - The feedback content lives only in the admin chat; `/forget` cannot reach it, and the prompt says the developer reads it.
+  - The limit is checked when `/feedback` is pressed, so a long text is not written in vain.
+  - The menu update (`MENU_UPDATED`) is now sent with `disable_notification`, and its text names the two new buttons.
+- After deploy: `make announce-menu VERSION=N` with N above the last one used.
