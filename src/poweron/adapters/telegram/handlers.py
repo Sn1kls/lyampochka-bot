@@ -292,9 +292,12 @@ async def feedback_by_reply(
     message_ids = await _whole_album(message)
     if message_ids is None:
         return
+    assert message.reply_to_message is not None  # _reply_to_developer checked it
+    answer = (message.reply_to_message.text or "").removeprefix(texts.FEEDBACK_REPLY_TITLE)
     await _send_feedback(
         message,
         message_ids,
+        answer.strip(),
         state,
         bot,
         event_from_user,
@@ -356,6 +359,7 @@ async def forward_feedback(
     await _send_feedback(
         message,
         message_ids,
+        None,
         state,
         bot,
         event_from_user,
@@ -369,6 +373,7 @@ async def forward_feedback(
 async def _send_feedback(
     message: Message,
     message_ids: list[int],
+    answering: str | None,
     state: FSMContext,
     bot: Bot,
     event_from_user: User,
@@ -389,7 +394,10 @@ async def _send_feedback(
     header = await bot.send_message(
         admin_chat_id,
         render_feedback_header(
-            user_id, display_name(event_from_user), await subscriptions.of_user(user_id)
+            user_id,
+            display_name(event_from_user),
+            await subscriptions.of_user(user_id),
+            answering,
         ),
     )
     admin_ids = [header.message_id, *(copy.message_id for copy in copied)]

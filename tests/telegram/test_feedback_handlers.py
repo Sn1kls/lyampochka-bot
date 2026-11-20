@@ -263,10 +263,13 @@ async def reply_to_bot(chat: Chat, bot_text: str, text: str = "А тепер п�
 async def test_the_users_reply_to_a_developer_answer_is_a_new_feedback(chat: Chat) -> None:
     await chat.say("/start")
 
-    await reply_to_bot(chat, "💬 Відповідь розробника\n\nВиправив, перевір")
+    await reply_to_bot(chat, "💬 Відповідь розробника\n\nВиправив <b>все</b>, перевір")
 
     assert [copied for copied, _ in copies(chat)] == [[91]]
-    assert len(headers(chat)) == 1
+    [(header, _)] = headers(chat)  # the admin sees which of their answers it continues
+    assert (
+        texts.FEEDBACK_ANSWERING.format(text="Виправив &lt;b&gt;все&lt;/b&gt;, перевір") in header
+    )
     assert chat.sent_texts()[-1] == texts.FEEDBACK_SENT
 
 
@@ -343,3 +346,13 @@ async def test_a_reply_to_the_users_own_message_with_the_title_is_not_a_feedback
     await chat.send(message_id=91, reply_to_message=replied, text="ага")
 
     assert copies(chat) == []
+
+
+async def test_a_long_answer_is_cut_in_the_header(chat: Chat) -> None:
+    await chat.say("/start")
+
+    await reply_to_bot(chat, "💬 Відповідь розробника\n\n" + "я" * handlers.REPLY_MAX_LENGTH)
+
+    [(header, _)] = headers(chat)
+    assert "я" * 200 + "…</blockquote>" in header
+    assert len(header) < 1000
