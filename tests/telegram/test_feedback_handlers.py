@@ -252,3 +252,38 @@ async def test_a_reply_outside_the_admin_chat_is_not_an_admin_reply(
 
     assert texts.FEEDBACK_REPLY_SENT not in chat.sent_texts()
     assert await queued(repository) == []
+
+
+async def reply_to_bot(chat: Chat, bot_text: str, text: str = "А тепер працює!") -> None:
+    replied = {"message_id": 90, "date": 0, "chat": {"id": 1, "type": "private"}}
+    replied |= {"from": BOT_USER, "text": bot_text}
+    await chat.send(message_id=91, reply_to_message=replied, text=text)
+
+
+async def test_the_users_reply_to_a_developer_answer_is_a_new_feedback(chat: Chat) -> None:
+    await chat.say("/start")
+
+    await reply_to_bot(chat, "💬 Відповідь розробника\n\nВиправив, перевір")
+
+    assert [copied for copied, _ in copies(chat)] == [[91]]
+    assert len(headers(chat)) == 1
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_SENT
+
+
+async def test_the_reply_to_a_developer_answer_keeps_the_limit(repository: SqlRepository) -> None:
+    chat = Chat(repository, admin_chat_id=ADMIN_CHAT_ID, feedback=Feedback(repository, limit=1))
+    await chat.say("/start")
+    await send_feedback(chat)
+
+    await reply_to_bot(chat, "💬 Відповідь розробника\n\nДякую")
+
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_LIMIT.format(minutes=60)
+    assert len(copies(chat)) == 1
+
+
+async def test_a_reply_to_another_bot_message_is_not_a_feedback(chat: Chat) -> None:
+    await chat.say("/start")
+
+    await reply_to_bot(chat, texts.HELP)
+
+    assert copies(chat) == []

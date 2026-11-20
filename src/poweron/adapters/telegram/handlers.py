@@ -261,6 +261,41 @@ async def admin_reply(message: Message, thread: FeedbackThread, feedback: Feedba
     await message.answer(texts.FEEDBACK_REPLY_SENT if delivered else texts.FEEDBACK_USER_GONE)
 
 
+def _reply_to_developer(message: Message, admin_chat_id: int | None) -> bool:
+    """The user's Reply to a developer answer; the sender is the author, so the text check is safe."""
+    replied = message.reply_to_message
+    return (
+        admin_chat_id is not None
+        and replied is not None
+        and (replied.text or "").startswith(texts.FEEDBACK_REPLY_TITLE)
+    )
+
+
+@router.message(_reply_to_developer)
+async def feedback_by_reply(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    event_from_user: User,
+    user_id: int,
+    subscriptions: Subscriptions,
+    feedback: Feedback,
+    admin_chat_id: int,
+) -> None:
+    # ponytail: only the album part carrying the Reply goes; whole albums need /feedback.
+    await _send_feedback(
+        message,
+        [message.message_id],
+        state,
+        bot,
+        event_from_user,
+        user_id,
+        subscriptions,
+        feedback,
+        admin_chat_id,
+    )
+
+
 @router.message(Command("feedback"))
 @router.message(F.text == texts.MENU_FEEDBACK)
 async def ask_feedback(
@@ -312,8 +347,32 @@ async def forward_feedback(
     message_ids = await _whole_album(message)
     if message_ids is None:
         return
-    await _reset(state)
     assert admin_chat_id is not None  # ask_feedback lets no one in without it
+    await _send_feedback(
+        message,
+        message_ids,
+        state,
+        bot,
+        event_from_user,
+        user_id,
+        subscriptions,
+        feedback,
+        admin_chat_id,
+    )
+
+
+async def _send_feedback(
+    message: Message,
+    message_ids: list[int],
+    state: FSMContext,
+    bot: Bot,
+    event_from_user: User,
+    user_id: int,
+    subscriptions: Subscriptions,
+    feedback: Feedback,
+    admin_chat_id: int,
+) -> None:
+    await _reset(state)
     if await _over_limit(message, feedback, user_id):
         return
     try:
