@@ -145,15 +145,11 @@ async def test_a_message_telegram_cannot_copy_is_refused_and_not_counted(
 ) -> None:
     chat = Chat(repository, admin_chat_id=ADMIN_CHAT_ID, feedback=Feedback(repository, limit=1))
     await chat.say("/start")
-    chat.session.errors[CopyMessages] = TelegramBadRequest(
-        CopyMessages(chat_id=1, from_chat_id=1, message_ids=[40]),
-        "Bad Request: message can't be copied",
-    )
+    chat.session.uncopyable = {40}  # Telegram skips an invoice or a quiz with a hidden answer
     await send_feedback(chat)
     assert chat.sent_texts()[-1] == texts.FEEDBACK_NOT_COPYABLE
     assert headers(chat) == []
 
-    del chat.session.errors[CopyMessages]
     await chat.send(message_id=41, text="тоді текстом")  # still in the feedback flow
     assert chat.sent_texts()[-1] == texts.FEEDBACK_SENT
 
@@ -373,3 +369,16 @@ async def test_an_album_sent_as_a_reply_to_an_answer_is_one_feedback(
     )
 
     assert [copied for copied, _ in copies(user_chat)] == [[92, 93]]
+
+
+async def test_an_unreachable_admin_chat_makes_feedback_unavailable(chat: Chat) -> None:
+    await chat.say("/start")
+    chat.session.errors[CopyMessages] = TelegramBadRequest(
+        CopyMessages(chat_id=1, from_chat_id=1, message_ids=[40]), "Bad Request: chat not found"
+    )
+
+    await send_feedback(chat)
+    await chat.send(message_id=41, text="ще раз")  # not stuck in the feedback flow
+
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_UNAVAILABLE
+    assert chat.sent_texts().count(texts.FEEDBACK_UNAVAILABLE) == 1

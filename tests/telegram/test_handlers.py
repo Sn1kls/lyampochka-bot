@@ -93,6 +93,7 @@ class RecordingSession(BaseSession):
     """Records bot API calls instead of sending them; `errors` makes a method type fail.
 
     Sent and copied messages get ids from 1000 up, recorded in `results` next to `calls`.
+    Like Telegram, copying skips the message ids in `uncopyable`.
     """
 
     def __init__(self) -> None:
@@ -100,6 +101,7 @@ class RecordingSession(BaseSession):
         self.calls: list[TelegramMethod[Any]] = []
         self.results: list[Any] = []
         self.errors: dict[type[TelegramMethod[Any]], Exception] = {}
+        self.uncopyable: set[int] = set()
         self._next_id = 1000
 
     async def close(self) -> None:
@@ -122,7 +124,8 @@ class RecordingSession(BaseSession):
                 {"message_id": self._take_id(), "date": 0, "chat": chat, "text": method.text}
             )
         elif isinstance(method, CopyMessages):
-            result = [MessageId(message_id=self._take_id()) for _ in method.message_ids]
+            copyable = [item for item in method.message_ids if item not in self.uncopyable]
+            result = [MessageId(message_id=self._take_id()) for _ in copyable]
         self.results.append(result)
         return result
 

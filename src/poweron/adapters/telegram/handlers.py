@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import math
 from collections import deque
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -57,6 +58,7 @@ from .render import (
     subqueue_label,
 )
 
+logger = logging.getLogger(__name__)
 router = Router(name="telegram")
 router.message.filter(F.chat.type == ChatType.PRIVATE)
 router.callback_query.filter(F.message.chat.type == ChatType.PRIVATE)
@@ -383,7 +385,11 @@ async def _send_feedback(
         return
     try:
         copied = await bot.copy_messages(admin_chat_id, message.chat.id, message_ids)
-    except TelegramBadRequest:  # polls, dice and the like cannot be copied
+    except TelegramBadRequest as error:  # the admin chat is unreachable, not the user's fault
+        logger.error("feedback could not reach the admin chat: %s", error.message)
+        await message.answer(texts.FEEDBACK_UNAVAILABLE)
+        return
+    if not copied:  # Telegram skips what it cannot copy: invoices, quizzes with a hidden answer…
         await state.set_state(FeedbackFlow.waiting)  # the answer asks for another message
         await message.answer(texts.FEEDBACK_NOT_COPYABLE)
         return
