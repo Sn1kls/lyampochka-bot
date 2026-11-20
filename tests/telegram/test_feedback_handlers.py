@@ -8,6 +8,7 @@ from aiogram.methods import CopyMessages, SendMessage
 
 from poweron.adapters.db.repository import SqlRepository
 from poweron.adapters.telegram import handlers, keyboards, texts
+from poweron.core.domain.models import FeedbackThread
 from poweron.core.services.feedback import Feedback
 from tests.telegram.test_handlers import Chat, add_address
 
@@ -382,3 +383,17 @@ async def test_an_unreachable_admin_chat_makes_feedback_unavailable(chat: Chat) 
 
     assert chat.sent_texts()[-1] == texts.FEEDBACK_UNAVAILABLE
     assert chat.sent_texts().count(texts.FEEDBACK_UNAVAILABLE) == 1
+
+
+async def test_without_the_header_the_copy_still_leads_back_to_the_user(
+    user_chat: Chat, repository: SqlRepository
+) -> None:
+    await user_chat.say("/start")
+    user_chat.session.failing_chats = {999}  # Telegram refuses the header, e.g. a flood limit
+
+    await send_feedback(user_chat)
+
+    [(_, [copy_id])] = copies(user_chat)
+    feedback = user_chat.dispatcher["feedback"]
+    assert await feedback.thread(f"telegram:999:{copy_id}") == FeedbackThread(1, 40)
+    assert user_chat.sent_texts()[-1] == texts.FEEDBACK_SENT

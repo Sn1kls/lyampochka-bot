@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.base import BaseSession
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import (
     AnswerCallbackQuery,
     CopyMessages,
@@ -93,7 +93,8 @@ class RecordingSession(BaseSession):
     """Records bot API calls instead of sending them; `errors` makes a method type fail.
 
     Sent and copied messages get ids from 1000 up, recorded in `results` next to `calls`.
-    Like Telegram, copying skips the message ids in `uncopyable`.
+    Like Telegram, copying skips the message ids in `uncopyable`; sending a message to a chat
+    in `failing_chats` fails.
     """
 
     def __init__(self) -> None:
@@ -102,6 +103,7 @@ class RecordingSession(BaseSession):
         self.results: list[Any] = []
         self.errors: dict[type[TelegramMethod[Any]], Exception] = {}
         self.uncopyable: set[int] = set()
+        self.failing_chats: set[int] = set()
         self._next_id = 1000
 
     async def close(self) -> None:
@@ -118,6 +120,9 @@ class RecordingSession(BaseSession):
             self.results.append(None)
             raise self.errors[type(method)]
         result: Any = True
+        if isinstance(method, SendMessage) and method.chat_id in self.failing_chats:
+            self.results.append(None)
+            raise TelegramRetryAfter(method, "Too Many Requests: retry after 5", retry_after=5)
         if isinstance(method, SendMessage):
             chat = {"id": method.chat_id, "type": "private"}
             result = Message.model_validate(

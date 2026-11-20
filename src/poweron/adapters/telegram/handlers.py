@@ -11,7 +11,7 @@ from typing import Any
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatType
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command, ExceptionTypeFilter, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -393,19 +393,22 @@ async def _send_feedback(
         await state.set_state(FeedbackFlow.waiting)  # the answer asks for another message
         await message.answer(texts.FEEDBACK_NOT_COPYABLE)
         return
-    header = await bot.send_message(
-        admin_chat_id,
-        render_feedback_header(
-            user_id,
-            display_name(event_from_user),
-            await subscriptions.of_user(user_id),
-        ),
-        # Ties a feedback by Reply to the admin's answer it continues.
-        reply_parameters=None
-        if answering is None
-        else ReplyParameters(message_id=answering, allow_sending_without_reply=True),
+    admin_ids = [copy.message_id for copy in copied]
+    header = render_feedback_header(
+        user_id, display_name(event_from_user), await subscriptions.of_user(user_id)
     )
-    admin_ids = [header.message_id, *(copy.message_id for copy in copied)]
+    try:
+        sent = await bot.send_message(
+            admin_chat_id,
+            header,
+            # Ties a feedback by Reply to the admin's answer it continues.
+            reply_parameters=None
+            if answering is None
+            else ReplyParameters(message_id=answering, allow_sending_without_reply=True),
+        )
+        admin_ids.append(sent.message_id)
+    except TelegramAPIError as error:  # the copy is there and still leads back to the user
+        logger.warning("feedback header was not sent: %s", error.message)
     await feedback.record(
         user_id,
         message_ids[0],
