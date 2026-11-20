@@ -46,6 +46,7 @@ announce-menu:
 # A test bot on this Mac with its own token and database (README, «Staging»).
 staging:
 	@test -f .env.staging || (echo "create .env.staging first, see README «Staging»" && exit 1)
+	mkdir -p data
 	ENV_FILE=.env.staging uv run python -m poweron all
 
 staging-volyn:
