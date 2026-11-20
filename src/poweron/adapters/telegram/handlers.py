@@ -281,7 +281,7 @@ async def ask_feedback(
 
 
 async def _over_limit(message: Message, feedback: Feedback, user_id: int) -> bool:
-    wait = feedback.wait(user_id, _now())
+    wait = feedback.retry_after(user_id, _now())
     if wait is not None:
         minutes = math.ceil(wait / timedelta(minutes=1))
         await message.answer(texts.FEEDBACK_LIMIT.format(minutes=minutes))
@@ -319,6 +319,7 @@ async def forward_feedback(
     try:
         copied = await bot.copy_messages(admin_chat_id, message.chat.id, message_ids)
     except TelegramBadRequest:  # polls, dice and the like cannot be copied
+        await state.set_state(FeedbackFlow.waiting)  # the answer asks for another message
         await message.answer(texts.FEEDBACK_NOT_COPYABLE)
         return
     header = await bot.send_message(
@@ -328,7 +329,7 @@ async def forward_feedback(
         ),
     )
     admin_ids = [header.message_id, *(copy.message_id for copy in copied)]
-    await feedback.received(
+    await feedback.record(
         user_id, [_ref(admin_chat_id, admin_id) for admin_id in admin_ids], _now()
     )
     await message.answer(texts.FEEDBACK_SENT)

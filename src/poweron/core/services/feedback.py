@@ -22,14 +22,14 @@ class Feedback:
         self._window = window
         self._received: defaultdict[int, deque[datetime]] = defaultdict(deque)
 
-    def wait(self, user_id: int, now: datetime) -> timedelta | None:
+    def retry_after(self, user_id: int, now: datetime) -> timedelta | None:
         """How long the user must wait before the next feedback; None when they may send now."""
         received = self._received[user_id]
         while received and now - received[0] >= self._window:
             received.popleft()
         return received[0] + self._window - now if len(received) >= self._limit else None
 
-    async def received(self, user_id: int, refs: Sequence[str], now: datetime) -> None:
+    async def record(self, user_id: int, refs: Sequence[str], now: datetime) -> None:
         """Counts one feedback and remembers its admin-side copies."""
         self._received[user_id].append(now)
         await self._repository.add_feedback_messages(user_id, refs, now)

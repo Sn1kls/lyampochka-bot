@@ -154,7 +154,7 @@ async def test_a_message_telegram_cannot_copy_is_refused_and_not_counted(
     assert headers(chat) == []
 
     del chat.session.errors[CopyMessages]
-    await send_feedback(chat, message_id=41)
+    await chat.send(message_id=41, text="тоді текстом")  # still in the feedback flow
     assert chat.sent_texts()[-1] == texts.FEEDBACK_SENT
 
 
@@ -217,7 +217,7 @@ async def test_a_reply_to_a_bot_prompt_still_reaches_the_wizard(chat: Chat) -> N
 async def test_a_reply_to_a_forgotten_user_says_so(chat: Chat) -> None:
     await chat.say("/start")
     other = await chat.subscriptions.register("telegram", "2", "telegram", "2")
-    await chat.dispatcher["feedback"].received(other, ["telegram:1:77"], datetime.now(UTC))
+    await chat.dispatcher["feedback"].record(other, ["telegram:1:77"], datetime.now(UTC))
     await chat.subscriptions.forget(other)
 
     await reply_to(chat, 77)
@@ -246,7 +246,7 @@ async def test_a_reply_outside_the_admin_chat_is_not_an_admin_reply(
 ) -> None:
     chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository))
     await chat.say("/start")
-    await chat.dispatcher["feedback"].received(1, ["telegram:1:77"], datetime.now(UTC))
+    await chat.dispatcher["feedback"].record(1, ["telegram:1:77"], datetime.now(UTC))
 
     await reply_to(chat, 77)
 

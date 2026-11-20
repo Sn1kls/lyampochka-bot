@@ -20,19 +20,19 @@ async def test_the_sixth_feedback_within_an_hour_waits_until_the_first_one_ages_
     feedback = Feedback(repository, limit=5, window=timedelta(hours=1))
     for minute in range(5):
         moment = NOW + timedelta(minutes=minute)
-        assert feedback.wait(user_id, moment) is None
-        await feedback.received(user_id, [f"telegram:1:{minute}"], moment)
+        assert feedback.retry_after(user_id, moment) is None
+        await feedback.record(user_id, [f"telegram:1:{minute}"], moment)
 
-    assert feedback.wait(user_id, NOW + timedelta(minutes=10)) == timedelta(minutes=50)
-    assert feedback.wait(other, NOW + timedelta(minutes=10)) is None
-    assert feedback.wait(user_id, NOW + timedelta(hours=1)) is None
+    assert feedback.retry_after(user_id, NOW + timedelta(minutes=10)) == timedelta(minutes=50)
+    assert feedback.retry_after(other, NOW + timedelta(minutes=10)) is None
+    assert feedback.retry_after(user_id, NOW + timedelta(hours=1)) is None
 
 
 async def test_every_admin_copy_leads_back_to_its_author(repository: SqlRepository) -> None:
     user_id = await register(repository, "101")
     feedback = Feedback(repository)
 
-    await feedback.received(user_id, ["telegram:1:50", "telegram:1:51"], NOW)
+    await feedback.record(user_id, ["telegram:1:50", "telegram:1:51"], NOW)
 
     assert await feedback.thread("telegram:1:51") == FeedbackThread(user_id)
     assert await feedback.thread("telegram:1:52") is None
@@ -43,7 +43,7 @@ async def test_a_forgotten_author_leaves_the_thread_without_a_user(
 ) -> None:
     user_id = await register(repository, "101")
     feedback = Feedback(repository)
-    await feedback.received(user_id, ["telegram:1:50"], NOW)
+    await feedback.record(user_id, ["telegram:1:50"], NOW)
 
     await Subscriptions(repository).forget(user_id)
 
