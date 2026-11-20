@@ -1,3 +1,7 @@
+import asyncio
+import logging
+import math
+from collections import deque
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import asdict
@@ -5,10 +9,10 @@ from datetime import UTC, datetime, timedelta
 from html import escape
 from typing import Any
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.enums import ChatType
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import Command, ExceptionTypeFilter
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
+from aiogram.filters import Command, ExceptionTypeFilter, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -18,23 +22,34 @@ from aiogram.types import (
     Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
+    ReplyParameters,
     TelegramObject,
     User,
 )
 
-from poweron.core.domain.models import KYIV, Building, City, Street, Subscription
+from poweron.core.domain.models import (
+    KYIV,
+    Building,
+    City,
+    FeedbackThread,
+    Street,
+    Subscription,
+)
 from poweron.core.domain.providers import TOE
 from poweron.core.ports import SourceError
 from poweron.core.services.catalog import Catalog, find_by_name
+from poweron.core.services.feedback import Feedback
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
 
 from . import keyboards, texts
 from .middleware import KnownUser
+from .notifier import message_ref
 from .render import (
     render_confirm,
     render_day,
+    render_feedback_header,
     render_list,
     render_next,
     render_no_schedule_for_address,
@@ -43,6 +58,7 @@ from .render import (
     subqueue_label,
 )
 
+logger = logging.getLogger(__name__)
 router = Router(name="telegram")
 router.message.filter(F.chat.type == ChatType.PRIVATE)
 router.callback_query.filter(F.message.chat.type == ChatType.PRIVATE)
@@ -50,6 +66,14 @@ router.message.outer_middleware(KnownUser())
 router.callback_query.outer_middleware(KnownUser())
 
 NOT_MODIFIED = "message is not modified"
+# An album arrives as separate updates handled concurrently; its parts are collected this long.
+ALBUM_WAIT = 1.0
+# Room for the «💬 Відповідь розробника» heading within Telegram's 4096 characters.
+REPLY_MAX_LENGTH = 4000
+
+
+class FeedbackFlow(StatesGroup):
+    waiting = State()
 
 
 class AddFlow(StatesGroup):
@@ -210,6 +234,212 @@ async def show_status(message: Message, status: Status | None, admin_chat_id: in
     if status is None or message.chat.id != admin_chat_id:
         return
     await message.answer(render_status(await status.report(), _now()))
+
+
+async def reply_to_feedback(
+    message: Message, admin_chat_id: int | None, feedback: Feedback
+) -> dict[str, FeedbackThread] | bool:
+    """Matches the admin's Reply to a feedback copy, found by message id and never by its text."""
+    replied = message.reply_to_message
+    if message.chat.id != admin_chat_id or replied is None:
+        return False
+    thread = await feedback.thread(message_ref(replied.chat.id, replied.message_id))
+    return False if thread is None else {"thread": thread}
+
+
+@router.message(reply_to_feedback)
+async def admin_reply(message: Message, thread: FeedbackThread, feedback: Feedback) -> None:
+    if not message.text:
+        await message.answer(texts.FEEDBACK_REPLY_TEXT_ONLY)
+        return
+    if len(message.text) > REPLY_MAX_LENGTH:
+        await message.answer(texts.FEEDBACK_REPLY_TOO_LONG.format(limit=REPLY_MAX_LENGTH))
+        return
+    delivered = await feedback.reply(
+        thread, message.text, message_ref(message.chat.id, message.message_id), message.message_id
+    )
+    await message.answer(texts.FEEDBACK_REPLY_SENT if delivered else texts.FEEDBACK_USER_GONE)
+
+
+def _not_a_command(message: Message) -> bool:
+    return not (message.text or "").startswith("/")
+
+
+async def reply_to_answer(
+    message: Message, admin_chat_id: int | None, feedback: Feedback
+) -> dict[str, FeedbackThread] | bool:
+    """Matches the user's Reply to a developer answer they got, found by message id."""
+    replied = message.reply_to_message
+    if admin_chat_id is None or replied is None:
+        return False
+    thread = await feedback.thread(message_ref(replied.chat.id, replied.message_id))
+    return False if thread is None else {"thread": thread}
+
+
+# Outside any flow, so a wizard answer or a command sent as a Reply still does its job.
+@router.message(StateFilter(None), reply_to_answer, _not_a_command)
+async def feedback_by_reply(
+    message: Message,
+    thread: FeedbackThread,
+    state: FSMContext,
+    bot: Bot,
+    event_from_user: User,
+    user_id: int,
+    subscriptions: Subscriptions,
+    feedback: Feedback,
+    admin_chat_id: int,
+) -> None:
+    message_ids = await _whole_album(message)
+    if message_ids is None:
+        return
+    await _send_feedback(
+        message,
+        message_ids,
+        thread.source_message_id,
+        state,
+        bot,
+        event_from_user,
+        user_id,
+        subscriptions,
+        feedback,
+        admin_chat_id,
+    )
+
+
+@router.message(Command("feedback"))
+@router.message(F.text == texts.MENU_FEEDBACK)
+async def ask_feedback(
+    message: Message,
+    state: FSMContext,
+    user_id: int,
+    feedback: Feedback,
+    admin_chat_id: int | None,
+) -> None:
+    if admin_chat_id is None:
+        await message.answer(texts.FEEDBACK_UNAVAILABLE)
+        return
+    if await _over_limit(message, feedback, user_id):
+        return
+    await _reset(state)
+    await state.set_state(FeedbackFlow.waiting)
+    await message.answer(texts.FEEDBACK_ASK, reply_markup=keyboards.cancel_keyboard("feedback"))
+
+
+async def _over_limit(message: Message, feedback: Feedback, user_id: int) -> bool:
+    wait = feedback.retry_after(user_id, _now())
+    if wait is not None:
+        minutes = math.ceil(wait / timedelta(minutes=1))
+        await message.answer(texts.FEEDBACK_LIMIT.format(minutes=minutes))
+    return wait is not None
+
+
+@router.callback_query(FeedbackFlow.waiting, keyboards.Decision.filter(F.action == "feedback"))
+async def cancel_feedback(callback: CallbackQuery, state: FSMContext) -> None:
+    await _reset(state)
+    await _respond(callback, texts.FEEDBACK_CANCELLED)
+
+
+@router.message(FeedbackFlow.waiting, _not_a_command)
+async def forward_feedback(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    event_from_user: User,
+    user_id: int,
+    subscriptions: Subscriptions,
+    feedback: Feedback,
+    admin_chat_id: int | None,
+) -> None:
+    message_ids = await _whole_album(message)
+    if message_ids is None:
+        return
+    assert admin_chat_id is not None  # ask_feedback lets no one in without it
+    await _send_feedback(
+        message,
+        message_ids,
+        None,
+        state,
+        bot,
+        event_from_user,
+        user_id,
+        subscriptions,
+        feedback,
+        admin_chat_id,
+    )
+
+
+async def _send_feedback(
+    message: Message,
+    message_ids: list[int],
+    answering: int | None,
+    state: FSMContext,
+    bot: Bot,
+    event_from_user: User,
+    user_id: int,
+    subscriptions: Subscriptions,
+    feedback: Feedback,
+    admin_chat_id: int,
+) -> None:
+    await _reset(state)
+    if await _over_limit(message, feedback, user_id):
+        return
+    try:
+        copied = await bot.copy_messages(admin_chat_id, message.chat.id, message_ids)
+    except TelegramBadRequest as error:  # the admin chat is unreachable, not the user's fault
+        logger.error("feedback could not reach the admin chat: %s", error.message)
+        await message.answer(texts.FEEDBACK_UNAVAILABLE)
+        return
+    if not copied:  # Telegram skips what it cannot copy: invoices, quizzes with a hidden answer…
+        await state.set_state(FeedbackFlow.waiting)  # the answer asks for another message
+        await message.answer(texts.FEEDBACK_NOT_COPYABLE)
+        return
+    admin_ids = [copy.message_id for copy in copied]
+    header = render_feedback_header(
+        user_id, display_name(event_from_user), await subscriptions.of_user(user_id)
+    )
+    try:
+        sent = await bot.send_message(
+            admin_chat_id,
+            header,
+            # Ties a feedback by Reply to the admin's answer it continues.
+            reply_parameters=None
+            if answering is None
+            else ReplyParameters(message_id=answering, allow_sending_without_reply=True),
+        )
+        admin_ids.append(sent.message_id)
+    except TelegramAPIError as error:  # the copy is there and still leads back to the user
+        logger.warning("feedback header was not sent: %s", error.message)
+    await feedback.record(
+        user_id,
+        message_ids[0],
+        [message_ref(admin_chat_id, admin_id) for admin_id in admin_ids],
+        _now(),
+    )
+    await message.answer(texts.FEEDBACK_SENT)
+
+
+_albums: dict[str, list[int]] = {}
+# Parts that come after their album was sent are dropped instead of making a second feedback.
+_sent_albums: deque[str] = deque(maxlen=100)
+
+
+async def _whole_album(message: Message) -> list[int] | None:
+    """Message ids of the message's whole album in order, or None for a part another call takes."""
+    album_id = message.media_group_id
+    if album_id is None:
+        return [message.message_id]
+    if album_id in _sent_albums:
+        return None
+    if album_id in _albums:
+        _albums[album_id].append(message.message_id)
+        return None
+    _albums[album_id] = [message.message_id]
+    try:
+        await asyncio.sleep(ALBUM_WAIT)
+    finally:
+        message_ids = _albums.pop(album_id)
+        _sent_albums.append(album_id)
+    return sorted(message_ids)
 
 
 @router.message(Command("forget"))

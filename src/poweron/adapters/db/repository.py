@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from poweron.adapters.db.tables import (
     catalog_cache,
     delivery_targets,
+    feedback_messages,
     identities,
     outbox,
     schedule_versions,
@@ -28,6 +29,7 @@ from poweron.core.domain.models import (
     Building,
     City,
     DeliveryTarget,
+    FeedbackThread,
     MessageKind,
     OutboxMessage,
     QueuedMessage,
@@ -390,6 +392,32 @@ class SqlRepository:
                 )
             )
             return [DeliveryTarget(row.id, row.channel, row.address) for row in result]
+
+    async def add_feedback_messages(
+        self, user_id: int, source_message_id: int, refs: Sequence[str], now: datetime
+    ) -> None:
+        rows = [
+            {
+                "ref": ref,
+                "user_id": user_id,
+                "source_message_id": source_message_id,
+                "created_at": now,
+            }
+            for ref in refs
+        ]
+        async with self._engine.begin() as connection:
+            await connection.execute(feedback_messages.insert(), rows)
+
+    async def feedback_thread(self, ref: str) -> FeedbackThread | None:
+        async with self._engine.connect() as connection:
+            row = (
+                await connection.execute(
+                    select(
+                        feedback_messages.c.user_id, feedback_messages.c.source_message_id
+                    ).where(feedback_messages.c.ref == ref)
+                )
+            ).first()
+        return None if row is None else FeedbackThread(row.user_id, row.source_message_id)
 
     async def deactivate_target(self, target_id: int) -> None:
         async with self._engine.begin() as connection:

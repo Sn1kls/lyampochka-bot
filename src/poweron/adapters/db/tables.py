@@ -139,6 +139,17 @@ outbox = Table(
     Index("ix_outbox_pending", "sent_at", "next_attempt_at"),
 )
 
+# The admin-side copies of feedback (header and content), so a Reply finds its author.
+# Forgetting the user keeps the row without them: the admin then learns the user is gone.
+feedback_messages = Table(
+    "feedback_messages",
+    metadata,
+    Column("ref", String(128), primary_key=True),
+    Column("user_id", ForeignKey("users.id", ondelete="SET NULL")),
+    Column("source_message_id", Integer),
+    Column("created_at", UtcDateTime, nullable=False, default=utc_now),
+)
+
 subqueue_polls = Table(
     "subqueue_polls",
     metadata,

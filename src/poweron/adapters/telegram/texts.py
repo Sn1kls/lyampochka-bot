@@ -13,6 +13,7 @@ MENU_ADD = "➕ Додати адресу"
 MENU_SETTINGS = "⚙️ Налаштування"
 MENU_REMOVE = "🗑 Видалити адресу"
 MENU_HELP = "❓ Допомога"
+MENU_FEEDBACK = "✉️ Відгук"
 
 GREETING = (
     f"Привіт! Я «{BRAND}» 💡\n"
@@ -40,6 +41,7 @@ COMMANDS = (
     ("settings", "налаштування сповіщень"),
     ("remove", "видалити адресу"),
     ("forget", "стерти всі мої дані"),
+    ("feedback", "написати розробнику"),
     ("help", "що я вмію"),
 )
 
@@ -98,7 +100,8 @@ HELP = (
     f"{MENU_SCHEDULE} — графік на сьогодні чи завтра\n"
     f"{MENU_NEXT} — коли вимкнуть чи увімкнуть світло\n"
     f"{MENU_LIST} — твої адреси; там же додати чи видалити\n"
-    f"{MENU_SETTINGS} — сповіщення та нагадування\n\n"
+    f"{MENU_SETTINGS} — сповіщення та нагадування\n"
+    f"{MENU_FEEDBACK} — скарга, ідея чи подяка розробнику\n\n"
     "Стерти всі свої дані: /forget"
 )
 
@@ -173,7 +176,11 @@ SUBQUEUES_GONE = (
     "на цю адресу.\nМожливо, це збій у даних, тож нічого не змінюю — перевір на {link}"
 )
 
-MENU_UPDATED = "🔄 Оновив меню: тепер усе під кнопками внизу 👇"
+MENU_UPDATED = (
+    "🔄 Оновив меню внизу 👇\n"
+    f"{MENU_HELP} — що вміє кожна кнопка\n"
+    f"{MENU_FEEDBACK} — напиши мені скаргу, ідею чи подяку, можна зі скріном"
+)
 PLANNED_WORK = "🛠 <b>{label}</b>: планові роботи {date} з {start} до {end}"
 PLANNED_WORK_REASON = " — {reason}"
 
@@ -218,3 +225,27 @@ STATUS_SUBQUEUE_STALE = "⚠️ {label}: опитано {polled}, {schedule}"
 STATUS_NEVER_POLLED = "⚠️ {label}: ще не опитувалась"
 STATUS_LAST_SCHEDULE = "останній графік на {day}"
 STATUS_NO_SCHEDULE = "графіків ще немає"
+
+FEEDBACK_ASK = (
+    "Напиши, що думаєш: скарга, ідея чи подяка. Можна зі скріном, файлом чи голосовим.\n"
+    "Повідомлення прочитає розробник."
+)
+FEEDBACK_SENT = "Дякую! Передав розробнику ✉️"
+FEEDBACK_CANCELLED = "Добре, скасовано."
+FEEDBACK_LIMIT = "Повідомлень забагато. Спробуй знову через {minutes} хв."
+FEEDBACK_UNAVAILABLE = "Зараз написати розробнику не вийде, спробуй пізніше."
+FEEDBACK_HEADER = (
+    "✉️ <b>Відгук</b> · користувач #{user_id}\n"
+    "{name}\n\n"
+    "{addresses}\n\n"
+    "↩️ Щоб відповісти, зроби Reply на цей заголовок або на сам відгук вище."
+)
+FEEDBACK_NO_ADDRESSES = "Адрес немає."
+FEEDBACK_REPLY = "💬 <b>Відповідь розробника</b>\n\n{text}"
+FEEDBACK_REPLY_SENT = "✅ Надіслано"
+FEEDBACK_USER_GONE = "Цього користувача вже немає: він стер свої дані або заблокував бота."
+FEEDBACK_REPLY_TEXT_ONLY = "Відповідь можна надіслати лише текстом."
+FEEDBACK_REPLY_TOO_LONG = "Задовга відповідь: максимум {limit} символів."
+FEEDBACK_NOT_COPYABLE = (
+    "Таке повідомлення передати не можу. Надішли текст, скрін, файл чи голосове."
+)

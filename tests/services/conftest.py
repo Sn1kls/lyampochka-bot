@@ -41,10 +41,11 @@ class FakeNotifier:
     sent: list[tuple[str, str, Mapping[str, Any]]] = field(default_factory=list)
     errors: list[Exception] = field(default_factory=list)
 
-    async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> None:
+    async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> str:
         if self.errors:
             raise self.errors.pop(0)
         self.sent.append((address, kind, payload))
+        return f"fake:{address}:{len(self.sent)}"
 
 
 async def subscribe(repository: SqlRepository, external_id: str = "101") -> int:

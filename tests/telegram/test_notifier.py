@@ -1,10 +1,11 @@
 import asyncio
 from itertools import pairwise
+from types import SimpleNamespace
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramServerError
 from aiogram.methods import SendMessage
-from aiogram.types import ReplyKeyboardMarkup
+from aiogram.types import ReplyKeyboardMarkup, ReplyParameters
 
 from poweron.adapters.telegram import texts
 from poweron.adapters.telegram.notifier import TelegramNotifier
@@ -27,14 +28,26 @@ class FakeBot:
         self.error = error
         self.sent: list[tuple[int, str]] = []
         self.markups: list[object] = []
+        self.silent: list[bool | None] = []
+        self.replies_to: list[ReplyParameters | None] = []
         self.send_times: list[float] = []
 
-    async def send_message(self, chat_id: int, text: str, reply_markup: object = None) -> None:
+    async def send_message(
+        self,
+        chat_id: int,
+        text: str,
+        reply_markup: object = None,
+        disable_notification: bool | None = None,
+        reply_parameters: ReplyParameters | None = None,
+    ) -> SimpleNamespace:
         self.send_times.append(asyncio.get_running_loop().time())
         if self.error is not None:
             raise self.error
         self.sent.append((chat_id, text))
         self.markups.append(reply_markup)
+        self.silent.append(disable_notification)
+        self.replies_to.append(reply_parameters)
+        return SimpleNamespace(message_id=500)
 
 
 def notifier_with(bot: FakeBot) -> TelegramNotifier:
@@ -126,6 +139,7 @@ async def test_menu_update_brings_the_new_keyboard() -> None:
 
     assert bot.sent == [(42, texts.MENU_UPDATED)]
     assert isinstance(bot.markups[0], ReplyKeyboardMarkup)
+    assert bot.silent == [True]  # news about the menu is not worth a buzz
 
 
 async def test_other_kinds_leave_the_keyboard_alone() -> None:
@@ -134,6 +148,8 @@ async def test_other_kinds_leave_the_keyboard_alone() -> None:
     await notifier_with(bot).send("42", "schedule_updated", PAYLOAD)
 
     assert bot.markups == [None]
+    assert bot.silent == [None]
+    assert bot.replies_to == [None]
 
 
 async def test_unknown_kind_is_rejected() -> None:
@@ -149,3 +165,17 @@ async def test_concurrent_sends_are_spaced() -> None:
 
     gaps = [later - earlier for earlier, later in pairwise(bot.send_times)]
     assert all(gap >= 0.035 for gap in gaps)
+
+
+async def test_the_developer_reply_is_shown_as_plain_text() -> None:
+    bot = FakeBot()
+
+    payload = {"text": "Дякую! <b>не жирний</b>", "reply_to": 40, "answer": 61}
+    delivered = await notifier_with(bot).send("42", "feedback_reply", payload)
+
+    assert bot.sent == [
+        (42, texts.FEEDBACK_REPLY.format(text="Дякую! &lt;b&gt;не жирний&lt;/b&gt;"))
+    ]
+    # Quotes the user's feedback, and still arrives if they deleted it.
+    assert bot.replies_to == [ReplyParameters(message_id=40, allow_sending_without_reply=True)]
+    assert delivered == "telegram:42:500"  # so a Reply to it can be traced back
