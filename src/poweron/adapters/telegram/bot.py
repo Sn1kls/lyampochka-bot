@@ -43,15 +43,19 @@ def build_dispatcher(
         admin_chat_id=admin_chat_id,
     )
     dispatcher.include_router(router)
-    dispatcher.startup.register(publish_commands)
+    dispatcher.startup.register(publish_profile)
     return dispatcher
 
 
-async def publish_commands(bot: Bot) -> None:
-    """The command menu Telegram shows when the user types "/"; cosmetic, so never fatal."""
-    try:
-        await bot.set_my_commands(
-            [BotCommand(command=command, description=text) for command, text in texts.COMMANDS]
-        )
-    except TelegramAPIError as error:
-        logger.warning("could not publish the command menu: %r", error)
+async def publish_profile(bot: Bot) -> None:
+    """The "/" command menu and the profile texts; cosmetic, so never fatal, each on its own."""
+    commands = [BotCommand(command=command, description=text) for command, text in texts.COMMANDS]
+    for request in (
+        bot.set_my_commands(commands),
+        bot.set_my_short_description(short_description=texts.ABOUT),
+        bot.set_my_description(description=texts.DESCRIPTION),
+    ):
+        try:
+            await request
+        except TelegramAPIError as error:
+            logger.warning("could not publish the bot profile: %r", error)
