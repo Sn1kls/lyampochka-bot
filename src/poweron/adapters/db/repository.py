@@ -397,8 +397,12 @@ class SqlRepository:
         self, user_id: int, source_message_id: int, refs: Sequence[str], now: datetime
     ) -> None:
         rows = [
-            {"ref": ref, "user_id": user_id, "source_message_id": source_message_id}
-            | {"created_at": now}
+            {
+                "ref": ref,
+                "user_id": user_id,
+                "source_message_id": source_message_id,
+                "created_at": now,
+            }
             for ref in refs
         ]
         async with self._engine.begin() as connection:
