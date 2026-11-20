@@ -11,6 +11,7 @@ from poweron.core.domain.models import (
     City,
     DaySchedule,
     DeliveryTarget,
+    FeedbackThread,
     OutboxMessage,
     PlannedWork,
     QueuedMessage,
@@ -185,6 +186,12 @@ class Repository(Protocol):
     async def delivery_targets(self, user_id: int) -> list[DeliveryTarget]: ...
 
     async def deactivate_target(self, target_id: int) -> None: ...
+
+    async def add_feedback_messages(
+        self, user_id: int, refs: Sequence[str], now: datetime
+    ) -> None: ...
+
+    async def feedback_thread(self, ref: str) -> FeedbackThread | None: ...
 
     async def mark_sent(self, message_id: int, now: datetime) -> None: ...
 

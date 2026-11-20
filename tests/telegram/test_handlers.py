@@ -7,9 +7,17 @@ import pytest
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.base import BaseSession
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage, TelegramMethod
+from aiogram.methods import (
+    AnswerCallbackQuery,
+    CopyMessages,
+    EditMessageText,
+    SendMessage,
+    TelegramMethod,
+)
 from aiogram.types import (
     InlineKeyboardMarkup,
+    Message,
+    MessageId,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     Update,
@@ -82,12 +90,17 @@ class FakeVolynSource:
 
 
 class RecordingSession(BaseSession):
-    """Records bot API calls instead of sending them; `errors` makes a method type fail."""
+    """Records bot API calls instead of sending them; `errors` makes a method type fail.
+
+    Sent and copied messages get ids from 1000 up, recorded in `results` next to `calls`.
+    """
 
     def __init__(self) -> None:
         super().__init__()
         self.calls: list[TelegramMethod[Any]] = []
+        self.results: list[Any] = []
         self.errors: dict[type[TelegramMethod[Any]], Exception] = {}
+        self._next_id = 1000
 
     async def close(self) -> None:
         pass
@@ -100,8 +113,22 @@ class RecordingSession(BaseSession):
     ) -> Any:
         self.calls.append(method)
         if type(method) in self.errors:
+            self.results.append(None)
             raise self.errors[type(method)]
-        return True
+        result: Any = True
+        if isinstance(method, SendMessage):
+            chat = {"id": method.chat_id, "type": "private"}
+            result = Message.model_validate(
+                {"message_id": self._take_id(), "date": 0, "chat": chat, "text": method.text}
+            )
+        elif isinstance(method, CopyMessages):
+            result = [MessageId(message_id=self._take_id()) for _ in method.message_ids]
+        self.results.append(result)
+        return result
+
+    def _take_id(self) -> int:
+        self._next_id += 1
+        return self._next_id
 
     async def stream_content(self, *args: Any, **kwargs: Any) -> AsyncGenerator[bytes]:
         yield b""

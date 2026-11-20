@@ -234,18 +234,18 @@ FEEDBACK_SENT = "Дякую! Передав розробнику ✉️"
 FEEDBACK_CANCELLED = "Добре, скасовано."
 FEEDBACK_LIMIT = "Повідомлень забагато. Спробуй знову через {minutes} хв."
 FEEDBACK_UNAVAILABLE = "Зараз написати розробнику не вийде, спробуй пізніше."
-# The admin's reply is matched to the user by "#<id>" in the first line.
 FEEDBACK_HEADER = (
     "✉️ <b>Відгук</b> · користувач #{user_id}\n"
     "{name}\n\n"
     "{addresses}\n\n"
-    "↩️ Щоб відповісти, зроби Reply на це повідомлення."
+    "↩️ Щоб відповісти, зроби Reply на цей заголовок або на сам відгук вище."
 )
 FEEDBACK_NO_ADDRESSES = "Адрес немає."
 FEEDBACK_REPLY = "💬 <b>Відповідь розробника</b>\n\n{text}"
 FEEDBACK_REPLY_SENT = "✅ Надіслано"
 FEEDBACK_USER_GONE = "Цього користувача вже немає: він стер свої дані або заблокував бота."
-FEEDBACK_REPLY_HINT = (
-    "Щоб відповісти на відгук, зроби Reply на його заголовок «✉️ Відгук · користувач #…»."
-)
 FEEDBACK_REPLY_TEXT_ONLY = "Відповідь можна надіслати лише текстом."
+FEEDBACK_REPLY_TOO_LONG = "Задовга відповідь: максимум {limit} символів."
+FEEDBACK_NOT_COPYABLE = (
+    "Таке повідомлення передати не можу. Надішли текст, скрін, файл чи голосове."
+)

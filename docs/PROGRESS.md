@@ -263,10 +263,13 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 
 - Done: `/feedback` and a third menu row «❓ Допомога | ✉️ Відгук».
   - The user sends one message of any kind, or one album (its parts are collected for 1 s, since they arrive as concurrent updates).
-  - The admin chat gets a header «✉️ Відгук · користувач #id» with the name and addresses, then a `copyMessages` copy, so nothing is downloaded or stored.
-  - The admin's Reply to the header goes back through the outbox (`feedback_reply`, deduplicated by the admin's message id). A reply to anything else gets a hint; a reply to a forgotten user says so.
+  - The admin chat gets a `copyMessages` copy, then a header «✉️ Відгук · користувач #id» with the name and addresses. Nothing is downloaded.
+  - The admin's Reply to the header or to a copy goes back through the outbox (`feedback_reply`, deduplicated by the admin's message id). Replies longer than 4000 characters or not text are refused; a reply to a forgotten user says so.
+  - Messages Telegram cannot copy (polls, dice) are refused and not counted; parts that come after their album was sent are dropped.
 - Decisions:
   - Core `Feedback` service owns the rate limit (5 per hour per user, in memory, reset by a restart) and the reply queueing; the channel keeps the content.
-  - No DB table: feedback lives only in the admin chat. `/forget` cannot reach it, and the prompt says the developer reads it.
+  - Found by the security review: the first version took the author from «#id» in the replied message's text, and a copy of a user's own text could forge it. Table `feedback_messages` now maps each admin-side message (header and copies) to its author, and only those messages count as feedback. `/forget` sets `user_id` to NULL, so the admin learns the user is gone.
+  - The feedback content lives only in the admin chat; `/forget` cannot reach it, and the prompt says the developer reads it.
+  - The limit is checked when `/feedback` is pressed, so a long text is not written in vain.
   - The menu update (`MENU_UPDATED`) is now sent with `disable_notification`, and its text names the two new buttons.
 - After deploy: `make announce-menu VERSION=N` with N above the last one used.

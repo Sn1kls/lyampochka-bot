@@ -130,6 +130,13 @@ class OutboxMessage:
 
 
 @dataclass(frozen=True)
+class FeedbackThread:
+    """Who wrote the feedback behind an admin-side message; `user_id` None once they are forgotten."""
+
+    user_id: int | None
+
+
+@dataclass(frozen=True)
 class QueuedMessage:
     id: int
     attempts: int

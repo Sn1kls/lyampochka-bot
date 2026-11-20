@@ -1,6 +1,6 @@
 import asyncio
 import math
-import re
+from collections import deque
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import asdict
@@ -25,7 +25,14 @@ from aiogram.types import (
     User,
 )
 
-from poweron.core.domain.models import KYIV, Building, City, Street, Subscription
+from poweron.core.domain.models import (
+    KYIV,
+    Building,
+    City,
+    FeedbackThread,
+    Street,
+    Subscription,
+)
 from poweron.core.domain.providers import TOE
 from poweron.core.ports import SourceError
 from poweron.core.services.catalog import Catalog, find_by_name
@@ -57,7 +64,8 @@ router.callback_query.outer_middleware(KnownUser())
 NOT_MODIFIED = "message is not modified"
 # An album arrives as separate updates handled concurrently; its parts are collected this long.
 ALBUM_WAIT = 1.0
-FEEDBACK_USER = re.compile(r"#(\d+)")
+# Room for the «💬 Відповідь розробника» heading within Telegram's 4096 characters.
+REPLY_MAX_LENGTH = 4000
 
 
 class FeedbackFlow(StatesGroup):
@@ -224,40 +232,60 @@ async def show_status(message: Message, status: Status | None, admin_chat_id: in
     await message.answer(render_status(await status.report(), _now()))
 
 
-async def admin_reply_to_bot(
-    message: Message, admin_chat_id: int | None, bot: Bot
-) -> dict[str, Message] | bool:
-    """Matches the admin's Reply to one of the bot's messages and passes that message on."""
+def _ref(chat_id: int, message_id: int) -> str:
+    return f"telegram:{chat_id}:{message_id}"
+
+
+async def reply_to_feedback(
+    message: Message, admin_chat_id: int | None, feedback: Feedback
+) -> dict[str, FeedbackThread] | bool:
+    """Matches the admin's Reply to a feedback copy, found by message id and never by its text."""
     replied = message.reply_to_message
-    if message.chat.id != admin_chat_id or replied is None or replied.from_user is None:
+    if message.chat.id != admin_chat_id or replied is None:
         return False
-    return {"replied": replied} if replied.from_user.id == bot.id else False
+    thread = await feedback.thread(_ref(replied.chat.id, replied.message_id))
+    return False if thread is None else {"thread": thread}
 
 
-@router.message(admin_reply_to_bot)
-async def admin_reply(message: Message, replied: Message, feedback: Feedback) -> None:
-    found = FEEDBACK_USER.search((replied.text or "").partition("\n")[0])
-    if found is None:
-        await message.answer(texts.FEEDBACK_REPLY_HINT)
-        return
+@router.message(reply_to_feedback)
+async def admin_reply(message: Message, thread: FeedbackThread, feedback: Feedback) -> None:
     if not message.text:
         await message.answer(texts.FEEDBACK_REPLY_TEXT_ONLY)
         return
-    delivered = await feedback.reply(
-        int(found[1]), message.text, f"{message.chat.id}:{message.message_id}"
+    if len(message.text) > REPLY_MAX_LENGTH:
+        await message.answer(texts.FEEDBACK_REPLY_TOO_LONG.format(limit=REPLY_MAX_LENGTH))
+        return
+    delivered = thread.user_id is not None and await feedback.reply(
+        thread.user_id, message.text, _ref(message.chat.id, message.message_id)
     )
     await message.answer(texts.FEEDBACK_REPLY_SENT if delivered else texts.FEEDBACK_USER_GONE)
 
 
 @router.message(Command("feedback"))
 @router.message(F.text == texts.MENU_FEEDBACK)
-async def ask_feedback(message: Message, state: FSMContext, admin_chat_id: int | None) -> None:
+async def ask_feedback(
+    message: Message,
+    state: FSMContext,
+    user_id: int,
+    feedback: Feedback,
+    admin_chat_id: int | None,
+) -> None:
     if admin_chat_id is None:
         await message.answer(texts.FEEDBACK_UNAVAILABLE)
+        return
+    if await _over_limit(message, feedback, user_id):
         return
     await _reset(state)
     await state.set_state(FeedbackFlow.waiting)
     await message.answer(texts.FEEDBACK_ASK, reply_markup=keyboards.cancel_keyboard("feedback"))
+
+
+async def _over_limit(message: Message, feedback: Feedback, user_id: int) -> bool:
+    wait = feedback.wait(user_id, _now())
+    if wait is not None:
+        minutes = math.ceil(wait / timedelta(minutes=1))
+        await message.answer(texts.FEEDBACK_LIMIT.format(minutes=minutes))
+    return wait is not None
 
 
 @router.callback_query(FeedbackFlow.waiting, keyboards.Decision.filter(F.action == "feedback"))
@@ -286,27 +314,38 @@ async def forward_feedback(
         return
     await _reset(state)
     assert admin_chat_id is not None  # ask_feedback lets no one in without it
-    wait = feedback.accept(user_id, _now())
-    if wait is not None:
-        minutes = math.ceil(wait / timedelta(minutes=1))
-        await message.answer(texts.FEEDBACK_LIMIT.format(minutes=minutes))
+    if await _over_limit(message, feedback, user_id):
         return
-    header = render_feedback_header(
-        user_id, display_name(event_from_user), await subscriptions.of_user(user_id)
+    try:
+        copied = await bot.copy_messages(admin_chat_id, message.chat.id, message_ids)
+    except TelegramBadRequest:  # polls, dice and the like cannot be copied
+        await message.answer(texts.FEEDBACK_NOT_COPYABLE)
+        return
+    header = await bot.send_message(
+        admin_chat_id,
+        render_feedback_header(
+            user_id, display_name(event_from_user), await subscriptions.of_user(user_id)
+        ),
     )
-    await bot.send_message(admin_chat_id, header)
-    await bot.copy_messages(admin_chat_id, message.chat.id, message_ids)
+    admin_ids = [header.message_id, *(copy.message_id for copy in copied)]
+    await feedback.received(
+        user_id, [_ref(admin_chat_id, admin_id) for admin_id in admin_ids], _now()
+    )
     await message.answer(texts.FEEDBACK_SENT)
 
 
 _albums: dict[str, list[int]] = {}
+# Parts that come after their album was sent are dropped instead of making a second feedback.
+_sent_albums: deque[str] = deque(maxlen=100)
 
 
 async def _whole_album(message: Message) -> list[int] | None:
-    """Message ids of the message's whole album in order, or None for a part another call collects."""
+    """Message ids of the message's whole album in order, or None for a part another call takes."""
     album_id = message.media_group_id
     if album_id is None:
         return [message.message_id]
+    if album_id in _sent_albums:
+        return None
     if album_id in _albums:
         _albums[album_id].append(message.message_id)
         return None
@@ -315,6 +354,7 @@ async def _whole_album(message: Message) -> list[int] | None:
         await asyncio.sleep(ALBUM_WAIT)
     finally:
         message_ids = _albums.pop(album_id)
+        _sent_albums.append(album_id)
     return sorted(message_ids)
 
 
