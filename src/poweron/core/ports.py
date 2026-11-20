@@ -82,7 +82,9 @@ class PlannedWorkSource(Protocol):
 
 
 class Notifier(Protocol):
-    async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> None: ...
+    async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> str | None:
+        """An opaque ref of the delivered message, if the channel has one."""
+        ...
 
 
 class Repository(Protocol):

@@ -89,19 +89,10 @@ def _list_items(subscriptions: Sequence[Subscription]) -> list[str]:
     ]
 
 
-ANSWERING_MAX_LENGTH = 200
-
-
-def render_feedback_header(
-    user_id: int, name: str, subscriptions: Sequence[Subscription], answering: str | None
-) -> str:
-    """`answering` is the developer answer the user replied to, if any; cut to fit one message."""
-    if answering and len(answering) > ANSWERING_MAX_LENGTH:
-        answering = answering[:ANSWERING_MAX_LENGTH].rstrip() + "…"
+def render_feedback_header(user_id: int, name: str, subscriptions: Sequence[Subscription]) -> str:
     return texts.FEEDBACK_HEADER.format(
         user_id=user_id,
         name=escape(name),
-        answering=texts.FEEDBACK_ANSWERING.format(text=escape(answering)) if answering else "",
         addresses="\n".join(_list_items(subscriptions)) or texts.FEEDBACK_NO_ADDRESSES,
     )
 

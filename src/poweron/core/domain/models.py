@@ -133,7 +133,8 @@ class OutboxMessage:
 class FeedbackThread:
     """Who wrote the feedback behind an admin-side message; `user_id` None once they are forgotten.
 
-    `source_message_id` is the user's own message in their channel, so a reply can quote it.
+    `source_message_id` is the message on the other side, for a Reply to it: the user's feedback
+    behind an admin-side copy, or the admin's answer behind the reply a user got.
     """
 
     user_id: int | None

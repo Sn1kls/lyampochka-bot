@@ -38,20 +38,24 @@ def _render(kind: str, payload: Mapping[str, Any]) -> str:
             raise ValueError(f"unknown message kind {kind!r}")
 
 
+def message_ref(chat_id: int, message_id: int) -> str:
+    return f"telegram:{chat_id}:{message_id}"
+
+
 class TelegramNotifier:
     def __init__(self, bot: Bot) -> None:
         self._bot = bot
         self._slot_lock = asyncio.Lock()
         self._next_slot = 0.0
 
-    async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> None:
+    async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> str:
         text = _render(kind, payload)
         # A reply keyboard only changes when a message brings a new one; that news is not worth a buzz.
         menu_update = kind == MessageKind.MENU_UPDATED
         reply_to = payload.get("reply_to")
         await self._wait_for_slot()
         try:
-            await self._bot.send_message(
+            sent = await self._bot.send_message(
                 int(address),
                 text,
                 reply_markup=menu_keyboard() if menu_update else None,
@@ -67,6 +71,7 @@ class TelegramNotifier:
             if any(marker in error.message.lower() for marker in CHAT_GONE_MARKERS):
                 raise DeliveryTargetGone(address) from error
             raise
+        return message_ref(int(address), sent.message_id)
 
     async def _wait_for_slot(self) -> None:
         loop = asyncio.get_running_loop()

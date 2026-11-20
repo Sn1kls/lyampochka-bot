@@ -40,11 +40,21 @@ class Feedback:
         """The author behind an admin-side message; None when it is not a feedback copy."""
         return await self._repository.feedback_thread(ref)
 
-    async def reply(self, thread: FeedbackThread, text: str, reply_key: str) -> bool:
-        """Queues the admin's reply once per `reply_key`; False when the user cannot be reached."""
+    async def reply(
+        self, thread: FeedbackThread, text: str, reply_key: str, answer_message_id: int
+    ) -> bool:
+        """Queues the admin's reply once per `reply_key`; False when the user cannot be reached.
+
+        `answer_message_id` is the admin's own message, so the user's Reply to the delivered
+        answer can point back at it (see Notifications).
+        """
         if thread.user_id is None or not await self._repository.delivery_targets(thread.user_id):
             return False
-        payload = {"text": text, "reply_to": thread.source_message_id}
+        payload = {
+            "text": text,
+            "reply_to": thread.source_message_id,
+            "answer": answer_message_id,
+        }
         message = OutboxMessage(
             thread.user_id, MessageKind.FEEDBACK_REPLY, payload, f"feedback:{reply_key}"
         )

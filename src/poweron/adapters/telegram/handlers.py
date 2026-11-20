@@ -21,6 +21,7 @@ from aiogram.types import (
     Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
+    ReplyParameters,
     TelegramObject,
     User,
 )
@@ -43,6 +44,7 @@ from poweron.core.services.subscriptions import Subscriptions
 
 from . import keyboards, texts
 from .middleware import KnownUser
+from .notifier import message_ref
 from .render import (
     render_confirm,
     render_day,
@@ -232,10 +234,6 @@ async def show_status(message: Message, status: Status | None, admin_chat_id: in
     await message.answer(render_status(await status.report(), _now()))
 
 
-def _ref(chat_id: int, message_id: int) -> str:
-    return f"telegram:{chat_id}:{message_id}"
-
-
 async def reply_to_feedback(
     message: Message, admin_chat_id: int | None, feedback: Feedback
 ) -> dict[str, FeedbackThread] | bool:
@@ -243,7 +241,7 @@ async def reply_to_feedback(
     replied = message.reply_to_message
     if message.chat.id != admin_chat_id or replied is None:
         return False
-    thread = await feedback.thread(_ref(replied.chat.id, replied.message_id))
+    thread = await feedback.thread(message_ref(replied.chat.id, replied.message_id))
     return False if thread is None else {"thread": thread}
 
 
@@ -256,7 +254,7 @@ async def admin_reply(message: Message, thread: FeedbackThread, feedback: Feedba
         await message.answer(texts.FEEDBACK_REPLY_TOO_LONG.format(limit=REPLY_MAX_LENGTH))
         return
     delivered = await feedback.reply(
-        thread, message.text, _ref(message.chat.id, message.message_id)
+        thread, message.text, message_ref(message.chat.id, message.message_id), message.message_id
     )
     await message.answer(texts.FEEDBACK_REPLY_SENT if delivered else texts.FEEDBACK_USER_GONE)
 
@@ -265,22 +263,22 @@ def _not_a_command(message: Message) -> bool:
     return not (message.text or "").startswith("/")
 
 
-def _reply_to_developer(message: Message, admin_chat_id: int | None, bot: Bot) -> bool:
-    """The user's Reply to a developer answer; the sender is the author, so the text check is safe."""
+async def reply_to_answer(
+    message: Message, admin_chat_id: int | None, feedback: Feedback
+) -> dict[str, FeedbackThread] | bool:
+    """Matches the user's Reply to a developer answer they got, found by message id."""
     replied = message.reply_to_message
-    return (
-        admin_chat_id is not None
-        and replied is not None
-        and replied.from_user is not None
-        and replied.from_user.id == bot.id
-        and (replied.text or "").startswith(texts.FEEDBACK_REPLY_TITLE)
-    )
+    if admin_chat_id is None or replied is None:
+        return False
+    thread = await feedback.thread(message_ref(replied.chat.id, replied.message_id))
+    return False if thread is None else {"thread": thread}
 
 
 # Outside any flow, so a wizard answer or a command sent as a Reply still does its job.
-@router.message(StateFilter(None), _reply_to_developer, _not_a_command)
+@router.message(StateFilter(None), reply_to_answer, _not_a_command)
 async def feedback_by_reply(
     message: Message,
+    thread: FeedbackThread,
     state: FSMContext,
     bot: Bot,
     event_from_user: User,
@@ -292,12 +290,10 @@ async def feedback_by_reply(
     message_ids = await _whole_album(message)
     if message_ids is None:
         return
-    assert message.reply_to_message is not None  # _reply_to_developer checked it
-    answer = (message.reply_to_message.text or "").removeprefix(texts.FEEDBACK_REPLY_TITLE)
     await _send_feedback(
         message,
         message_ids,
-        answer.strip(),
+        thread.source_message_id,
         state,
         bot,
         event_from_user,
@@ -373,7 +369,7 @@ async def forward_feedback(
 async def _send_feedback(
     message: Message,
     message_ids: list[int],
-    answering: str | None,
+    answering: int | None,
     state: FSMContext,
     bot: Bot,
     event_from_user: User,
@@ -397,12 +393,18 @@ async def _send_feedback(
             user_id,
             display_name(event_from_user),
             await subscriptions.of_user(user_id),
-            answering,
         ),
+        # Ties a feedback by Reply to the admin's answer it continues.
+        reply_parameters=None
+        if answering is None
+        else ReplyParameters(message_id=answering, allow_sending_without_reply=True),
     )
     admin_ids = [header.message_id, *(copy.message_id for copy in copied)]
     await feedback.record(
-        user_id, message_ids[0], [_ref(admin_chat_id, admin_id) for admin_id in admin_ids], _now()
+        user_id,
+        message_ids[0],
+        [message_ref(admin_chat_id, admin_id) for admin_id in admin_ids],
+        _now(),
     )
     await message.answer(texts.FEEDBACK_SENT)
 

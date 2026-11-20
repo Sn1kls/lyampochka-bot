@@ -1,5 +1,6 @@
 import asyncio
 from itertools import pairwise
+from types import SimpleNamespace
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramServerError
@@ -38,7 +39,7 @@ class FakeBot:
         reply_markup: object = None,
         disable_notification: bool | None = None,
         reply_parameters: ReplyParameters | None = None,
-    ) -> None:
+    ) -> SimpleNamespace:
         self.send_times.append(asyncio.get_running_loop().time())
         if self.error is not None:
             raise self.error
@@ -46,6 +47,7 @@ class FakeBot:
         self.markups.append(reply_markup)
         self.silent.append(disable_notification)
         self.replies_to.append(reply_parameters)
+        return SimpleNamespace(message_id=500)
 
 
 def notifier_with(bot: FakeBot) -> TelegramNotifier:
@@ -168,20 +170,12 @@ async def test_concurrent_sends_are_spaced() -> None:
 async def test_the_developer_reply_is_shown_as_plain_text() -> None:
     bot = FakeBot()
 
-    payload = {"text": "Дякую! <b>не жирний</b>", "reply_to": 40}
-    await notifier_with(bot).send("42", "feedback_reply", payload)
+    payload = {"text": "Дякую! <b>не жирний</b>", "reply_to": 40, "answer": 61}
+    delivered = await notifier_with(bot).send("42", "feedback_reply", payload)
 
     assert bot.sent == [
         (42, texts.FEEDBACK_REPLY.format(text="Дякую! &lt;b&gt;не жирний&lt;/b&gt;"))
     ]
     # Quotes the user's feedback, and still arrives if they deleted it.
     assert bot.replies_to == [ReplyParameters(message_id=40, allow_sending_without_reply=True)]
-
-
-async def test_the_developer_reply_starts_with_the_title_users_reply_to() -> None:
-    bot = FakeBot()
-
-    await notifier_with(bot).send("42", "feedback_reply", {"text": "Дякую", "reply_to": None})
-
-    plain = bot.sent[0][1].replace("<b>", "").replace("</b>", "")
-    assert plain.startswith(texts.FEEDBACK_REPLY_TITLE)
+    assert delivered == "telegram:42:500"  # so a Reply to it can be traced back

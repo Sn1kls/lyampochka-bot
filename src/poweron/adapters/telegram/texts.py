@@ -237,15 +237,11 @@ FEEDBACK_UNAVAILABLE = "Зараз написати розробнику не в
 FEEDBACK_HEADER = (
     "✉️ <b>Відгук</b> · користувач #{user_id}\n"
     "{name}\n\n"
-    "{answering}"
     "{addresses}\n\n"
     "↩️ Щоб відповісти, зроби Reply на цей заголовок або на сам відгук вище."
 )
 FEEDBACK_NO_ADDRESSES = "Адрес немає."
-FEEDBACK_ANSWERING = "↪️ У відповідь на твоє:\n<blockquote>{text}</blockquote>\n\n"
-FEEDBACK_REPLY_TITLE = "💬 Відповідь розробника"
-# A user's Reply to this is a new feedback, found by the title.
-FEEDBACK_REPLY = f"<b>{FEEDBACK_REPLY_TITLE}</b>\n\n{{text}}"
+FEEDBACK_REPLY = "💬 <b>Відповідь розробника</b>\n\n{text}"
 FEEDBACK_REPLY_SENT = "✅ Надіслано"
 FEEDBACK_USER_GONE = "Цього користувача вже немає: він стер свої дані або заблокував бота."
 FEEDBACK_REPLY_TEXT_ONLY = "Відповідь можна надіслати лише текстом."

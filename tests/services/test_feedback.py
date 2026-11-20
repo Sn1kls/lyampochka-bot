@@ -48,7 +48,7 @@ async def test_a_forgotten_author_leaves_the_thread_without_a_user(
     await Subscriptions(repository).forget(user_id)
 
     assert await feedback.thread("telegram:1:50") == FeedbackThread(None, 40)
-    assert not await feedback.reply(FeedbackThread(None, 40), "Дякую", "admin:57")
+    assert not await feedback.reply(FeedbackThread(None, 40), "Дякую", "admin:57", 57)
 
 
 async def test_a_reply_answers_the_users_message_once_per_reply_key(
@@ -58,11 +58,14 @@ async def test_a_reply_answers_the_users_message_once_per_reply_key(
     feedback = Feedback(repository)
     notifier = FakeNotifier()
 
-    assert await feedback.reply(thread, "Дякую, гляну", "admin:55")
-    assert await feedback.reply(thread, "Дякую, гляну", "admin:55")
+    assert await feedback.reply(thread, "Дякую, гляну", "admin:55", 55)
+    assert await feedback.reply(thread, "Дякую, гляну", "admin:55", 55)
     await Notifications(repository, {"telegram": notifier}).dispatch(NOW)
 
-    assert notifier.sent == [("101", "feedback_reply", {"text": "Дякую, гляну", "reply_to": 40})]
+    payload = {"text": "Дякую, гляну", "reply_to": 40, "answer": 55}
+    assert notifier.sent == [("101", "feedback_reply", payload)]
+    # The delivered answer leads back to the admin's message, for the user's Reply to it.
+    assert await feedback.thread("fake:101:1") == FeedbackThread(thread.user_id, 55)
 
 
 async def test_a_reply_to_a_user_without_a_chat_is_not_queued(repository: SqlRepository) -> None:
@@ -70,4 +73,6 @@ async def test_a_reply_to_a_user_without_a_chat_is_not_queued(repository: SqlRep
     [target] = await repository.delivery_targets(user_id)
     await repository.deactivate_target(target.id)
 
-    assert not await Feedback(repository).reply(FeedbackThread(user_id, 40), "Дякую", "admin:56")
+    assert not await Feedback(repository).reply(
+        FeedbackThread(user_id, 40), "Дякую", "admin:56", 56
+    )

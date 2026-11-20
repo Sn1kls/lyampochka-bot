@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import CopyMessages, SendMessage
 
 from poweron.adapters.db.repository import SqlRepository
-from poweron.adapters.telegram import handlers, keyboards, render, texts
+from poweron.adapters.telegram import handlers, keyboards, texts
 from poweron.core.services.feedback import Feedback
 from tests.telegram.test_handlers import Chat, add_address
 
@@ -186,8 +186,8 @@ async def test_the_admin_replies_to_the_header_or_the_copy_and_the_user_gets_bot
 
     assert chat.sent_texts()[-2:] == [texts.FEEDBACK_REPLY_SENT] * 2
     assert await queued(repository) == [  # both answer the user's message 40
-        ("feedback_reply", {"text": "Дякую", "reply_to": 40}),
-        ("feedback_reply", {"text": "Вже виправив", "reply_to": 40}),
+        ("feedback_reply", {"text": "Дякую", "reply_to": 40, "answer": 61}),
+        ("feedback_reply", {"text": "Вже виправив", "reply_to": 40, "answer": 62}),
     ]
 
 
@@ -254,75 +254,115 @@ async def test_a_reply_outside_the_admin_chat_is_not_an_admin_reply(
     assert await queued(repository) == []
 
 
-async def reply_to_bot(chat: Chat, bot_text: str, text: str = "А тепер працює!") -> None:
-    replied = {"message_id": 90, "date": 0, "chat": {"id": 1, "type": "private"}}
-    replied |= {"from": BOT_USER, "text": bot_text}
+ANSWER_ID = 61  # the admin's answer in the admin chat
+DELIVERED_ID = 90  # that answer as the user got it
+
+
+@pytest.fixture
+def user_chat(repository: SqlRepository) -> Chat:
+    """A user apart from the admin, who already got an answer to an earlier feedback."""
+    return Chat(repository, admin_chat_id=999, feedback=Feedback(repository))
+
+
+async def got_answer(chat: Chat, repository: SqlRepository) -> None:
+    await chat.say("/start")
+    await repository.add_feedback_messages(
+        1, ANSWER_ID, [f"telegram:1:{DELIVERED_ID}"], datetime.now(UTC)
+    )
+
+
+async def reply_to_bot(
+    chat: Chat, replied_id: int = DELIVERED_ID, text: str = "А тепер працює!"
+) -> None:
+    replied = {"message_id": replied_id, "date": 0, "chat": {"id": 1, "type": "private"}}
+    replied |= {"from": BOT_USER, "text": "💬 Відповідь розробника\n\nВиправив, перевір"}
     await chat.send(message_id=91, reply_to_message=replied, text=text)
 
 
-async def test_the_users_reply_to_a_developer_answer_is_a_new_feedback(chat: Chat) -> None:
-    await chat.say("/start")
-
-    await reply_to_bot(chat, "💬 Відповідь розробника\n\nВиправив <b>все</b>, перевір")
-
-    assert [copied for copied, _ in copies(chat)] == [[91]]
-    [(header, _)] = headers(chat)  # the admin sees which of their answers it continues
-    assert (
-        texts.FEEDBACK_ANSWERING.format(text="Виправив &lt;b&gt;все&lt;/b&gt;, перевір") in header
-    )
-    assert chat.sent_texts()[-1] == texts.FEEDBACK_SENT
+def header_replies(chat: Chat) -> list[int | None]:
+    """Which admin message each header answers, if any."""
+    return [
+        call.reply_parameters.message_id if call.reply_parameters else None
+        for call in chat.session.calls
+        if isinstance(call, SendMessage) and call.text.startswith("✉️")
+    ]
 
 
-async def test_the_reply_to_a_developer_answer_keeps_the_limit(repository: SqlRepository) -> None:
-    chat = Chat(repository, admin_chat_id=ADMIN_CHAT_ID, feedback=Feedback(repository, limit=1))
+async def test_the_users_reply_to_an_answer_is_a_feedback_replying_to_that_answer(
+    user_chat: Chat, repository: SqlRepository
+) -> None:
+    await got_answer(user_chat, repository)
+
+    await reply_to_bot(user_chat)
+
+    assert [copied for copied, _ in copies(user_chat)] == [[91]]
+    assert header_replies(user_chat) == [ANSWER_ID]
+    assert user_chat.sent_texts()[-1] == texts.FEEDBACK_SENT
+
+
+async def test_a_plain_feedback_header_replies_to_nothing(chat: Chat) -> None:
     await chat.say("/start")
     await send_feedback(chat)
 
-    await reply_to_bot(chat, "💬 Відповідь розробника\n\nДякую")
+    assert header_replies(chat) == [None]
+
+
+async def test_the_reply_to_an_answer_keeps_the_limit(repository: SqlRepository) -> None:
+    chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository, limit=1))
+    await got_answer(chat, repository)
+    await send_feedback(chat)
+
+    await reply_to_bot(chat)
 
     assert chat.sent_texts()[-1] == texts.FEEDBACK_LIMIT.format(minutes=60)
     assert len(copies(chat)) == 1
 
 
-async def test_a_reply_to_another_bot_message_is_not_a_feedback(chat: Chat) -> None:
-    await chat.say("/start")
+async def test_a_reply_to_another_bot_message_is_not_a_feedback(
+    user_chat: Chat, repository: SqlRepository
+) -> None:
+    await got_answer(user_chat, repository)
 
-    await reply_to_bot(chat, texts.HELP)
+    await reply_to_bot(user_chat, replied_id=77)  # looks like an answer, but is not one
 
-    assert copies(chat) == []
-
-
-async def test_a_command_sent_as_a_reply_to_a_developer_answer_runs(chat: Chat) -> None:
-    await chat.say("/start")
-
-    await reply_to_bot(chat, "💬 Відповідь розробника\n\nДякую", text="/add")
-
-    assert chat.sent_texts()[-1] == texts.ASK_REGION
-    assert copies(chat) == []
+    assert copies(user_chat) == []
 
 
-async def test_a_reply_to_a_developer_answer_mid_wizard_is_the_wizard_answer(chat: Chat) -> None:
-    await chat.say("/start")
-    await chat.say("/add")
-    await chat.press(keyboards.Region(provider="toe"))
+async def test_a_command_sent_as_a_reply_to_an_answer_runs(
+    user_chat: Chat, repository: SqlRepository
+) -> None:
+    await got_answer(user_chat, repository)
 
-    await reply_to_bot(chat, "💬 Відповідь розробника\n\nДякую", text="бережани")
+    await reply_to_bot(user_chat, text="/add")
 
-    assert chat.sent_texts()[-1] == texts.ASK_STREET.format(city="Бережани")
-    assert copies(chat) == []
+    assert user_chat.sent_texts()[-1] == texts.ASK_REGION
+    assert copies(user_chat) == []
 
 
-async def test_an_album_sent_as_a_reply_to_a_developer_answer_is_one_feedback(
-    chat: Chat, monkeypatch: pytest.MonkeyPatch
+async def test_a_reply_to_an_answer_mid_wizard_is_the_wizard_answer(
+    user_chat: Chat, repository: SqlRepository
+) -> None:
+    await got_answer(user_chat, repository)
+    await user_chat.say("/add")
+    await user_chat.press(keyboards.Region(provider="toe"))
+
+    await reply_to_bot(user_chat, text="бережани")
+
+    assert user_chat.sent_texts()[-1] == texts.ASK_STREET.format(city="Бережани")
+    assert copies(user_chat) == []
+
+
+async def test_an_album_sent_as_a_reply_to_an_answer_is_one_feedback(
+    user_chat: Chat, repository: SqlRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(handlers, "ALBUM_WAIT", 0.05)
-    await chat.say("/start")
-    replied = {"message_id": 90, "date": 0, "chat": {"id": 1, "type": "private"}}
+    await got_answer(user_chat, repository)
+    replied = {"message_id": DELIVERED_ID, "date": 0, "chat": {"id": 1, "type": "private"}}
     replied |= {"from": BOT_USER, "text": "💬 Відповідь розробника\n\nДякую"}
 
     await asyncio.gather(
         *(
-            chat.send(
+            user_chat.send(
                 message_id=message_id,
                 photo=PHOTO,
                 media_group_id="reply-album",
@@ -332,27 +372,4 @@ async def test_an_album_sent_as_a_reply_to_a_developer_answer_is_one_feedback(
         )
     )
 
-    assert [copied for copied, _ in copies(chat)] == [[92, 93]]
-
-
-async def test_a_reply_to_the_users_own_message_with_the_title_is_not_a_feedback(
-    chat: Chat,
-) -> None:
-    await chat.say("/start")
-    replied = {"message_id": 90, "date": 0, "chat": {"id": 1, "type": "private"}}
-    replied |= {"from": {"id": 1, "is_bot": False, "first_name": "Оля"}}
-    replied |= {"text": "💬 Відповідь розробника — так я це назву"}
-
-    await chat.send(message_id=91, reply_to_message=replied, text="ага")
-
-    assert copies(chat) == []
-
-
-async def test_a_long_answer_is_cut_in_the_header(chat: Chat) -> None:
-    await chat.say("/start")
-
-    await reply_to_bot(chat, "💬 Відповідь розробника\n\n" + "я" * handlers.REPLY_MAX_LENGTH)
-
-    [(header, _)] = headers(chat)
-    assert "я" * render.ANSWERING_MAX_LENGTH + "…</blockquote>" in header
-    assert "я" * (render.ANSWERING_MAX_LENGTH + 1) not in header
+    assert [copied for copied, _ in copies(user_chat)] == [[92, 93]]
