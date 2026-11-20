@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+import pytest
+
 from poweron.adapters.db.repository import SqlRepository
 from poweron.core.domain.models import FeedbackThread
 from poweron.core.services.feedback import Feedback
@@ -76,3 +78,21 @@ async def test_a_reply_to_a_user_without_a_chat_is_not_queued(repository: SqlRep
     assert not await Feedback(repository).reply(
         FeedbackThread(user_id, 40), "Дякую", "admin:56", 56
     )
+
+
+async def test_an_answer_is_not_sent_twice_when_remembering_it_fails(
+    repository: SqlRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    thread = FeedbackThread(await register(repository, "101"), 40)
+    await Feedback(repository).reply(thread, "Дякую", "admin:58", 58)
+    notifier = FakeNotifier()
+    dispatch = Notifications(repository, {"telegram": notifier}).dispatch
+
+    async def locked(*args: object) -> None:
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(repository, "add_feedback_messages", locked)
+    await dispatch(NOW)
+    await dispatch(NOW + timedelta(hours=1))
+
+    assert len(notifier.sent) == 1

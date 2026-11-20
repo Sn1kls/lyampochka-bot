@@ -54,6 +54,10 @@ class Notifications:
             answer = message.payload.get("answer")
             if message.kind == MessageKind.FEEDBACK_REPLY and answer and delivered:
                 # The user's Reply to this answer then becomes feedback that points at it.
-                await self._repository.add_feedback_messages(
-                    message.user_id, answer, [delivered], now
-                )
+                # It is already sent: a failure here must not send it again.
+                try:
+                    await self._repository.add_feedback_messages(
+                        message.user_id, answer, [delivered], now
+                    )
+                except Exception:
+                    logger.exception("could not remember delivered answer %s", delivered)

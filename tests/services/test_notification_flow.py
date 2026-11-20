@@ -326,9 +326,9 @@ async def test_restart_after_a_stop_sends_nothing_twice(
     stop = asyncio.Event()
 
     class StoppingNotifier(FakeNotifier):
-        async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> None:
+        async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> str:
             stop.set()  # the stop signal arrives in the middle of the dispatch
-            await super().send(address, kind, payload)
+            return await super().send(address, kind, payload)
 
     before_stop = StoppingNotifier()
     dispatch = Notifications(repository, {"telegram": before_stop})
