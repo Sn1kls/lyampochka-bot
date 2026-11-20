@@ -65,6 +65,21 @@ make check   # format, lint, mypy, layer rules, tests
 make run     # bot and worker in one process
 ```
 
+## Staging
+
+A second bot on your own machine, to try a change before it reaches real users. It needs its own token: two processes polling one token fight over updates.
+
+1. Create a test bot in [@BotFather](https://t.me/BotFather) (`/newbot`).
+2. Create `.env.staging` (git ignores it). It is read instead of `.env`, never on top of it, so backups, Sentry and the healthcheck stay off unless you set them here:
+   ```
+   BOT_TOKEN=<the test bot's token>
+   ADMIN_CHAT_ID=<your chat id>
+   DATABASE_URL=sqlite+aiosqlite:///./data/staging.sqlite3
+   CONTACT=<your email or @username>
+   ```
+3. `make staging` runs bot and worker in one process; migrations run on startup. Press /start in the test bot first, or it cannot message you.
+4. Volyn addresses need the catalogue: `make staging-volyn` (from a Ukrainian IP, like `make sync-volyn`).
+
 ## Running it on a server
 
 Any always-on VPS works, and no inbound ports are needed because the bot uses long polling. Clone the repo, fill in `.env`, and run `make up`. To update: `git pull && make up` (migrations run on startup).

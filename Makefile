@@ -1,4 +1,4 @@
-.PHONY: check test fmt lint typecheck layers run migrate probe up down logs simulate announce-menu backup sync-volyn install-volyn-sync
+.PHONY: check test fmt lint typecheck layers run migrate probe up down logs simulate announce-menu backup sync-volyn install-volyn-sync staging staging-volyn
 
 check: lint typecheck layers test
 
@@ -42,6 +42,17 @@ simulate:
 
 announce-menu:
 	docker compose exec -T bot python scripts/announce_menu.py $(VERSION)
+
+# A test bot on this Mac with its own token and database (README, «Staging»).
+staging:
+	@test -f .env.staging || (echo "create .env.staging first, see README «Staging»" && exit 1)
+	ENV_FILE=.env.staging uv run python -m poweron all
+
+staging-volyn:
+	@test -f .env.staging || (echo "create .env.staging first, see README «Staging»" && exit 1)
+	mkdir -p data
+	python3 scripts/export_volyn_queues.py data/volyn-staging.jsonl.gz
+	ENV_FILE=.env.staging uv run python -m poweron.import_voe < data/volyn-staging.jsonl.gz
 
 backup:
 	mkdir -p backups && chmod 700 backups

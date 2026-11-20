@@ -1,9 +1,14 @@
+import os
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
+    # ENV_FILE swaps the whole file, so a staging run never falls back to production values.
+    model_config = SettingsConfigDict(
+        env_file=os.environ.get("ENV_FILE", ".env"), env_ignore_empty=True, extra="ignore"
+    )
 
     bot_token: SecretStr
     admin_chat_id: int | None = None
