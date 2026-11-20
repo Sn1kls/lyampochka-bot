@@ -81,6 +81,7 @@ class MessageKind(StrEnum):
     SUBQUEUES_CHANGED = "subqueues_changed"
     PLANNED_WORK = "planned_work"
     MENU_UPDATED = "menu_updated"
+    FEEDBACK_REPLY = "feedback_reply"
 
 
 @dataclass(frozen=True)

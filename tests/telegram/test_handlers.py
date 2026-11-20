@@ -33,6 +33,7 @@ from poweron.core.domain.models import (
 from poweron.core.domain.providers import TOE, VOE
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.catalog import Catalog
+from poweron.core.services.feedback import Feedback
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
@@ -143,6 +144,7 @@ class Chat:
         status: Status | None = None,
         admin_chat_id: int | None = None,
         alerts: Alerts | None = None,
+        feedback: Feedback | None = None,
     ) -> None:
         self.subscriptions = SettingsSubscriptions(repository, alerts)
         self.session = RecordingSession()
@@ -156,6 +158,7 @@ class Chat:
             Schedules(repository),
             status=status,
             admin_chat_id=admin_chat_id,
+            feedback=feedback,
         )
         self._update_id = 0
 
@@ -170,6 +173,12 @@ class Chat:
             "entities": entities if text.startswith("/") else [],
         }
         await self._feed({"message": message})
+
+    async def send(self, message_id: int = 1, **fields: Any) -> None:
+        """A message of any kind: `fields` are Bot API Message fields such as photo or reply_to_message."""
+        await self._feed(
+            {"message": {"message_id": message_id, "date": 0, "chat": CHAT, "from": USER, **fields}}
+        )
 
     async def press(self, callback_data: keyboards.CallbackData) -> None:
         message = {"message_id": 1, "date": 0, "chat": CHAT, "text": "list"}
@@ -422,6 +431,7 @@ async def test_start_and_a_finished_add_show_the_phone_menu(chat: Chat) -> None:
     assert [[button.text for button in row] for row in markup.keyboard] == [
         ["📅 Графік", "⏭ Що далі"],
         ["📋 Мої адреси", "⚙️ Налаштування"],
+        ["❓ Допомога", "✉️ Відгук"],
     ]
 
     await add_address(chat, "5")
@@ -480,6 +490,7 @@ async def test_removing_an_address_asks_for_confirmation(chat: Chat) -> None:
         (texts.MENU_SETTINGS, "/settings"),
         (texts.MENU_REMOVE, "/remove"),
         (texts.MENU_HELP, "/help"),
+        (texts.MENU_FEEDBACK, "/feedback"),
     ],
 )
 async def test_each_menu_button_runs_the_command_handler(

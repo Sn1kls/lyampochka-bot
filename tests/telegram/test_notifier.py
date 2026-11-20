@@ -27,14 +27,22 @@ class FakeBot:
         self.error = error
         self.sent: list[tuple[int, str]] = []
         self.markups: list[object] = []
+        self.silent: list[bool | None] = []
         self.send_times: list[float] = []
 
-    async def send_message(self, chat_id: int, text: str, reply_markup: object = None) -> None:
+    async def send_message(
+        self,
+        chat_id: int,
+        text: str,
+        reply_markup: object = None,
+        disable_notification: bool | None = None,
+    ) -> None:
         self.send_times.append(asyncio.get_running_loop().time())
         if self.error is not None:
             raise self.error
         self.sent.append((chat_id, text))
         self.markups.append(reply_markup)
+        self.silent.append(disable_notification)
 
 
 def notifier_with(bot: FakeBot) -> TelegramNotifier:
@@ -126,6 +134,7 @@ async def test_menu_update_brings_the_new_keyboard() -> None:
 
     assert bot.sent == [(42, texts.MENU_UPDATED)]
     assert isinstance(bot.markups[0], ReplyKeyboardMarkup)
+    assert bot.silent == [True]  # news about the menu is not worth a buzz
 
 
 async def test_other_kinds_leave_the_keyboard_alone() -> None:
@@ -134,6 +143,7 @@ async def test_other_kinds_leave_the_keyboard_alone() -> None:
     await notifier_with(bot).send("42", "schedule_updated", PAYLOAD)
 
     assert bot.markups == [None]
+    assert bot.silent == [None]
 
 
 async def test_unknown_kind_is_rejected() -> None:
@@ -149,3 +159,13 @@ async def test_concurrent_sends_are_spaced() -> None:
 
     gaps = [later - earlier for earlier, later in pairwise(bot.send_times)]
     assert all(gap >= 0.035 for gap in gaps)
+
+
+async def test_the_developer_reply_is_shown_as_plain_text() -> None:
+    bot = FakeBot()
+
+    await notifier_with(bot).send("42", "feedback_reply", {"text": "Дякую! <b>не жирний</b>"})
+
+    assert bot.sent == [
+        (42, texts.FEEDBACK_REPLY.format(text="Дякую! &lt;b&gt;не жирний&lt;/b&gt;"))
+    ]

@@ -1,3 +1,6 @@
+import asyncio
+import math
+import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import asdict
@@ -5,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from html import escape
 from typing import Any
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, ExceptionTypeFilter
@@ -26,6 +29,7 @@ from poweron.core.domain.models import KYIV, Building, City, Street, Subscriptio
 from poweron.core.domain.providers import TOE
 from poweron.core.ports import SourceError
 from poweron.core.services.catalog import Catalog, find_by_name
+from poweron.core.services.feedback import Feedback
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
 from poweron.core.services.subscriptions import Subscriptions
@@ -35,6 +39,7 @@ from .middleware import KnownUser
 from .render import (
     render_confirm,
     render_day,
+    render_feedback_header,
     render_list,
     render_next,
     render_no_schedule_for_address,
@@ -50,6 +55,13 @@ router.message.outer_middleware(KnownUser())
 router.callback_query.outer_middleware(KnownUser())
 
 NOT_MODIFIED = "message is not modified"
+# An album arrives as separate updates handled concurrently; its parts are collected this long.
+ALBUM_WAIT = 1.0
+FEEDBACK_USER = re.compile(r"#(\d+)")
+
+
+class FeedbackFlow(StatesGroup):
+    waiting = State()
 
 
 class AddFlow(StatesGroup):
@@ -210,6 +222,103 @@ async def show_status(message: Message, status: Status | None, admin_chat_id: in
     if status is None or message.chat.id != admin_chat_id:
         return
     await message.answer(render_status(await status.report(), _now()))
+
+
+async def is_admin_reply(message: Message, admin_chat_id: int | None, bot: Bot) -> bool:
+    replied = message.reply_to_message
+    return (
+        message.chat.id == admin_chat_id
+        and replied is not None
+        and replied.from_user is not None
+        and replied.from_user.id == bot.id
+    )
+
+
+@router.message(is_admin_reply)
+async def admin_reply(message: Message, feedback: Feedback | None) -> None:
+    replied = message.reply_to_message
+    assert replied is not None  # is_admin_reply
+    found = FEEDBACK_USER.search((replied.text or "").partition("\n")[0])
+    if found is None or feedback is None:
+        await message.answer(texts.FEEDBACK_REPLY_HINT)
+        return
+    if not message.text:
+        await message.answer(texts.FEEDBACK_REPLY_TEXT_ONLY)
+        return
+    delivered = await feedback.reply(
+        int(found[1]), message.text, f"{message.chat.id}:{message.message_id}"
+    )
+    await message.answer(texts.FEEDBACK_REPLY_SENT if delivered else texts.FEEDBACK_USER_GONE)
+
+
+@router.message(Command("feedback"))
+@router.message(F.text == texts.MENU_FEEDBACK)
+async def ask_feedback(
+    message: Message, state: FSMContext, admin_chat_id: int | None, feedback: Feedback | None
+) -> None:
+    if admin_chat_id is None or feedback is None:
+        await message.answer(texts.FEEDBACK_UNAVAILABLE)
+        return
+    await _reset(state)
+    await state.set_state(FeedbackFlow.waiting)
+    await message.answer(texts.FEEDBACK_ASK, reply_markup=keyboards.cancel_keyboard("feedback"))
+
+
+@router.callback_query(FeedbackFlow.waiting, keyboards.Decision.filter(F.action == "feedback"))
+async def cancel_feedback(callback: CallbackQuery, state: FSMContext) -> None:
+    await _reset(state)
+    await _respond(callback, texts.FEEDBACK_CANCELLED)
+
+
+def _not_a_command(message: Message) -> bool:
+    return not (message.text or "").startswith("/")
+
+
+@router.message(FeedbackFlow.waiting, _not_a_command)
+async def forward_feedback(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    event_from_user: User,
+    user_id: int,
+    subscriptions: Subscriptions,
+    feedback: Feedback | None,
+    admin_chat_id: int | None,
+) -> None:
+    parts = await _whole_album(message)
+    if parts is None:
+        return
+    await _reset(state)
+    if admin_chat_id is None or feedback is None:
+        await message.answer(texts.FEEDBACK_UNAVAILABLE)
+        return
+    wait = feedback.accept(user_id, _now())
+    if wait is not None:
+        minutes = math.ceil(wait / timedelta(minutes=1))
+        await message.answer(texts.FEEDBACK_LIMIT.format(minutes=minutes))
+        return
+    header = render_feedback_header(
+        user_id, display_name(event_from_user), await subscriptions.of_user(user_id)
+    )
+    await bot.send_message(admin_chat_id, header)
+    await bot.copy_messages(admin_chat_id, message.chat.id, [part.message_id for part in parts])
+    await message.answer(texts.FEEDBACK_SENT)
+
+
+_albums: dict[str, list[Message]] = {}
+
+
+async def _whole_album(message: Message) -> list[Message] | None:
+    """All parts of the message's album in order, or None for a part another call collects."""
+    album_id = message.media_group_id
+    if album_id is None:
+        return [message]
+    if album_id in _albums:
+        _albums[album_id].append(message)
+        return None
+    _albums[album_id] = [message]
+    await asyncio.sleep(ALBUM_WAIT)
+    return sorted(_albums.pop(album_id), key=lambda part: part.message_id)
 
 
 @router.message(Command("forget"))

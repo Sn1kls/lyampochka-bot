@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Mapping
+from html import escape
 from typing import Any
 
 from aiogram import Bot
@@ -30,6 +31,8 @@ def _render(kind: str, payload: Mapping[str, Any]) -> str:
             return render_planned_work(payload)
         case MessageKind.MENU_UPDATED:
             return texts.MENU_UPDATED
+        case MessageKind.FEEDBACK_REPLY:
+            return texts.FEEDBACK_REPLY.format(text=escape(payload["text"]))
         case _:
             raise ValueError(f"unknown message kind {kind!r}")
 
@@ -42,11 +45,16 @@ class TelegramNotifier:
 
     async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> None:
         text = _render(kind, payload)
-        # A reply keyboard only changes when a message brings a new one.
-        keyboard = menu_keyboard() if kind == MessageKind.MENU_UPDATED else None
+        # A reply keyboard only changes when a message brings a new one; that news is not worth a buzz.
+        menu_update = kind == MessageKind.MENU_UPDATED
         await self._wait_for_slot()
         try:
-            await self._bot.send_message(int(address), text, reply_markup=keyboard)
+            await self._bot.send_message(
+                int(address),
+                text,
+                reply_markup=menu_keyboard() if menu_update else None,
+                disable_notification=True if menu_update else None,
+            )
         except TelegramForbiddenError as error:
             raise DeliveryTargetGone(address) from error
         except TelegramBadRequest as error:
