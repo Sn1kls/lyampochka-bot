@@ -97,7 +97,7 @@ def render_feedback_header(
 ) -> str:
     """`answering` is the developer answer the user replied to, if any; cut to fit one message."""
     if answering and len(answering) > ANSWERING_MAX_LENGTH:
-        answering = answering[:ANSWERING_MAX_LENGTH] + "…"
+        answering = answering[:ANSWERING_MAX_LENGTH].rstrip() + "…"
     return texts.FEEDBACK_HEADER.format(
         user_id=user_id,
         name=escape(name),

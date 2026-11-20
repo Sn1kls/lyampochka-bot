@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import CopyMessages, SendMessage
 
 from poweron.adapters.db.repository import SqlRepository
-from poweron.adapters.telegram import handlers, keyboards, texts
+from poweron.adapters.telegram import handlers, keyboards, render, texts
 from poweron.core.services.feedback import Feedback
 from tests.telegram.test_handlers import Chat, add_address
 
@@ -354,5 +354,5 @@ async def test_a_long_answer_is_cut_in_the_header(chat: Chat) -> None:
     await reply_to_bot(chat, "💬 Відповідь розробника\n\n" + "я" * handlers.REPLY_MAX_LENGTH)
 
     [(header, _)] = headers(chat)
-    assert "я" * 200 + "…</blockquote>" in header
-    assert len(header) < 1000
+    assert "я" * render.ANSWERING_MAX_LENGTH + "…</blockquote>" in header
+    assert "я" * (render.ANSWERING_MAX_LENGTH + 1) not in header
