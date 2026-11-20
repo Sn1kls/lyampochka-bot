@@ -176,3 +176,12 @@ async def test_the_developer_reply_is_shown_as_plain_text() -> None:
     ]
     # Quotes the user's feedback, and still arrives if they deleted it.
     assert bot.replies_to == [ReplyParameters(message_id=40, allow_sending_without_reply=True)]
+
+
+async def test_the_developer_reply_starts_with_the_title_users_reply_to() -> None:
+    bot = FakeBot()
+
+    await notifier_with(bot).send("42", "feedback_reply", {"text": "Дякую", "reply_to": None})
+
+    plain = bot.sent[0][1].replace("<b>", "").replace("</b>", "")
+    assert plain.startswith(texts.FEEDBACK_REPLY_TITLE)

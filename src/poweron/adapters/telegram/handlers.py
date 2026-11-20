@@ -11,7 +11,7 @@ from typing import Any
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import Command, ExceptionTypeFilter
+from aiogram.filters import Command, ExceptionTypeFilter, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -261,17 +261,24 @@ async def admin_reply(message: Message, thread: FeedbackThread, feedback: Feedba
     await message.answer(texts.FEEDBACK_REPLY_SENT if delivered else texts.FEEDBACK_USER_GONE)
 
 
-def _reply_to_developer(message: Message, admin_chat_id: int | None) -> bool:
+def _not_a_command(message: Message) -> bool:
+    return not (message.text or "").startswith("/")
+
+
+def _reply_to_developer(message: Message, admin_chat_id: int | None, bot: Bot) -> bool:
     """The user's Reply to a developer answer; the sender is the author, so the text check is safe."""
     replied = message.reply_to_message
     return (
         admin_chat_id is not None
         and replied is not None
+        and replied.from_user is not None
+        and replied.from_user.id == bot.id
         and (replied.text or "").startswith(texts.FEEDBACK_REPLY_TITLE)
     )
 
 
-@router.message(_reply_to_developer)
+# Outside any flow, so a wizard answer or a command sent as a Reply still does its job.
+@router.message(StateFilter(None), _reply_to_developer, _not_a_command)
 async def feedback_by_reply(
     message: Message,
     state: FSMContext,
@@ -282,10 +289,12 @@ async def feedback_by_reply(
     feedback: Feedback,
     admin_chat_id: int,
 ) -> None:
-    # ponytail: only the album part carrying the Reply goes; whole albums need /feedback.
+    message_ids = await _whole_album(message)
+    if message_ids is None:
+        return
     await _send_feedback(
         message,
-        [message.message_id],
+        message_ids,
         state,
         bot,
         event_from_user,
@@ -327,10 +336,6 @@ async def _over_limit(message: Message, feedback: Feedback, user_id: int) -> boo
 async def cancel_feedback(callback: CallbackQuery, state: FSMContext) -> None:
     await _reset(state)
     await _respond(callback, texts.FEEDBACK_CANCELLED)
-
-
-def _not_a_command(message: Message) -> bool:
-    return not (message.text or "").startswith("/")
 
 
 @router.message(FeedbackFlow.waiting, _not_a_command)

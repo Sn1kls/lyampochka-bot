@@ -242,7 +242,8 @@ FEEDBACK_HEADER = (
 )
 FEEDBACK_NO_ADDRESSES = "Адрес немає."
 FEEDBACK_REPLY_TITLE = "💬 Відповідь розробника"
-FEEDBACK_REPLY = "💬 <b>Відповідь розробника</b>\n\n{text}"  # starts with FEEDBACK_REPLY_TITLE
+# A user's Reply to this is a new feedback, found by the title.
+FEEDBACK_REPLY = f"<b>{FEEDBACK_REPLY_TITLE}</b>\n\n{{text}}"
 FEEDBACK_REPLY_SENT = "✅ Надіслано"
 FEEDBACK_USER_GONE = "Цього користувача вже немає: він стер свої дані або заблокував бота."
 FEEDBACK_REPLY_TEXT_ONLY = "Відповідь можна надіслати лише текстом."

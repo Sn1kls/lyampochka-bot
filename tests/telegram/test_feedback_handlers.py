@@ -287,3 +287,59 @@ async def test_a_reply_to_another_bot_message_is_not_a_feedback(chat: Chat) -> N
     await reply_to_bot(chat, texts.HELP)
 
     assert copies(chat) == []
+
+
+async def test_a_command_sent_as_a_reply_to_a_developer_answer_runs(chat: Chat) -> None:
+    await chat.say("/start")
+
+    await reply_to_bot(chat, "💬 Відповідь розробника\n\nДякую", text="/add")
+
+    assert chat.sent_texts()[-1] == texts.ASK_REGION
+    assert copies(chat) == []
+
+
+async def test_a_reply_to_a_developer_answer_mid_wizard_is_the_wizard_answer(chat: Chat) -> None:
+    await chat.say("/start")
+    await chat.say("/add")
+    await chat.press(keyboards.Region(provider="toe"))
+
+    await reply_to_bot(chat, "💬 Відповідь розробника\n\nДякую", text="бережани")
+
+    assert chat.sent_texts()[-1] == texts.ASK_STREET.format(city="Бережани")
+    assert copies(chat) == []
+
+
+async def test_an_album_sent_as_a_reply_to_a_developer_answer_is_one_feedback(
+    chat: Chat, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(handlers, "ALBUM_WAIT", 0.05)
+    await chat.say("/start")
+    replied = {"message_id": 90, "date": 0, "chat": {"id": 1, "type": "private"}}
+    replied |= {"from": BOT_USER, "text": "💬 Відповідь розробника\n\nДякую"}
+
+    await asyncio.gather(
+        *(
+            chat.send(
+                message_id=message_id,
+                photo=PHOTO,
+                media_group_id="reply-album",
+                reply_to_message=replied,
+            )
+            for message_id in (93, 92)
+        )
+    )
+
+    assert [copied for copied, _ in copies(chat)] == [[92, 93]]
+
+
+async def test_a_reply_to_the_users_own_message_with_the_title_is_not_a_feedback(
+    chat: Chat,
+) -> None:
+    await chat.say("/start")
+    replied = {"message_id": 90, "date": 0, "chat": {"id": 1, "type": "private"}}
+    replied |= {"from": {"id": 1, "is_bot": False, "first_name": "Оля"}}
+    replied |= {"text": "💬 Відповідь розробника — так я це назву"}
+
+    await chat.send(message_id=91, reply_to_message=replied, text="ага")
+
+    assert copies(chat) == []
