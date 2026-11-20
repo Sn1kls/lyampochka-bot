@@ -156,9 +156,9 @@ class Chat:
                 VOE: Catalog(repository, FakeVolynSource(), cache_prefix="voe:"),
             },
             Schedules(repository),
+            feedback or Feedback(repository),
             status=status,
             admin_chat_id=admin_chat_id,
-            feedback=feedback,
         )
         self._update_id = 0
 

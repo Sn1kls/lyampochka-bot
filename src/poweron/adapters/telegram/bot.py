@@ -31,10 +31,10 @@ def build_dispatcher(
     subscriptions: Subscriptions,
     catalogs: Mapping[str, Catalog],
     schedules: Schedules,
+    feedback: Feedback,
     *,
     status: Status | None = None,
     admin_chat_id: int | None = None,
-    feedback: Feedback | None = None,
 ) -> Dispatcher:
     dispatcher = Dispatcher(
         storage=MemoryStorage(),

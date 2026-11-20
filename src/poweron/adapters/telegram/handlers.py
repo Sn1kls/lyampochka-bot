@@ -224,22 +224,20 @@ async def show_status(message: Message, status: Status | None, admin_chat_id: in
     await message.answer(render_status(await status.report(), _now()))
 
 
-async def is_admin_reply(message: Message, admin_chat_id: int | None, bot: Bot) -> bool:
+async def admin_reply_to_bot(
+    message: Message, admin_chat_id: int | None, bot: Bot
+) -> dict[str, Message] | bool:
+    """Matches the admin's Reply to one of the bot's messages and passes that message on."""
     replied = message.reply_to_message
-    return (
-        message.chat.id == admin_chat_id
-        and replied is not None
-        and replied.from_user is not None
-        and replied.from_user.id == bot.id
-    )
+    if message.chat.id != admin_chat_id or replied is None or replied.from_user is None:
+        return False
+    return {"replied": replied} if replied.from_user.id == bot.id else False
 
 
-@router.message(is_admin_reply)
-async def admin_reply(message: Message, feedback: Feedback | None) -> None:
-    replied = message.reply_to_message
-    assert replied is not None  # is_admin_reply
+@router.message(admin_reply_to_bot)
+async def admin_reply(message: Message, replied: Message, feedback: Feedback) -> None:
     found = FEEDBACK_USER.search((replied.text or "").partition("\n")[0])
-    if found is None or feedback is None:
+    if found is None:
         await message.answer(texts.FEEDBACK_REPLY_HINT)
         return
     if not message.text:
@@ -253,10 +251,8 @@ async def admin_reply(message: Message, feedback: Feedback | None) -> None:
 
 @router.message(Command("feedback"))
 @router.message(F.text == texts.MENU_FEEDBACK)
-async def ask_feedback(
-    message: Message, state: FSMContext, admin_chat_id: int | None, feedback: Feedback | None
-) -> None:
-    if admin_chat_id is None or feedback is None:
+async def ask_feedback(message: Message, state: FSMContext, admin_chat_id: int | None) -> None:
+    if admin_chat_id is None:
         await message.answer(texts.FEEDBACK_UNAVAILABLE)
         return
     await _reset(state)
@@ -282,16 +278,14 @@ async def forward_feedback(
     event_from_user: User,
     user_id: int,
     subscriptions: Subscriptions,
-    feedback: Feedback | None,
+    feedback: Feedback,
     admin_chat_id: int | None,
 ) -> None:
-    parts = await _whole_album(message)
-    if parts is None:
+    message_ids = await _whole_album(message)
+    if message_ids is None:
         return
     await _reset(state)
-    if admin_chat_id is None or feedback is None:
-        await message.answer(texts.FEEDBACK_UNAVAILABLE)
-        return
+    assert admin_chat_id is not None  # ask_feedback lets no one in without it
     wait = feedback.accept(user_id, _now())
     if wait is not None:
         minutes = math.ceil(wait / timedelta(minutes=1))
@@ -301,24 +295,27 @@ async def forward_feedback(
         user_id, display_name(event_from_user), await subscriptions.of_user(user_id)
     )
     await bot.send_message(admin_chat_id, header)
-    await bot.copy_messages(admin_chat_id, message.chat.id, [part.message_id for part in parts])
+    await bot.copy_messages(admin_chat_id, message.chat.id, message_ids)
     await message.answer(texts.FEEDBACK_SENT)
 
 
-_albums: dict[str, list[Message]] = {}
+_albums: dict[str, list[int]] = {}
 
 
-async def _whole_album(message: Message) -> list[Message] | None:
-    """All parts of the message's album in order, or None for a part another call collects."""
+async def _whole_album(message: Message) -> list[int] | None:
+    """Message ids of the message's whole album in order, or None for a part another call collects."""
     album_id = message.media_group_id
     if album_id is None:
-        return [message]
+        return [message.message_id]
     if album_id in _albums:
-        _albums[album_id].append(message)
+        _albums[album_id].append(message.message_id)
         return None
-    _albums[album_id] = [message]
-    await asyncio.sleep(ALBUM_WAIT)
-    return sorted(_albums.pop(album_id), key=lambda part: part.message_id)
+    _albums[album_id] = [message.message_id]
+    try:
+        await asyncio.sleep(ALBUM_WAIT)
+    finally:
+        message_ids = _albums.pop(album_id)
+    return sorted(message_ids)
 
 
 @router.message(Command("forget"))

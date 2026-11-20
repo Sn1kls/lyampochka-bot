@@ -33,11 +33,8 @@ class Feedback:
         """Queues the admin's reply once per `reply_key`; False when the user is gone."""
         if not await self._repository.delivery_targets(user_id):
             return False
-        await self._repository.enqueue_messages(
-            [
-                OutboxMessage(
-                    user_id, MessageKind.FEEDBACK_REPLY, {"text": text}, f"feedback:{reply_key}"
-                )
-            ]
+        message = OutboxMessage(
+            user_id, MessageKind.FEEDBACK_REPLY, {"text": text}, f"feedback:{reply_key}"
         )
+        await self._repository.enqueue_messages([message])
         return True
