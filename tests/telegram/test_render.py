@@ -300,6 +300,13 @@ def test_render_update_with_more_outage_says_worse() -> None:
     )
 
 
+def test_render_update_marks_an_extended_outage_as_new() -> None:
+    previous = LIGHT_ALL_DAY | {"10:00": "1"}
+    payload = update_payload(previous, previous | {"10:30": "1"})
+
+    assert "🔴 10:00–11:00 немає світла 🆕" in render_update(payload).splitlines()
+
+
 def test_render_update_with_the_same_outage_hours_says_changed() -> None:
     previous = LIGHT_ALL_DAY | {"10:00": "1", "10:30": "1"}
     payload = update_payload(previous, LIGHT_ALL_DAY | {"12:00": "1", "12:30": "1"})
