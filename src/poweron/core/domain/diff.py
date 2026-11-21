@@ -2,7 +2,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from poweron.core.domain.models import Interval, SlotState
@@ -32,6 +32,15 @@ class ScheduleChange:
     @property
     def removed(self) -> list[Interval]:
         return [interval for interval in self.previous or [] if interval not in self.current]
+
+    def moved_starts(self, now: datetime) -> list[datetime]:
+        """Future starts of previous outages that no current outage starts at."""
+        current_starts = {new.start for new in self.current}
+        return [
+            old.start
+            for old in self.previous or []
+            if old.start > now and old.start not in current_starts
+        ]
 
     def payload(self) -> dict[str, Any]:
         return {

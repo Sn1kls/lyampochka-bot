@@ -79,5 +79,11 @@ def _message(
             "earliest": earliest,
             "latest": None if event.latest is None else event.latest.isoformat(),
         },
-        dedupe_key=f"remind:{subscription.instance_key}:{cherg_gpv}:{earliest}:{kind.value}",
+        dedupe_key=reminder_key(subscription, cherg_gpv, earliest, kind),
     )
+
+
+def reminder_key(
+    subscription: Subscription, cherg_gpv: str, earliest: str, kind: MessageKind
+) -> str:
+    return f"remind:{subscription.instance_key}:{cherg_gpv}:{earliest}:{kind.value}"

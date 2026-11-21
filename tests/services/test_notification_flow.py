@@ -10,6 +10,8 @@ from poweron.core.domain.models import Address, Building, City, DaySchedule, Str
 from poweron.core.ports import DeliveryTargetGone
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.polling import Polling
+from poweron.core.services.reminders import Reminders
+from poweron.core.services.schedules import Schedules
 from poweron.core.services.subscriptions import NoScheduleForAddress, Subscriptions
 from poweron.worker.runner import repeat
 from tests.services.conftest import NOW, TODAY, TOMORROW, FakeNotifier, FakeSource, day_schedule
@@ -369,3 +371,74 @@ async def test_polling_stops_between_subqueues_when_asked(
     await Polling(repository, source).poll(NOW, lambda: len(source.requested) >= 1)
 
     assert len(source.requested) == 1
+
+
+async def test_update_flags_a_reminder_it_made_stale(
+    repository: SqlRepository, source: FakeSource, notifier: FakeNotifier
+) -> None:
+    await subscribe(repository, "101")
+    reminded_at = "2026-10-17T15:30:00+00:00"  # 18:30 Kyiv, 30 min after NOW
+    source.schedules = {"4.1": [day_schedule(outages={"18:30": "1", "21:00": "1"})]}
+    await cycle(repository, source, notifier, NOW - timedelta(minutes=10))
+    await Reminders(repository, Schedules(repository)).tick(NOW)
+
+    source.schedules = {"4.1": [day_schedule(outages={"19:00": "1", "21:00": "1"})]}
+    await cycle(repository, source, notifier, NOW + timedelta(minutes=5))
+
+    update = notifier.sent[-1][2]
+    assert update["stale_reminders"] == [reminded_at]
+
+
+async def test_update_without_a_sent_reminder_flags_nothing(
+    repository: SqlRepository, source: FakeSource, notifier: FakeNotifier
+) -> None:
+    await subscribe(repository, "101")
+    source.schedules = {"4.1": [day_schedule(outages={"18:30": "1"})]}
+    await cycle(repository, source, notifier, NOW - timedelta(minutes=10))
+
+    source.schedules = {"4.1": [day_schedule(outages={"19:00": "1"})]}
+    await cycle(repository, source, notifier, NOW - timedelta(minutes=5))
+
+    assert notifier.sent[-1][2]["stale_reminders"] == []
+
+
+async def test_a_reminded_outage_that_still_happens_is_not_flagged(
+    repository: SqlRepository, source: FakeSource, notifier: FakeNotifier
+) -> None:
+    await subscribe(repository, "101")
+    source.schedules = {"4.1": [day_schedule(outages={"18:30": "1"})]}
+    await cycle(repository, source, notifier, NOW - timedelta(minutes=10))
+    await Reminders(repository, Schedules(repository)).tick(NOW)
+
+    source.schedules = {"4.1": [day_schedule(outages={"18:30": "1", "19:00": "1"})]}
+    await cycle(repository, source, notifier, NOW + timedelta(minutes=5))
+
+    assert notifier.sent[-1][2]["stale_reminders"] == []
+
+
+async def test_update_flags_a_reminded_outage_moved_earlier(
+    repository: SqlRepository, source: FakeSource, notifier: FakeNotifier
+) -> None:
+    await subscribe(repository, "101")
+    source.schedules = {"4.1": [day_schedule(outages={"18:30": "1"})]}
+    await cycle(repository, source, notifier, NOW - timedelta(minutes=10))
+    await Reminders(repository, Schedules(repository)).tick(NOW)
+
+    source.schedules = {"4.1": [day_schedule(outages={"18:00": "1", "18:30": "1"})]}
+    await cycle(repository, source, notifier, NOW + timedelta(minutes=5))
+
+    assert notifier.sent[-1][2]["stale_reminders"] == ["2026-10-17T15:30:00+00:00"]
+
+
+async def test_rewriting_an_outage_that_already_began_flags_nothing(
+    repository: SqlRepository, source: FakeSource, notifier: FakeNotifier
+) -> None:
+    await subscribe(repository, "101")
+    source.schedules = {"4.1": [day_schedule(outages={"18:30": "1", "21:00": "1"})]}
+    await cycle(repository, source, notifier, NOW - timedelta(minutes=10))
+    await Reminders(repository, Schedules(repository)).tick(NOW)
+
+    source.schedules = {"4.1": [day_schedule(outages={"21:00": "1"})]}
+    await cycle(repository, source, notifier, NOW + timedelta(minutes=40))
+
+    assert notifier.sent[-1][2]["stale_reminders"] == []

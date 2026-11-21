@@ -153,6 +153,7 @@ UPDATE_NEW_DAY_EMPTY = "З'явився графік на {date}: без від�
 UPDATE_CHANGED_DAY = "Зміни на {date}:"
 UPDATE_ADDED = "Додано:"
 UPDATE_REMOVED = "Прибрано:"
+UPDATE_STALE_REMINDER = "⚠️ Нагадування про вимкнення о {times} уже неактуальне."
 UPDATE_LINK = '<a href="{url}">{site}</a>'
 
 REMINDER_OFF_WINDOW = "⏰ <b>{label}</b>{queue}: за {minutes} хв можуть вимкнути світло (з {earliest}, точно — о {latest})"
@@ -192,6 +193,11 @@ SETTINGS_ENABLED = "увімкнено"
 SETTINGS_DISABLED = "вимкнено"
 BUTTON_UPDATES_ON = "✅ Пуші про оновлення"
 BUTTON_UPDATES_OFF = "🚫 Пуші про оновлення"
+BUTTON_QUEUE_TRACKED = "✅ Черга {queue}"
+BUTTON_QUEUE_UNTRACKED = "🚫 Черга {queue}"
+LAST_TRACKED_QUEUE = (
+    "Хоча б за однією чергою треба стежити. Щоб прибрати адресу повністю — «🗑 Видалити адресу»."
+)
 BUTTON_REMINDER_OFF = "⏰ Нагадати до вимкнення: {value}"
 BUTTON_REMINDER_ON = "💡 Нагадати до повернення: {value}"
 REMINDER_NONE = "без"

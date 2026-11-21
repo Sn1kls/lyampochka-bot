@@ -276,3 +276,22 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - The limit is checked when `/feedback` is pressed, so a long text is not written in vain.
   - The menu update (`MENU_UPDATED`) is now sent with `disable_notification`, and its text names the two new buttons.
 - After deploy: `make announce-menu VERSION=N` with N above the last one used.
+
+## 2026-11-21: Stale reminder warning
+
+- Bug report: a "power goes off in 30 min" reminder, then minutes later an update that removed that outage. Production data (`voe:4.1`) showed a race, not a stale cache: the 17:00 reminder went out at 17:00:18, the oblenergo published the new image at 17:02:17, the poll saw it at 17:07. Same at 05:30/05:57.
+- Done: a schedule update now carries `stale_reminders` (ISO starts) per subscription: future outage starts the user was already reminded about (`REMINDER_OFF` dedupe key in the outbox) that no current outage starts at. Telegram renders «⚠️ Нагадування про вимкнення о HH:MM уже неактуальне.» under the title.
+- Decisions:
+  - Re-fetching the schedule right before a reminder was dropped: it would not have helped either reported case.
+  - A queued reminder counts as reminded (it is dispatched before the update); one waiting for a retry may arrive after the warning.
+  - Not covered: `REMINDER_ON` (off by default), users with `notify_on_update` off.
+
+## 2026-11-21: Per-queue tracking in settings
+
+- Done: the settings of an address in several queues get one button per queue («✅ Черга 2.2» / «🚫 Черга 2.2»), sorted by name so they stay in place. A press stops or resumes pushes and reminders for that queue; its schedule stays viewable.
+  - `Subscriptions.set_tracked` + `Repository.set_queue_tracked`, one row per press.
+  - The last tracked queue cannot be turned off (alert «Хоча б за однією чергою треба стежити…»). The guard is in the UPDATE itself, so two quick taps on two settings messages cannot untrack both.
+  - The callback carries the plain subqueue, since a scoped one holds the ":" separator.
+- Known limits:
+  - The guard is atomic under SQLite's single writer; Postgres will need a row lock (marked `ponytail:`).
+  - A press that lands while the catalog re-check rewrites the building's queues can be undone by it; the user then gets the «змінилися черги» message listing what is tracked.
