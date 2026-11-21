@@ -276,3 +276,12 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - The limit is checked when `/feedback` is pressed, so a long text is not written in vain.
   - The menu update (`MENU_UPDATED`) is now sent with `disable_notification`, and its text names the two new buttons.
 - After deploy: `make announce-menu VERSION=N` with N above the last one used.
+
+## 2026-11-21: Stale reminder warning
+
+- Bug report: a "power goes off in 30 min" reminder, then minutes later an update that removed that outage. Production data (`voe:4.1`) showed a race, not a stale cache: the 17:00 reminder went out at 17:00:18, the oblenergo published the new image at 17:02:17, the poll saw it at 17:07. Same at 05:30/05:57.
+- Done: a schedule update now carries `stale_reminders` (ISO starts) per subscription: future outage starts the user was already reminded about (`REMINDER_OFF` dedupe key in the outbox) that no current outage starts at. Telegram renders «⚠️ Нагадування про вимкнення о HH:MM уже неактуальне.» under the title.
+- Decisions:
+  - Re-fetching the schedule right before a reminder was dropped: it would not have helped either reported case.
+  - A queued reminder counts as reminded (it is dispatched before the update); one waiting for a retry may arrive after the warning.
+  - Not covered: `REMINDER_ON` (off by default), users with `notify_on_update` off.

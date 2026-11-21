@@ -17,6 +17,7 @@ from poweron.core.domain.models import (
 from poweron.core.domain.providers import provider_of
 from poweron.core.ports import Repository, ScheduleSource, SourceError
 from poweron.core.services.alerts import Alerts, report_source_error
+from poweron.core.services.reminders import reminder_key
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,8 @@ class Polling:
             )
             if change is not None:
                 base = "new" if previous is None else previous.fetched_at.isoformat()
-                messages = _messages(change, recipients, f"{base}:{digest}")
+                stale = await self._stale_reminders(change, recipients, now)
+                messages = _messages(change, recipients, f"{base}:{digest}", stale)
         version = ScheduleVersion(
             cherg_gpv=schedule.cherg_gpv,
             day=schedule.day,
@@ -148,9 +150,32 @@ class Polling:
         await self._repository.save_version(version, messages)
         return previous is None or previous.data_hash != digest, len(messages)
 
+    async def _stale_reminders(
+        self, change: ScheduleChange, recipients: list[Subscription], now: datetime
+    ) -> dict[int, list[str]]:
+        """Per subscription, the reminded outage starts that the new schedule moved or dropped."""
+        starts = [start.isoformat() for start in change.moved_starts(now)]
+        if not starts:
+            return {subscription.id: [] for subscription in recipients}
+        keys = {
+            (subscription.id, start): reminder_key(
+                subscription, change.cherg_gpv, start, MessageKind.REMINDER_OFF
+            )
+            for subscription in recipients
+            for start in starts
+        }
+        queued = await self._repository.queued_keys(list(keys.values()))
+        return {
+            subscription.id: [start for start in starts if keys[subscription.id, start] in queued]
+            for subscription in recipients
+        }
+
 
 def _messages(
-    change: ScheduleChange, recipients: list[Subscription], transition: str
+    change: ScheduleChange,
+    recipients: list[Subscription],
+    transition: str,
+    stale_reminders: dict[int, list[str]],
 ) -> list[OutboxMessage]:
     payload = change.payload()
     return [
@@ -162,6 +187,7 @@ def _messages(
                 "subscription_id": subscription.id,
                 "label": subscription.label,
                 "queue_count": len(subscription.tracked_subqueues),
+                "stale_reminders": stale_reminders[subscription.id],
             },
             dedupe_key=f"update:{subscription.id}:{change.cherg_gpv}:{change.day}:{transition}",
         )

@@ -536,3 +536,13 @@ def test_a_volyn_address_points_to_volynoblenergo_not_ternopil() -> None:
     ):
         assert "energy.volyn.ua" in text
         assert "toe.com.ua" not in text
+
+
+def test_render_update_withdraws_a_reminder_it_made_stale() -> None:
+    off = {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
+    payload = update_payload(off | {"17:30": "1"}, off)
+
+    text = render_update(payload | {"stale_reminders": ["2026-10-17T14:30:00+00:00"]})
+
+    assert text.splitlines()[2] == "⚠️ Нагадування про вимкнення о 17:30 уже неактуальне."
+    assert "⚠️" not in render_update(payload)

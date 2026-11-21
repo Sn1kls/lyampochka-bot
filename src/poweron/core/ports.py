@@ -149,6 +149,10 @@ class Repository(Protocol):
         """Enqueue messages, skipping those whose dedupe key is already stored; returns how many were new."""
         ...
 
+    async def queued_keys(self, dedupe_keys: list[str]) -> set[str]:
+        """The given dedupe keys that are already in the outbox."""
+        ...
+
     async def last_version_at(self, cherg_gpv: str) -> datetime | None:
         """When the newest stored schedule of the subqueue was fetched."""
         ...
