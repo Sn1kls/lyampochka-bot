@@ -622,18 +622,18 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
         [
             "⚙️ Налаштування для <b>Дім</b>",
             "Пуші про оновлення графіка і планові роботи: увімкнено",
-            "⏰ Нагадати перед вимкненням: 30 хв",
+            "🌑 Нагадати перед вимкненням: 30 хв",
             "💡 Нагадати перед поверненням світла: без",
         ]
     )
     assert button_texts(chat.last_reply_markup()) == [
         ["✅ Пуші про оновлення"],
-        ["⏰ Нагадати до вимкнення: 30 хв"],
+        ["🌑 Нагадати до вимкнення: 30 хв"],
         ["💡 Нагадати до повернення: без"],
     ]
 
     await chat.press_button("✅ Пуші про оновлення")
-    await chat.press_button("⏰ Нагадати до вимкнення: 30 хв")
+    await chat.press_button("🌑 Нагадати до вимкнення: 30 хв")
     await chat.press_button("💡 Нагадати до повернення: без")
 
     assert chat.subscriptions.stored == {
@@ -641,7 +641,7 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
     }
     assert chat.edited_texts()[-1].splitlines()[1:] == [
         "Пуші про оновлення графіка і планові роботи: вимкнено",
-        "⏰ Нагадати перед вимкненням: 60 хв",
+        "🌑 Нагадати перед вимкненням: 60 хв",
         "💡 Нагадати перед поверненням світла: 15 хв",
     ]
     edited_markup = [call for call in chat.session.calls if isinstance(call, EditMessageText)][
@@ -649,7 +649,7 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
     ].reply_markup
     assert button_texts(edited_markup) == [
         ["🚫 Пуші про оновлення"],
-        ["⏰ Нагадати до вимкнення: 60 хв"],
+        ["🌑 Нагадати до вимкнення: 60 хв"],
         ["💡 Нагадати до повернення: 15 хв"],
     ]
 

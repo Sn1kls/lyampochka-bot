@@ -112,7 +112,7 @@ BUTTON_CANCEL = "Скасувати"
 BUTTON_PREVIOUS = "◀️"
 BUTTON_NEXT = "▶️"
 
-DAY_TITLE = "💡 <b>{label}</b>, {day}"
+DAY_TITLE = "📅 <b>{label}</b>, {day}"
 DAY_TODAY = "сьогодні ({date})"
 DAY_TOMORROW = "завтра ({date})"
 SUBQUEUE_UPDATED = "Підчерга {subqueue} · оновлено {updated}"
@@ -146,26 +146,27 @@ NEXT_TITLE = "<b>{label}</b>:"
 NEXT_QUEUE = "• підчерга {queue}: {event}"
 NEXT_NONE = "<b>{label}</b>: найближчим часом змін не заплановано."
 
-UPDATE_TITLE = "💡 Графік для <b>{label}</b>{queue} оновлено"
+# 🌑 means "no light", 💡 means "light"; the first line is all a push preview shows.
 UPDATE_QUEUE = " (черга {queue})"
-UPDATE_NEW_DAY = "З'явився графік на {date}:"
-UPDATE_NEW_DAY_EMPTY = "З'явився графік на {date}: без відключень 🎉"
-UPDATE_CHANGED_DAY = "Зміни на {date}:"
-UPDATE_ADDED = "Додано:"
-UPDATE_REMOVED = "Прибрано:"
+FOR_ADDRESS = " · <b>{label}</b>{queue}"
+UPDATE_NEW_DAY = "📅 Графік на {date}: {outage}"
+UPDATE_WORSE = "🌑 Гірше: {date} без світла на {delta} більше, разом {total}"
+UPDATE_BETTER = "💡 Краще: {date} без світла на {delta} менше, разом {total}"
+UPDATE_BETTER_NONE = "💡 Краще: {date} {outage}"
+UPDATE_SAME = "🔄 Змінили графік на {date}: {outage}"
+UPDATE_OUTAGE = "без світла {duration}"
+UPDATE_NO_OUTAGE = "відключень немає 🎉"
+UPDATE_NO_SURE_OUTAGE = "точних відключень немає"
+UPDATE_NEW_LINE = " 🆕"
 UPDATE_STALE_REMINDER = "⚠️ Нагадування про вимкнення о {times} уже неактуальне."
 UPDATE_LINK = '<a href="{url}">{site}</a>'
 
-REMINDER_OFF_WINDOW = "⏰ <b>{label}</b>{queue}: за {minutes} хв можуть вимкнути світло (з {earliest}, точно — о {latest})"
-REMINDER_OFF_EXACT = "⏰ <b>{label}</b>{queue}: за {minutes} хв вимкнуть світло (о {latest})"
-REMINDER_OFF_POSSIBLE = "⏰ <b>{label}</b>{queue}: за {minutes} хв можливе вимкнення з {earliest}"
-REMINDER_ON_WINDOW = (
-    "💡 <b>{label}</b>{queue}: за {minutes} хв мають дати світло (з {earliest}, точно — о {latest})"
-)
-REMINDER_ON_EXACT = "💡 <b>{label}</b>{queue}: за {minutes} хв дадуть світло (о {latest})"
-REMINDER_ON_POSSIBLE = (
-    "💡 <b>{label}</b>{queue}: за {minutes} хв можливе повернення світла з {earliest}"
-)
+REMINDER_OFF_WINDOW = "🌑 За {minutes} хв можуть ВИМКНУТИ світло (з {earliest}, точно — о {latest})"
+REMINDER_OFF_EXACT = "🌑 За {minutes} хв ВИМКНУТЬ світло (о {latest})"
+REMINDER_OFF_POSSIBLE = "🌑 За {minutes} хв можливе ВИМКНЕННЯ з {earliest}"
+REMINDER_ON_WINDOW = "💡 За {minutes} хв мають ДАТИ світло (з {earliest}, точно — о {latest})"
+REMINDER_ON_EXACT = "💡 За {minutes} хв ДАДУТЬ світло (о {latest})"
+REMINDER_ON_POSSIBLE = "💡 За {minutes} хв можливе ПОВЕРНЕННЯ світла з {earliest}"
 
 SUBQUEUES_CHANGED = (
     "🔄 Для <b>{label}</b> змінилися черги.\n"
@@ -187,7 +188,7 @@ PLANNED_WORK_REASON = " — {reason}"
 
 SETTINGS_TITLE = "⚙️ Налаштування для <b>{label}</b>"
 SETTINGS_UPDATES = "Пуші про оновлення графіка і планові роботи: {state}"
-SETTINGS_REMINDER_OFF = "⏰ Нагадати перед вимкненням: {when}"
+SETTINGS_REMINDER_OFF = "🌑 Нагадати перед вимкненням: {when}"
 SETTINGS_REMINDER_ON = "💡 Нагадати перед поверненням світла: {when}"
 SETTINGS_ENABLED = "увімкнено"
 SETTINGS_DISABLED = "вимкнено"
@@ -198,7 +199,7 @@ BUTTON_QUEUE_UNTRACKED = "🚫 Черга {queue}"
 LAST_TRACKED_QUEUE = (
     "Хоча б за однією чергою треба стежити. Щоб прибрати адресу повністю — «🗑 Видалити адресу»."
 )
-BUTTON_REMINDER_OFF = "⏰ Нагадати до вимкнення: {value}"
+BUTTON_REMINDER_OFF = "🌑 Нагадати до вимкнення: {value}"
 BUTTON_REMINDER_ON = "💡 Нагадати до повернення: {value}"
 REMINDER_NONE = "без"
 
