@@ -7,7 +7,11 @@ from poweron.adapters.telegram.keyboards import (
     Page,
     Pick,
     SettingChange,
+    actions_keyboard,
     choice_keyboard,
+    day_keyboard,
+    menu_keyboard,
+    remove_confirm_keyboard,
     settings_keyboard,
 )
 from tests.telegram.test_render import SUBSCRIPTION
@@ -86,3 +90,39 @@ def test_the_longest_reminder_wraps_around_to_none() -> None:
 
     press = SettingChange.unpack(markup.inline_keyboard[1][0].callback_data or "")
     assert press.value == 0
+
+
+def styles_of(markup: InlineKeyboardMarkup) -> list[list[str | None]]:
+    return [[button.style for button in row] for row in markup.inline_keyboard]
+
+
+def test_settings_paint_what_is_on_green_and_leave_what_is_off_plain() -> None:
+    subscription = replace(
+        SUBSCRIPTION,
+        subqueues=("2.2", "4.1#7"),
+        tracked_subqueues=("4.1#7",),
+        notify_on_update=False,
+    )
+
+    assert styles_of(settings_keyboard(subscription)) == [
+        [None],
+        ["success"],
+        [None],
+        [None],
+        [None],
+    ]
+    assert styles_of(settings_keyboard(replace(subscription, notify_on_update=True)))[2] == [
+        "success"
+    ]
+
+
+def test_removing_is_red_and_today_is_the_highlighted_day() -> None:
+    assert styles_of(actions_keyboard("add", "remove")) == [[None], ["danger"]]
+    assert styles_of(remove_confirm_keyboard(1)) == [["danger", None]]
+    assert styles_of(day_keyboard(SUBSCRIPTION)) == [["primary", None]]
+
+
+def test_the_schedule_is_the_highlighted_menu_button() -> None:
+    styles = [[button.style for button in row] for row in menu_keyboard().keyboard]
+
+    assert styles == [["primary", None], [None, None], [None, None]]
