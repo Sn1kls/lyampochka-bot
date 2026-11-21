@@ -128,6 +128,13 @@ class Repository(Protocol):
         """Set the given settings columns on the subscription, only if it belongs to `user_id`."""
         ...
 
+    async def set_queue_tracked(self, subscription_id: int, cherg_gpv: str, tracked: bool) -> bool:
+        """False, changing nothing, if untracking would leave no tracked queue.
+
+        The caller has checked that the subscription belongs to the user.
+        """
+        ...
+
     async def stale_subscriptions(self, checked_before: datetime) -> list[Subscription]:
         """Subscriptions whose subqueues were never checked or not since `checked_before`."""
         ...

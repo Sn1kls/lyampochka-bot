@@ -285,3 +285,13 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - Re-fetching the schedule right before a reminder was dropped: it would not have helped either reported case.
   - A queued reminder counts as reminded (it is dispatched before the update); one waiting for a retry may arrive after the warning.
   - Not covered: `REMINDER_ON` (off by default), users with `notify_on_update` off.
+
+## 2026-11-21: Per-queue tracking in settings
+
+- Done: the settings of an address in several queues get one button per queue («✅ Черга 2.2» / «🚫 Черга 2.2»), sorted by name so they stay in place. A press stops or resumes pushes and reminders for that queue; its schedule stays viewable.
+  - `Subscriptions.set_tracked` + `Repository.set_queue_tracked`, one row per press.
+  - The last tracked queue cannot be turned off (alert «Хоча б за однією чергою треба стежити…»). The guard is in the UPDATE itself, so two quick taps on two settings messages cannot untrack both.
+  - The callback carries the plain subqueue, since a scoped one holds the ":" separator.
+- Known limits:
+  - The guard is atomic under SQLite's single writer; Postgres will need a row lock (marked `ponytail:`).
+  - A press that lands while the catalog re-check rewrites the building's queues can be undone by it; the user then gets the «змінилися черги» message listing what is tracked.

@@ -11,6 +11,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from poweron.core.domain.models import Subscription
+from poweron.core.domain.providers import plain_subqueue
 from poweron.core.services.subscriptions import REMINDER_MINUTES
 
 from . import texts
@@ -80,6 +81,14 @@ class SettingChange(CallbackData, prefix="set"):
     subscription_id: int
     field: str
     value: int
+
+
+class QueueTracking(CallbackData, prefix="trk"):
+    """`queue` is the plain subqueue: a scoped one holds the ":" that separates callback fields."""
+
+    subscription_id: int
+    queue: str
+    tracked: bool
 
 
 class Action(CallbackData, prefix="go"):
@@ -230,6 +239,19 @@ def cancel_keyboard(action: str) -> InlineKeyboardMarkup:
 
 def settings_keyboard(subscription: Subscription) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    if len(subscription.subqueues) > 1:
+        for queue in sorted(subscription.subqueues):
+            tracked = queue in subscription.tracked_subqueues
+            builder.button(
+                text=(
+                    texts.BUTTON_QUEUE_TRACKED if tracked else texts.BUTTON_QUEUE_UNTRACKED
+                ).format(queue=queue_name(queue)),
+                callback_data=QueueTracking(
+                    subscription_id=subscription.id,
+                    queue=plain_subqueue(queue),
+                    tracked=not tracked,
+                ),
+            )
     toggle_text = (
         texts.BUTTON_UPDATES_ON if subscription.notify_on_update else texts.BUTTON_UPDATES_OFF
     )

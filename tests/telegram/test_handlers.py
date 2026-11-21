@@ -757,3 +757,44 @@ async def test_an_unknown_region_button_is_stale(chat: Chat) -> None:
     await chat.press(keyboards.Region(provider="xyz"))
 
     assert chat.alerts() == [texts.STALE_BUTTON]
+
+
+async def test_settings_toggle_one_queue_of_several_but_never_the_last(chat: Chat) -> None:
+    await add_address(chat, "96")
+    await chat.press_button(texts.BUTTON_ALL_QUEUES)
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.say("/settings")
+    assert button_texts(chat.last_reply_markup())[:2] == [["✅ Черга 2.2"], ["✅ Черга 4.1"]]
+
+    await chat.press_button("✅ Черга 2.2")
+    [subscription] = await chat.subscriptions.of_user(1)
+    assert subscription.tracked_subqueues == ("4.1",)
+    edited_markup = [call for call in chat.session.calls if isinstance(call, EditMessageText)][
+        -1
+    ].reply_markup
+    assert button_texts(edited_markup)[:2] == [["🚫 Черга 2.2"], ["✅ Черга 4.1"]]
+
+    await chat.press_button("✅ Черга 4.1")
+    assert chat.alerts() == [texts.LAST_TRACKED_QUEUE]
+    [subscription] = await chat.subscriptions.of_user(1)
+    assert subscription.tracked_subqueues == ("4.1",)
+
+
+async def test_settings_of_a_single_queue_address_have_no_queue_buttons(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.say("/settings")
+
+    assert len(button_texts(chat.last_reply_markup())) == 3
+
+
+async def test_queue_button_of_a_queue_the_address_no_longer_has_is_stale(chat: Chat) -> None:
+    await add_address(chat, "96")
+    await chat.press_button(texts.BUTTON_ALL_QUEUES)
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.press(keyboards.QueueTracking(subscription_id=1, queue="9.9", tracked=False))
+
+    assert chat.alerts() == [texts.STALE_BUTTON]

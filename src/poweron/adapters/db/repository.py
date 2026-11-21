@@ -202,6 +202,28 @@ class SqlRepository:
                 .values(**changes)
             )
 
+    async def set_queue_tracked(self, subscription_id: int, cherg_gpv: str, tracked: bool) -> bool:
+        queues = subscription_subqueues
+        condition = [queues.c.subscription_id == subscription_id, queues.c.cherg_gpv == cherg_gpv]
+        if not tracked:
+            # In the UPDATE itself, so two quick taps cannot untrack both queues.
+            # ponytail: atomic under SQLite's single writer; Postgres needs a row lock here.
+            other = queues.alias("other")
+            condition.append(
+                select(other.c.cherg_gpv)
+                .where(
+                    other.c.subscription_id == subscription_id,
+                    other.c.notify,
+                    other.c.cherg_gpv != cherg_gpv,
+                )
+                .exists()
+            )
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                update(queues).where(*condition).values(notify=tracked)
+            )
+            return result.rowcount > 0
+
     async def stale_subscriptions(self, checked_before: datetime) -> list[Subscription]:
         async with self._engine.connect() as connection:
             return await _load(
