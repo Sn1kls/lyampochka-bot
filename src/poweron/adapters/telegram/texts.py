@@ -193,6 +193,11 @@ SETTINGS_ENABLED = "увімкнено"
 SETTINGS_DISABLED = "вимкнено"
 BUTTON_UPDATES_ON = "✅ Пуші про оновлення"
 BUTTON_UPDATES_OFF = "🚫 Пуші про оновлення"
+BUTTON_QUEUE_TRACKED = "✅ Черга {queue}"
+BUTTON_QUEUE_UNTRACKED = "🚫 Черга {queue}"
+LAST_TRACKED_QUEUE = (
+    "Хоча б за однією чергою треба стежити. Щоб прибрати адресу повністю — «🗑 Видалити адресу»."
+)
 BUTTON_REMINDER_OFF = "⏰ Нагадати до вимкнення: {value}"
 BUTTON_REMINDER_ON = "💡 Нагадати до повернення: {value}"
 REMINDER_NONE = "без"

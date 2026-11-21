@@ -11,7 +11,7 @@ from poweron.core.domain.models import (
     Street,
     Subscription,
 )
-from poweron.core.services.subscriptions import Subscriptions
+from poweron.core.services.subscriptions import LastTrackedQueue, Subscriptions
 from tests.services.conftest import NOW
 
 TERNOPIL = City(id=1032, name="Тернопіль", otg_name=None)
@@ -176,3 +176,65 @@ async def test_update_settings_rejects_unsupported_minutes(subscriptions: Subscr
     with pytest.raises(ValueError):
         await subscriptions.update_settings(user_id, home.id, remind_before_on_min=-15)
     assert await subscriptions.get(user_id, home.id) == home
+
+
+async def test_set_tracked_stops_and_resumes_one_queue(subscriptions: Subscriptions) -> None:
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    building = Building(1, "96", "4.1")
+    home = await subscriptions.add(
+        user_id, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["2.2", "4.1"], NOW
+    )
+
+    stopped = await subscriptions.set_tracked(user_id, home.id, "2.2", tracked=False)
+    assert stopped is not None
+    assert (stopped.subqueues, stopped.tracked_subqueues) == (("4.1", "2.2"), ("4.1",))
+
+    resumed = await subscriptions.set_tracked(user_id, home.id, "2.2", tracked=True)
+    assert resumed is not None
+    assert resumed.tracked_subqueues == ("2.2", "4.1")
+
+
+async def test_set_tracked_keeps_at_least_one_queue(subscriptions: Subscriptions) -> None:
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    building = Building(1, "96", "4.1")
+    home = await subscriptions.add(
+        user_id, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["4.1"], NOW
+    )
+
+    with pytest.raises(LastTrackedQueue):
+        await subscriptions.set_tracked(user_id, home.id, "4.1", tracked=False)
+    with pytest.raises(ValueError):
+        await subscriptions.set_tracked(user_id, home.id, "9.9", tracked=True)
+    assert await subscriptions.get(user_id, home.id) == home
+
+
+async def test_set_tracked_cannot_touch_another_users_subscription(
+    subscriptions: Subscriptions,
+) -> None:
+    alice = await subscriptions.register("telegram", "1", "telegram", "1")
+    bob = await subscriptions.register("telegram", "2", "telegram", "2")
+    building = Building(1, "96", "4.1")
+    home = await subscriptions.add(
+        alice, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["2.2", "4.1"], NOW
+    )
+
+    assert await subscriptions.set_tracked(bob, home.id, "2.2", tracked=False) is None
+    assert await subscriptions.get(alice, home.id) == home
+
+
+async def test_concurrent_untracks_still_leave_one_queue(
+    subscriptions: Subscriptions, repository: SqlRepository
+) -> None:
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    building = Building(1, "96", "4.1")
+    home = await subscriptions.add(
+        user_id, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["2.2", "4.1"], NOW
+    )
+
+    # Both callbacks read the subscription before either writes.
+    first = await repository.set_queue_tracked(home.id, "2.2", False)
+    second = await repository.set_queue_tracked(home.id, "4.1", False)
+
+    assert (first, second) == (True, False)
+    updated = await subscriptions.get(user_id, home.id)
+    assert updated is not None and updated.tracked_subqueues == ("4.1",)

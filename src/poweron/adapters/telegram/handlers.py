@@ -35,13 +35,13 @@ from poweron.core.domain.models import (
     Street,
     Subscription,
 )
-from poweron.core.domain.providers import TOE
+from poweron.core.domain.providers import TOE, plain_subqueue
 from poweron.core.ports import SourceError
 from poweron.core.services.catalog import Catalog, find_by_name
 from poweron.core.services.feedback import Feedback
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
-from poweron.core.services.subscriptions import Subscriptions
+from poweron.core.services.subscriptions import LastTrackedQueue, Subscriptions
 
 from . import keyboards, texts
 from .middleware import KnownUser
@@ -526,6 +526,40 @@ async def change_setting(
         await _respond(callback, texts.ADDRESS_GONE)
     else:
         await _show_settings(callback, subscription)
+
+
+@router.callback_query(keyboards.QueueTracking.filter())
+async def change_tracking(
+    callback: CallbackQuery,
+    callback_data: keyboards.QueueTracking,
+    user_id: int,
+    subscriptions: Subscriptions,
+) -> None:
+    subscription = await subscriptions.get(user_id, callback_data.subscription_id)
+    if subscription is None:
+        await _respond(callback, texts.ADDRESS_GONE)
+        return
+    queue = next(
+        (queue for queue in subscription.subqueues if plain_subqueue(queue) == callback_data.queue),
+        None,
+    )
+    if queue is None:
+        await callback.answer(texts.STALE_BUTTON, show_alert=True)
+        return
+    try:
+        changed = await subscriptions.set_tracked(
+            user_id, subscription.id, queue, tracked=callback_data.tracked
+        )
+    except LastTrackedQueue:
+        await callback.answer(texts.LAST_TRACKED_QUEUE, show_alert=True)
+        return
+    except ValueError:  # the queues changed since the subscription was read
+        await callback.answer(texts.STALE_BUTTON, show_alert=True)
+        return
+    if changed is None:
+        await _respond(callback, texts.ADDRESS_GONE)
+    else:
+        await _show_settings(callback, changed)
 
 
 @router.callback_query(keyboards.DayChoice.filter())

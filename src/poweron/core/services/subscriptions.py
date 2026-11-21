@@ -12,6 +12,10 @@ class NoScheduleForAddress(Exception):
     """Outage schedules do not apply to this building."""
 
 
+class LastTrackedQueue(Exception):
+    """An address must keep at least one tracked queue."""
+
+
 class Subscriptions:
     def __init__(self, repository: Repository, alerts: Alerts | None = None) -> None:
         self._repository = repository
@@ -85,4 +89,17 @@ class Subscriptions:
             subscription_id,
             {name: value for name, value in changes.items() if value is not None},
         )
+        return await self._repository.subscription(user_id, subscription_id)
+
+    async def set_tracked(
+        self, user_id: int, subscription_id: int, cherg_gpv: str, *, tracked: bool
+    ) -> Subscription | None:
+        """Start or stop following one queue of the user's own address; None if not theirs."""
+        subscription = await self._repository.subscription(user_id, subscription_id)
+        if subscription is None:
+            return None
+        if cherg_gpv not in subscription.subqueues:
+            raise ValueError(f"{cherg_gpv} is not a queue of this address")
+        if not await self._repository.set_queue_tracked(subscription_id, cherg_gpv, tracked):
+            raise LastTrackedQueue
         return await self._repository.subscription(user_id, subscription_id)
