@@ -50,16 +50,16 @@ class TelegramNotifier:
 
     async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> str:
         text = _render(kind, payload)
-        # A reply keyboard only changes when a message brings a new one; that news is not worth a buzz.
-        menu_update = kind == MessageKind.MENU_UPDATED
         reply_to = payload.get("reply_to")
         await self._wait_for_slot()
         try:
             sent = await self._bot.send_message(
                 int(address),
                 text,
-                reply_markup=menu_keyboard() if menu_update else None,
-                disable_notification=True if menu_update else None,
+                # A reply keyboard only changes when a message brings one, so every push refreshes it.
+                reply_markup=menu_keyboard(),
+                # News about the menu alone is not worth a buzz.
+                disable_notification=True if kind == MessageKind.MENU_UPDATED else None,
                 # Still sent when the user has deleted the message it answers.
                 reply_parameters=None
                 if reply_to is None

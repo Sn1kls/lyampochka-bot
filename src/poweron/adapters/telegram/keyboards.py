@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from typing import Literal
 
+from aiogram.enums import ButtonStyle
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import (
     InlineKeyboardButton,
@@ -37,6 +38,7 @@ MENU_LABELS = frozenset(label for row in MENU_ROWS for label in row) | {
 }
 ActionName = Literal["add", "remove"]
 ACTION_LABELS: dict[ActionName, str] = {"add": texts.MENU_ADD, "remove": texts.MENU_REMOVE}
+ACTION_STYLES: dict[ActionName, ButtonStyle | None] = {"add": None, "remove": ButtonStyle.DANGER}
 
 
 class Page(CallbackData, prefix="pg"):
@@ -137,14 +139,25 @@ def choice_keyboard(
 def actions_keyboard(*names: ActionName) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for name in names:
-        builder.button(text=ACTION_LABELS[name], callback_data=Action(name=name))
+        builder.button(
+            text=ACTION_LABELS[name], style=ACTION_STYLES[name], callback_data=Action(name=name)
+        )
     builder.adjust(1)
     return builder.as_markup()
 
 
 def menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=label) for label in row] for row in MENU_ROWS],
+        keyboard=[
+            [
+                KeyboardButton(
+                    text=label,
+                    style=ButtonStyle.PRIMARY if label == texts.MENU_SCHEDULE else None,
+                )
+                for label in row
+            ]
+            for row in MENU_ROWS
+        ],
         resize_keyboard=True,
         is_persistent=True,
     )
@@ -179,9 +192,14 @@ def day_keyboard(
 ) -> InlineKeyboardMarkup:
     """After a day is shown, the building's untracked queues get buttons for that same day."""
     builder = InlineKeyboardBuilder()
-    for text, offset in ((texts.TODAY, 0), (texts.TOMORROW, 1)):
+    for text, offset, style in (
+        (texts.TODAY, 0, ButtonStyle.PRIMARY),
+        (texts.TOMORROW, 1, None),
+    ):
         builder.button(
-            text=text, callback_data=DayChoice(subscription_id=subscription.id, offset=offset)
+            text=text,
+            style=style,
+            callback_data=DayChoice(subscription_id=subscription.id, offset=offset),
         )
     if shown_offset is not None:
         for queue in subscription.subqueues:
@@ -214,6 +232,7 @@ def remove_confirm_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
         text=texts.BUTTON_REMOVE,
+        style=ButtonStyle.DANGER,
         callback_data=SubscriptionChoice(
             action="remove_confirmed", subscription_id=subscription_id
         ),
@@ -246,6 +265,7 @@ def settings_keyboard(subscription: Subscription) -> InlineKeyboardMarkup:
                 text=(
                     texts.BUTTON_QUEUE_TRACKED if tracked else texts.BUTTON_QUEUE_UNTRACKED
                 ).format(queue=queue_name(queue)),
+                style=_on_style(tracked),
                 callback_data=QueueTracking(
                     subscription_id=subscription.id,
                     queue=plain_subqueue(queue),
@@ -257,6 +277,7 @@ def settings_keyboard(subscription: Subscription) -> InlineKeyboardMarkup:
     )
     builder.button(
         text=toggle_text,
+        style=_on_style(subscription.notify_on_update),
         callback_data=SettingChange(
             subscription_id=subscription.id,
             field="notify_on_update",
@@ -275,6 +296,10 @@ def settings_keyboard(subscription: Subscription) -> InlineKeyboardMarkup:
         )
     builder.adjust(1)
     return builder.as_markup()
+
+
+def _on_style(enabled: bool) -> ButtonStyle | None:
+    return ButtonStyle.SUCCESS if enabled else None
 
 
 def _next_minutes(current: int) -> int:

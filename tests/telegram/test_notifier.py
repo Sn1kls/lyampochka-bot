@@ -142,12 +142,12 @@ async def test_menu_update_brings_the_new_keyboard() -> None:
     assert bot.silent == [True]  # news about the menu is not worth a buzz
 
 
-async def test_other_kinds_leave_the_keyboard_alone() -> None:
+async def test_every_push_refreshes_the_menu_without_a_separate_announcement() -> None:
     bot = FakeBot()
 
     await notifier_with(bot).send("42", "schedule_updated", PAYLOAD)
 
-    assert bot.markups == [None]
+    assert isinstance(bot.markups[0], ReplyKeyboardMarkup)
     assert bot.silent == [None]
     assert bot.replies_to == [None]
 
