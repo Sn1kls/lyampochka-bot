@@ -239,6 +239,13 @@ class SqlRepository:
         async with self._engine.begin() as connection:
             return sum([await _enqueue(connection, message) for message in messages])
 
+    async def queued_keys(self, dedupe_keys: list[str]) -> set[str]:
+        async with self._engine.connect() as connection:
+            rows = await connection.scalars(
+                select(outbox.c.dedupe_key).where(outbox.c.dedupe_key.in_(dedupe_keys))
+            )
+            return set(rows)
+
     async def last_version_at(self, cherg_gpv: str) -> datetime | None:
         async with self._engine.connect() as connection:
             fetched_at: datetime | None = await connection.scalar(

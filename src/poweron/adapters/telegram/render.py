@@ -215,6 +215,12 @@ def render_update(payload: Mapping[str, Any]) -> str:
         else ""
     )
     parts = [texts.UPDATE_TITLE.format(label=escape(payload["label"]), queue=queue)]
+    # Messages queued before this key existed have none.
+    if stale := payload.get("stale_reminders"):
+        times = ", ".join(
+            f"{datetime.fromisoformat(start).astimezone(KYIV):%H:%M}" for start in stale
+        )
+        parts.append(texts.UPDATE_STALE_REMINDER.format(times=times))
     if payload["previous"] is None:
         current = _intervals(payload["current"])
         if current:

@@ -153,6 +153,7 @@ UPDATE_NEW_DAY_EMPTY = "З'явився графік на {date}: без від�
 UPDATE_CHANGED_DAY = "Зміни на {date}:"
 UPDATE_ADDED = "Додано:"
 UPDATE_REMOVED = "Прибрано:"
+UPDATE_STALE_REMINDER = "⚠️ Нагадування про вимкнення о {times} уже неактуальне."
 UPDATE_LINK = '<a href="{url}">{site}</a>'
 
 REMINDER_OFF_WINDOW = "⏰ <b>{label}</b>{queue}: за {minutes} хв можуть вимкнути світло (з {earliest}, точно — о {latest})"
