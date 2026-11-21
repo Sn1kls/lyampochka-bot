@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from html import escape
 from typing import Any
 
@@ -154,8 +154,8 @@ def _queue_block(view: DayView, day: date, now: datetime) -> list[str]:
         subqueue=subqueue_label(view.cherg_gpv),
         updated=f"{view.published_at:%d.%m %H:%M}",
     )
-    outage = _state_duration(view, SlotState.OFF)
-    switching = _state_duration(view, SlotState.SWITCHING)
+    outage = _state_duration(view.intervals, SlotState.OFF)
+    switching = _state_duration(view.intervals, SlotState.SWITCHING)
     if not outage:
         total = (
             texts.ONLY_SWITCHING.format(duration=_duration(switching))
@@ -208,34 +208,70 @@ def _next_sentence(event: NextEvent, now: datetime) -> str:
 
 def render_update(payload: Mapping[str, Any]) -> str:
     day = date.fromisoformat(payload["day"])
-    day_text = f"{day:%d.%m}"
-    queue = (
-        texts.UPDATE_QUEUE.format(queue=subqueue_label(payload["cherg_gpv"]))
-        if payload.get("queue_count", 1) > 1
-        else ""
-    )
-    parts = [texts.UPDATE_TITLE.format(label=escape(payload["label"]), queue=queue)]
+    current = _intervals(payload["current"])
+    parts = [_update_headline(payload["previous"], current, f"{day:%d.%m}") + _for(payload)]
     # Messages queued before this key existed have none.
     if stale := payload.get("stale_reminders"):
         times = ", ".join(
             f"{datetime.fromisoformat(start).astimezone(KYIV):%H:%M}" for start in stale
         )
         parts.append(texts.UPDATE_STALE_REMINDER.format(times=times))
-    if payload["previous"] is None:
-        current = _intervals(payload["current"])
-        if current:
-            parts += [texts.UPDATE_NEW_DAY.format(date=day_text), _lines(current, day)]
-        else:
-            parts.append(texts.UPDATE_NEW_DAY_EMPTY.format(date=day_text))
-    else:
-        parts.append(texts.UPDATE_CHANGED_DAY.format(date=day_text))
-        for heading, key in ((texts.UPDATE_ADDED, "added"), (texts.UPDATE_REMOVED, "removed")):
-            intervals = _intervals(payload[key])
-            if intervals:
-                parts.append(f"{heading}\n{_lines(intervals, day)}")
+    if current:
+        # On a brand-new day everything is "added"; marking it all would mean nothing.
+        added = [] if payload["previous"] is None else _intervals(payload["added"])
+        lines = [
+            _line(interval, day) + (texts.UPDATE_NEW_LINE if interval in added else "")
+            for interval in _with_light(current, day)
+        ]
+        parts.append("\n".join(lines))
     provider = provider_of(payload["cherg_gpv"])
     parts += [_note(provider), _link(provider)]
     return "\n\n".join(parts)
+
+
+def _update_headline(
+    raw_previous: Sequence[Mapping[str, str]] | None, current: list[Interval], day_text: str
+) -> str:
+    """Better, worse or the same, judged by hours without light only."""
+    outage = _state_duration(current, SlotState.OFF)
+    if outage:
+        outage_text = texts.UPDATE_OUTAGE.format(duration=_duration(outage))
+    else:
+        outage_text = texts.UPDATE_NO_SURE_OUTAGE if current else texts.UPDATE_NO_OUTAGE
+    if raw_previous is None:
+        return texts.UPDATE_NEW_DAY.format(date=day_text, outage=outage_text)
+    delta = outage - _state_duration(_intervals(raw_previous), SlotState.OFF)
+    if not delta:
+        return texts.UPDATE_SAME.format(date=day_text, outage=outage_text)
+    if not outage:
+        return texts.UPDATE_BETTER_NONE.format(date=day_text, outage=outage_text)
+    template = texts.UPDATE_WORSE if delta > timedelta() else texts.UPDATE_BETTER
+    return template.format(date=day_text, delta=_duration(abs(delta)), total=_duration(outage))
+
+
+def _for(payload: Mapping[str, Any]) -> str:
+    """Which address (and queue, if it has several) the push is about."""
+    queue = (
+        texts.UPDATE_QUEUE.format(queue=subqueue_label(payload["cherg_gpv"]))
+        if payload.get("queue_count", 1) > 1
+        else ""
+    )
+    return texts.FOR_ADDRESS.format(label=escape(payload["label"]), queue=queue)
+
+
+def _with_light(outages: list[Interval], day: date) -> list[Interval]:
+    """The whole day: outages with the gaps between them filled as light."""
+    cursor = datetime.combine(day, time(), KYIV)
+    day_end = datetime.combine(day + timedelta(days=1), time(), KYIV)
+    intervals = []
+    for outage in outages:
+        if outage.start > cursor:
+            intervals.append(Interval(cursor, outage.start, SlotState.ON))
+        intervals.append(outage)
+        cursor = outage.end
+    if cursor < day_end:
+        intervals.append(Interval(cursor, day_end, SlotState.ON))
+    return intervals
 
 
 def render_reminder(payload: Mapping[str, Any], *, power_on: bool) -> str:
@@ -251,18 +287,12 @@ def render_reminder(payload: Mapping[str, Any], *, power_on: bool) -> str:
         template = texts.REMINDER_ON_EXACT if power_on else texts.REMINDER_OFF_EXACT
     else:
         template = texts.REMINDER_ON_WINDOW if power_on else texts.REMINDER_OFF_WINDOW
-    queue = (
-        texts.UPDATE_QUEUE.format(queue=subqueue_label(payload["cherg_gpv"]))
-        if payload["queue_count"] > 1
-        else ""
-    )
-    return template.format(
-        label=escape(payload["label"]),
-        queue=queue,
+    text = template.format(
         minutes=payload["minutes"],
         earliest=f"{earliest:%H:%M}",
         latest=f"{latest:%H:%M}" if latest else "",
     )
+    return text + _for(payload)
 
 
 def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
@@ -347,10 +377,8 @@ def _day_name(day: date, today: date) -> str:
     return date_text
 
 
-def _state_duration(view: DayView, state: SlotState) -> timedelta:
-    return sum(
-        (item.end - item.start for item in view.intervals if item.state is state), timedelta()
-    )
+def _state_duration(intervals: Sequence[Interval], state: SlotState) -> timedelta:
+    return sum((item.end - item.start for item in intervals if item.state is state), timedelta())
 
 
 def _duration(span: timedelta) -> str:

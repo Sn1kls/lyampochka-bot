@@ -70,7 +70,7 @@ def test_settings_are_three_labelled_buttons_that_cycle_the_minutes() -> None:
 
     assert texts_of(markup) == [
         ["✅ Пуші про оновлення"],
-        ["⏰ Нагадати до вимкнення: 30 хв"],
+        ["🌑 Нагадати до вимкнення: 30 хв"],
         ["💡 Нагадати до повернення: без"],
     ]
     presses = [SettingChange.unpack(row[0].callback_data or "") for row in markup.inline_keyboard]
