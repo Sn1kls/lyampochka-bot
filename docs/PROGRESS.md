@@ -308,7 +308,7 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - Exact events are computed separately (`queue_events(..., exact=True)`, domain `sure()`): switching keeps the state before it. Shrinking the possible event to its `latest` did not work: once 🟡 starts, the possible scan sees the outage as already begun and drops the 🔴 event, so a 30-minute reminder before 🔴 could never fire.
   - An exact reminder's payload has `earliest == latest`, so it renders as «ВИМКНУТЬ світло (о HH:MM)». Its dedupe key uses that moment, so the stale-reminder warning names the right time.
   - Found by the code review: for exact subscribers the stale-reminder check compares sure-OFF starts (`moved_starts(now, exact=True)`). Otherwise a 🔴 that became 🟡 while a 🟡 at the same minute became 🔴 kept every start and was not flagged.
-  - `address_count` of an update comes from one `all_subscriptions()` per changed queue-day, counted like in `Reminders`.
+  - `address_count` of an update is counted once per poll, from the `all_subscriptions()` the poll already loads (found by the review bot).
 - Known limits:
   - The push preview no longer tells whether things got better or worse (the owner's choice).
   - Switching the mode right before an outage can bring a second reminder for it: the dedupe key holds the start of 🟡 in one mode and of 🔴 in the other.
