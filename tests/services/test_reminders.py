@@ -78,6 +78,7 @@ async def test_off_reminder_fires_only_inside_the_window_and_only_once(
         "label": "Дім",
         "cherg_gpv": "4.1",
         "queue_count": 1,
+        "address_count": 1,
         "minutes": 30,
         "earliest": kyiv(TODAY, 20).isoformat(),
         "latest": kyiv(TODAY, 20).isoformat(),
@@ -197,10 +198,12 @@ async def test_switching_between_power_never_reminds_about_power_returning(
 
 
 class FailingQueue(Schedules):
-    async def queue_events(self, cherg_gpv: str, now: datetime) -> list[NextEvent]:
+    async def queue_events(
+        self, cherg_gpv: str, now: datetime, *, exact: bool = False
+    ) -> list[NextEvent]:
         if cherg_gpv == "2.2":
             raise RuntimeError("broken")
-        return await super().queue_events(cherg_gpv, now)
+        return await super().queue_events(cherg_gpv, now, exact=exact)
 
 
 async def test_a_failing_subscription_does_not_drop_the_others(
@@ -229,10 +232,98 @@ async def test_a_queue_shared_by_subscriptions_is_computed_once_per_tick(
     class Counting(Schedules):
         calls = 0
 
-        async def queue_events(self, cherg_gpv: str, now: datetime) -> list[NextEvent]:
+        async def queue_events(
+            self, cherg_gpv: str, now: datetime, *, exact: bool = False
+        ) -> list[NextEvent]:
             Counting.calls += 1
-            return await super().queue_events(cherg_gpv, now)
+            return await super().queue_events(cherg_gpv, now, exact=exact)
 
     await Reminders(repository, Counting(repository)).tick(kyiv(TODAY, 19, 45))
 
     assert Counting.calls == 1
+
+
+SWITCHING_THEN_OUTAGE = {"19:30": "10", "20:00": "1", "20:30": "10"}  # power back at 21:00
+
+
+async def test_exact_mode_counts_down_to_the_sure_outage(
+    repository: SqlRepository,
+    reminders: Reminders,
+    subscriptions: Subscriptions,
+    subscription: Subscription,
+) -> None:
+    await save(repository, day_schedule(outages=SWITCHING_THEN_OUTAGE))
+    await subscriptions.update_settings(subscription.user_id, subscription.id, remind_exact=True)
+
+    await reminders.tick(kyiv(TODAY, 19, 15))
+    assert await queued(repository) == []
+
+    await reminders.tick(kyiv(TODAY, 19, 35))
+    [message] = await queued(repository)
+    assert message.payload["minutes"] == 25
+    assert message.payload["earliest"] == message.payload["latest"] == kyiv(TODAY, 20).isoformat()
+    assert message.dedupe_key == (
+        f"remind:{subscription.instance_key}:4.1:{kyiv(TODAY, 20).isoformat()}:reminder_off"
+    )
+
+
+async def test_exact_mode_skips_an_outage_that_is_only_possible(
+    repository: SqlRepository,
+    reminders: Reminders,
+    subscriptions: Subscriptions,
+    subscription: Subscription,
+) -> None:
+    await save(repository, day_schedule(outages={"20:00": "10"}))
+    await subscriptions.update_settings(subscription.user_id, subscription.id, remind_exact=True)
+
+    await reminders.tick(kyiv(TODAY, 19, 45))
+
+    assert await queued(repository) == []
+
+
+async def test_exact_mode_counts_down_to_the_sure_return_of_power(
+    repository: SqlRepository,
+    reminders: Reminders,
+    subscriptions: Subscriptions,
+    subscription: Subscription,
+) -> None:
+    await save(repository, day_schedule(outages=SWITCHING_THEN_OUTAGE))
+    await subscriptions.update_settings(
+        subscription.user_id,
+        subscription.id,
+        remind_before_off_min=0,
+        remind_before_on_min=15,
+        remind_exact=True,
+    )
+
+    await reminders.tick(kyiv(TODAY, 20, 20))
+    assert await queued(repository) == []
+
+    await reminders.tick(kyiv(TODAY, 20, 50))
+    [message] = await queued(repository)
+    assert message.kind is MessageKind.REMINDER_ON
+    assert message.payload["earliest"] == message.payload["latest"] == kyiv(TODAY, 21).isoformat()
+
+
+async def test_payload_counts_the_users_addresses(
+    repository: SqlRepository,
+    reminders: Reminders,
+    subscriptions: Subscriptions,
+    subscription: Subscription,
+) -> None:
+    await subscriptions.add(
+        subscription.user_id,
+        "Дача",
+        TERNOPIL,
+        SADOVA,
+        Building(5, "5", "2.2"),
+        ["2.2"],
+        ["2.2"],
+        NOW,
+    )
+    await save(repository, day_schedule(outages=OUTAGE_AT_20))
+
+    await reminders.tick(kyiv(TODAY, 19, 45))
+
+    [message] = await queued(repository)
+    assert message.payload["address_count"] == 2

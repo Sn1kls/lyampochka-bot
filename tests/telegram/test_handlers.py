@@ -157,6 +157,7 @@ class SettingsSubscriptions(Subscriptions):
         notify_on_update: bool | None = None,
         remind_before_off_min: int | None = None,
         remind_before_on_min: int | None = None,
+        remind_exact: bool | None = None,
     ) -> Subscription | None:
         subscription = await self.get(user_id, subscription_id)
         if subscription is None:
@@ -165,6 +166,7 @@ class SettingsSubscriptions(Subscriptions):
             "notify_on_update": notify_on_update,
             "remind_before_off_min": remind_before_off_min,
             "remind_before_on_min": remind_before_on_min,
+            "remind_exact": remind_exact,
         }
         self.stored.setdefault(subscription_id, {}).update(
             {name: value for name, value in given.items() if value is not None}
@@ -622,35 +624,45 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
         [
             "⚙️ Налаштування для <b>Дім</b>",
             "Пуші про оновлення графіка і планові роботи: увімкнено",
-            "🌑 Нагадати перед вимкненням: 30 хв",
-            "💡 Нагадати перед поверненням світла: без",
+            "🪫 Нагадати перед вимкненням: 30 хв",
+            "🔋 Нагадати перед поверненням світла: без",
+            "⏱ Нагадувати до: можливого відключення 🟡",
         ]
     )
     assert button_texts(chat.last_reply_markup()) == [
         ["✅ Пуші про оновлення"],
-        ["🌑 Нагадати до вимкнення: 30 хв"],
-        ["💡 Нагадати до повернення: без"],
+        ["🪫 Нагадати до вимкнення: 30 хв"],
+        ["🔋 Нагадати до повернення: без"],
+        ["⏱ Нагадувати до: можливого 🟡"],
     ]
 
     await chat.press_button("✅ Пуші про оновлення")
-    await chat.press_button("🌑 Нагадати до вимкнення: 30 хв")
-    await chat.press_button("💡 Нагадати до повернення: без")
+    await chat.press_button("🪫 Нагадати до вимкнення: 30 хв")
+    await chat.press_button("🔋 Нагадати до повернення: без")
+    await chat.press_button("⏱ Нагадувати до: можливого 🟡")
 
     assert chat.subscriptions.stored == {
-        1: {"notify_on_update": False, "remind_before_off_min": 60, "remind_before_on_min": 15}
+        1: {
+            "notify_on_update": False,
+            "remind_before_off_min": 60,
+            "remind_before_on_min": 15,
+            "remind_exact": True,
+        }
     }
     assert chat.edited_texts()[-1].splitlines()[1:] == [
         "Пуші про оновлення графіка і планові роботи: вимкнено",
-        "🌑 Нагадати перед вимкненням: 60 хв",
-        "💡 Нагадати перед поверненням світла: 15 хв",
+        "🪫 Нагадати перед вимкненням: 60 хв",
+        "🔋 Нагадати перед поверненням світла: 15 хв",
+        "⏱ Нагадувати до: точного відключення 🔴",
     ]
     edited_markup = [call for call in chat.session.calls if isinstance(call, EditMessageText)][
         -1
     ].reply_markup
     assert button_texts(edited_markup) == [
         ["🚫 Пуші про оновлення"],
-        ["🌑 Нагадати до вимкнення: 60 хв"],
-        ["💡 Нагадати до повернення: 15 хв"],
+        ["🪫 Нагадати до вимкнення: 60 хв"],
+        ["🔋 Нагадати до повернення: 15 хв"],
+        ["⏱ Нагадувати до: точного 🔴"],
     ]
 
 
@@ -677,7 +689,7 @@ async def test_setting_of_a_missing_address_is_reported_and_stores_nothing(chat:
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("remind_before_off_min", 45), ("notify_on_update", 2), ("label", 1)],
+    [("remind_before_off_min", 45), ("notify_on_update", 2), ("remind_exact", 2), ("label", 1)],
 )
 async def test_unknown_setting_is_a_stale_button(chat: Chat, field: str, value: int) -> None:
     await add_address(chat, "5")
@@ -787,7 +799,8 @@ async def test_settings_of_a_single_queue_address_have_no_queue_buttons(chat: Ch
 
     await chat.say("/settings")
 
-    assert len(button_texts(chat.last_reply_markup())) == 3
+    buttons = [text for row in button_texts(chat.last_reply_markup()) for text in row]
+    assert not [text for text in buttons if "Черга" in text]
 
 
 async def test_queue_button_of_a_queue_the_address_no_longer_has_is_stale(chat: Chat) -> None:

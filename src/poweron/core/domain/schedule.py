@@ -49,5 +49,24 @@ def merge(intervals: Iterable[Interval]) -> list[Interval]:
     return merged
 
 
+def sure(intervals: list[Interval]) -> list[Interval]:
+    """Switching keeps the state before it: power is surely off once OFF starts, surely back once ON does.
+
+    A gap between intervals counts as ON, so a list of outages alone works too.
+    """
+    result = []
+    previous = SlotState.ON
+    previous_end = None
+    for interval in intervals:
+        if previous_end is not None and interval.start != previous_end:
+            previous = SlotState.ON
+        state = previous if interval.state is SlotState.SWITCHING else interval.state
+        result.append(Interval(interval.start, interval.end, state))
+        if state is not SlotState.UNKNOWN:
+            previous = state
+        previous_end = interval.end
+    return merge(result)
+
+
 def _kyiv_midnight(day: date) -> datetime:
     return datetime.combine(day, time(), KYIV).astimezone(UTC)

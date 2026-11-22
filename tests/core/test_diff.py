@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, datetime
 
 from poweron.core.domain.diff import data_hash, schedule_change
 from poweron.core.domain.models import KYIV, Interval, SlotState
@@ -62,3 +62,14 @@ def test_payload_is_plain_json() -> None:
         {"start": "2026-10-17T08:00:00+00:00", "end": "2026-10-17T08:30:00+00:00", "state": "off"}
     ]
     assert payload["added"][0]["state"] == "switching"
+
+
+def test_exact_moved_starts_ignore_switching_after_light() -> None:
+    change = schedule_change(
+        "4.1", DAY, slots({"10:00": "1", "12:00": "10"}), slots({"10:00": "1"})
+    )
+    assert change is not None
+    before = datetime(2026, 10, 17, 0, 0, tzinfo=KYIV)
+
+    assert [start.astimezone(KYIV).hour for start in change.moved_starts(before)] == [12]
+    assert change.moved_starts(before, exact=True) == []

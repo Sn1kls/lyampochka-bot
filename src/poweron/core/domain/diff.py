@@ -6,12 +6,16 @@ from datetime import date, datetime
 from typing import Any
 
 from poweron.core.domain.models import Interval, SlotState
-from poweron.core.domain.schedule import parse_slots
+from poweron.core.domain.schedule import parse_slots, sure
 
 
 def data_hash(slots: Mapping[str, str]) -> str:
     canonical = json.dumps(slots, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _sure_outages(intervals: list[Interval]) -> list[Interval]:
+    return [interval for interval in sure(intervals) if interval.state is SlotState.OFF]
 
 
 def outages(intervals: list[Interval]) -> list[Interval]:
@@ -33,13 +37,17 @@ class ScheduleChange:
     def removed(self) -> list[Interval]:
         return [interval for interval in self.previous or [] if interval not in self.current]
 
-    def moved_starts(self, now: datetime) -> list[datetime]:
-        """Future starts of previous outages that no current outage starts at."""
-        current_starts = {new.start for new in self.current}
+    def moved_starts(self, now: datetime, *, exact: bool = False) -> list[datetime]:
+        """Future starts of previous outages that no current outage starts at.
+
+        `exact` compares only where power is surely off, as exact reminders count to that.
+        """
+        previous, current = self.previous or [], self.current
+        if exact:
+            previous, current = _sure_outages(previous), _sure_outages(current)
+        current_starts = {new.start for new in current}
         return [
-            old.start
-            for old in self.previous or []
-            if old.start > now and old.start not in current_starts
+            old.start for old in previous if old.start > now and old.start not in current_starts
         ]
 
     def payload(self) -> dict[str, Any]:
