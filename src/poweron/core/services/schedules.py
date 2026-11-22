@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 
 from poweron.core.domain.models import KYIV, DayView, Interval, NextEvent, SlotState, Subscription
-from poweron.core.domain.schedule import merge, parse_slots
+from poweron.core.domain.schedule import merge, parse_slots, sure
 from poweron.core.ports import Repository
 
 
@@ -55,11 +55,18 @@ class Schedules:
             first.setdefault(queue, event)
         return [(queue, first[queue]) for queue in subscription.tracked_subqueues if queue in first]
 
-    async def queue_events(self, cherg_gpv: str, now: datetime) -> list[NextEvent]:
-        """Switching counts as outage; unknown is skipped; power returns only after a sure OFF."""
+    async def queue_events(
+        self, cherg_gpv: str, now: datetime, *, exact: bool = False
+    ) -> list[NextEvent]:
+        """Switching counts as outage; unknown is skipped; power returns only after a sure OFF.
+
+        `exact` gives only the sure changes, each with `earliest == latest`.
+        """
         today = now.astimezone(KYIV).date()
         views = [await self._view(cherg_gpv, day) for day in (today, today + timedelta(days=1))]
         intervals = merge(interval for view in views if view for interval in view.intervals)
+        if exact:
+            intervals = sure(intervals)
         baseline = None
         had_sure_outage = False
         events = []

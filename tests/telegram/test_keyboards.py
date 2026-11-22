@@ -65,7 +65,7 @@ def test_buildings_are_a_grid_of_four_with_twenty_per_page() -> None:
     assert rows[5:] == [["▶️"], ["Скасувати"]]
 
 
-def test_settings_are_three_labelled_buttons_that_cycle_the_minutes() -> None:
+def test_settings_are_labelled_buttons_that_cycle_their_values() -> None:
     subscription = replace(
         SUBSCRIPTION, notify_on_update=True, remind_before_off_min=30, remind_before_on_min=0
     )
@@ -74,15 +74,26 @@ def test_settings_are_three_labelled_buttons_that_cycle_the_minutes() -> None:
 
     assert texts_of(markup) == [
         ["✅ Пуші про оновлення"],
-        ["🌑 Нагадати до вимкнення: 30 хв"],
-        ["💡 Нагадати до повернення: без"],
+        ["🪫 Нагадати до вимкнення: 30 хв"],
+        ["🔋 Нагадати до повернення: без"],
+        ["⏱ Нагадувати до: можливого 🟡"],
     ]
     presses = [SettingChange.unpack(row[0].callback_data or "") for row in markup.inline_keyboard]
     assert [(press.field, press.value) for press in presses] == [
         ("notify_on_update", 0),
         ("remind_before_off_min", 60),
         ("remind_before_on_min", 15),
+        ("remind_exact", 1),
     ]
+    exact = settings_keyboard(replace(subscription, remind_exact=True))
+    assert texts_of(exact)[-1] == ["⏱ Нагадувати до: точного 🔴"]
+    assert SettingChange.unpack(exact.inline_keyboard[-1][0].callback_data or "").value == 0
+
+
+def test_volyn_settings_have_no_reminder_mode_button() -> None:
+    volyn = replace(SUBSCRIPTION, subqueues=("voe:6.1",), tracked_subqueues=("voe:6.1",))
+
+    assert ["⏱ Нагадувати до: можливого 🟡"] not in texts_of(settings_keyboard(volyn))
 
 
 def test_the_longest_reminder_wraps_around_to_none() -> None:
@@ -107,6 +118,7 @@ def test_settings_paint_what_is_on_green_and_leave_what_is_off_plain() -> None:
     assert styles_of(settings_keyboard(subscription)) == [
         [None],
         ["success"],
+        [None],
         [None],
         [None],
         [None],

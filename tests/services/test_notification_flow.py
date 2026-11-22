@@ -76,6 +76,7 @@ async def test_new_version_reaches_each_subscriber_exactly_once(
     assert kind == "schedule_updated"
     assert payload["cherg_gpv"] == "4.1"
     assert payload["label"] == "Дім"
+    assert payload["address_count"] == 1
     assert [interval["start"] for interval in payload["removed"]] == ["2026-10-17T08:00:00+00:00"]
 
 
@@ -230,6 +231,26 @@ async def test_two_queue_subscription_gets_one_push_per_changed_queue(
     [(_, _, payload)] = notifier.sent
     assert payload["cherg_gpv"] == "2.2"
     assert payload["queue_count"] == 2
+
+
+async def test_update_counts_all_addresses_of_the_user(
+    repository: SqlRepository, source: FakeSource, notifier: FakeNotifier
+) -> None:
+    await subscribe(repository, "101")
+    subscriptions = Subscriptions(repository)
+    user_id = await subscriptions.register("telegram", "101", "telegram", "101")
+    building = Building(id=202, name="2", cherg_gpv="1.2")
+    await subscriptions.add(
+        user_id, "Дача", TERNOPIL, SADOVA, building, ["1.2"], ["1.2"], NOW - timedelta(hours=1)
+    )
+    source.schedules = {"4.1": [day_schedule()], "1.2": [day_schedule(cherg_gpv="1.2")]}
+    await cycle(repository, source, notifier)
+
+    source.schedules["4.1"] = [day_schedule(outages={"12:00": "1"})]
+    await cycle(repository, source, notifier, NOW + timedelta(minutes=5))
+
+    [(_, _, payload)] = notifier.sent
+    assert payload["address_count"] == 2
 
 
 async def test_identical_changes_in_two_queues_are_both_announced(
@@ -442,3 +463,20 @@ async def test_rewriting_an_outage_that_already_began_flags_nothing(
     await cycle(repository, source, notifier, NOW + timedelta(minutes=40))
 
     assert notifier.sent[-1][2]["stale_reminders"] == []
+
+
+async def test_exact_mode_flags_a_reminded_sure_outage_that_became_switching(
+    repository: SqlRepository, source: FakeSource, notifier: FakeNotifier
+) -> None:
+    await subscribe(repository, "101")
+    [subscription] = await repository.all_subscriptions()
+    await repository.update_settings(subscription.user_id, subscription.id, {"remind_exact": True})
+    source.schedules = {"4.1": [day_schedule(outages={"18:00": "10", "18:30": "1"})]}
+    await cycle(repository, source, notifier, NOW - timedelta(minutes=10))
+    await Reminders(repository, Schedules(repository)).tick(NOW)  # «ВИМКНУТЬ о 18:30»
+
+    # Every start is still there, but the sure outage now begins at 18:00, not 18:30.
+    source.schedules = {"4.1": [day_schedule(outages={"18:00": "1", "18:30": "10"})]}
+    await cycle(repository, source, notifier, NOW + timedelta(minutes=5))
+
+    assert notifier.sent[-1][2]["stale_reminders"] == ["2026-10-17T15:30:00+00:00"]

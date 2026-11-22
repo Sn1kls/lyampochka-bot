@@ -21,6 +21,7 @@ from .render import REGIONS, minutes_text, queue_name
 PAGE_SIZE = 8
 SETTING_VALUES = {
     "notify_on_update": (0, 1),
+    "remind_exact": (0, 1),
     "remind_before_off_min": REMINDER_MINUTES,
     "remind_before_on_min": REMINDER_MINUTES,
 }
@@ -78,7 +79,7 @@ class SubscriptionChoice(CallbackData, prefix="sub"):
 
 
 class SettingChange(CallbackData, prefix="set"):
-    """`field` is a `Subscriptions.update_settings` parameter; `value` is 0/1 for the push toggle."""
+    """`field` is a `Subscriptions.update_settings` parameter; `value` is 0/1 for a toggle."""
 
     subscription_id: int
     field: str
@@ -292,6 +293,17 @@ def settings_keyboard(subscription: Subscription) -> InlineKeyboardMarkup:
             text=template.format(value=minutes_text(current)),
             callback_data=SettingChange(
                 subscription_id=subscription.id, field=field, value=_next_minutes(current)
+            ),
+        )
+    if subscription.has_switching:
+        builder.button(
+            text=texts.BUTTON_REMIND_EXACT
+            if subscription.remind_exact
+            else texts.BUTTON_REMIND_POSSIBLE,
+            callback_data=SettingChange(
+                subscription_id=subscription.id,
+                field="remind_exact",
+                value=int(not subscription.remind_exact),
             ),
         )
     builder.adjust(1)

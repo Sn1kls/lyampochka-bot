@@ -131,19 +131,6 @@ def test_confirm_text_shows_every_queue_of_the_building() -> None:
     assert one.splitlines()[:2] == ["<b>Тернопіль, Руська, 5</b>", "Підчерга 4.1"]
 
 
-def test_render_update_names_the_queue_only_when_several_are_tracked() -> None:
-    payload = update_payload(
-        None, {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
-    )
-
-    assert render_update(payload | {"queue_count": 2}).startswith(
-        "📅 Графік на 17.10: відключень немає 🎉 · <b>Дім</b> (черга 4.1)\n"
-    )
-    assert render_update(payload | {"queue_count": 1}).startswith(
-        "📅 Графік на 17.10: відключень немає 🎉 · <b>Дім</b>\n"
-    )
-
-
 def test_render_day_total_has_no_switching_suffix_without_switching() -> None:
     slots = {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
     view = DayView(
@@ -277,13 +264,13 @@ def update_payload(previous: dict[str, str] | None, current: dict[str, str]) -> 
 LIGHT_ALL_DAY = {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
 
 
-def test_render_update_with_less_outage_says_better_and_shows_the_new_day() -> None:
+def test_render_update_is_a_title_and_the_whole_day() -> None:
     previous = LIGHT_ALL_DAY | {"10:00": "1", "10:30": "1"}
-    payload = update_payload(previous, LIGHT_ALL_DAY | {"18:00": "1"})
+    payload = update_payload(previous, LIGHT_ALL_DAY | {"18:00": "1"}) | {"address_count": 1}
 
-    assert render_update(payload) == "\n\n".join(
+    assert render_update(payload, NOW) == "\n\n".join(
         [
-            "💡 Краще: 17.10 без світла на 30 хв менше, разом 30 хв · <b>Дім</b>",
+            "💡 Оновлення на сьогодні (17.10):",
             "🟢 00:00–18:00 є світло\n🔴 18:00–18:30 немає світла 🆕\n🟢 18:30–24:00 є світло",
             NOTE,
             LINK,
@@ -291,68 +278,36 @@ def test_render_update_with_less_outage_says_better_and_shows_the_new_day() -> N
     )
 
 
-def test_render_update_with_more_outage_says_worse() -> None:
-    previous = LIGHT_ALL_DAY | {"10:00": "1", "10:30": "1"}
-    payload = update_payload(previous, previous | {"11:00": "1", "11:30": "1"})
+def test_render_update_names_tomorrow_and_shows_a_day_without_outages() -> None:
+    payload = update_payload(None, LIGHT_ALL_DAY) | {"current": [], "address_count": 1}
 
-    assert render_update(payload).splitlines()[0] == (
-        "🌑 Гірше: 17.10 без світла на 1 год більше, разом 2 год · <b>Дім</b>"
+    assert render_update(payload, NOW - timedelta(days=1)).split("\n\n")[:2] == [
+        "💡 Оновлення на завтра (17.10):",
+        "🟢 00:00–24:00 є світло",
+    ]
+
+
+def test_render_update_names_the_address_and_queue_only_when_needed() -> None:
+    payload = update_payload(None, LIGHT_ALL_DAY)
+
+    def title(**counts: int) -> str:
+        return render_update(payload | counts, NOW).splitlines()[0]
+
+    assert title(address_count=1, queue_count=1) == "💡 Оновлення на сьогодні (17.10):"
+    assert title(address_count=2) == "💡 Оновлення на сьогодні (17.10) · <b>Дім</b>:"
+    assert title(address_count=1, queue_count=2) == "💡 Оновлення на сьогодні (17.10) · черга 4.1:"
+    assert title(address_count=2, queue_count=2) == (
+        "💡 Оновлення на сьогодні (17.10) · <b>Дім</b> (черга 4.1):"
     )
+    # Queued before address_count existed.
+    assert title() == "💡 Оновлення на сьогодні (17.10) · <b>Дім</b>:"
 
 
 def test_render_update_marks_an_extended_outage_as_new() -> None:
     previous = LIGHT_ALL_DAY | {"10:00": "1"}
     payload = update_payload(previous, previous | {"10:30": "1"})
 
-    assert "🔴 10:00–11:00 немає світла 🆕" in render_update(payload).splitlines()
-
-
-def test_render_update_with_the_same_outage_hours_says_changed() -> None:
-    previous = LIGHT_ALL_DAY | {"10:00": "1", "10:30": "1"}
-    payload = update_payload(previous, LIGHT_ALL_DAY | {"12:00": "1", "12:30": "1"})
-
-    assert render_update(payload).splitlines()[0] == (
-        "🔄 Змінили графік на 17.10: без світла 1 год · <b>Дім</b>"
-    )
-
-
-def test_render_update_without_outages_left_celebrates() -> None:
-    payload = update_payload(LIGHT_ALL_DAY | {"10:00": "1"}, LIGHT_ALL_DAY)
-
-    assert render_update(payload).split("\n\n")[:2] == [
-        "💡 Краще: 17.10 відключень немає 🎉 · <b>Дім</b>",
-        NOTE,
-    ]
-
-
-def test_render_update_does_not_celebrate_while_switching_remains() -> None:
-    switching = LIGHT_ALL_DAY | {"10:00": "10"}
-    better = update_payload(LIGHT_ALL_DAY | {"10:00": "1"}, switching)
-    fresh = update_payload(None, switching)
-
-    assert render_update(better).splitlines()[0] == (
-        "💡 Краще: 17.10 точних відключень немає · <b>Дім</b>"
-    )
-    assert render_update(fresh).splitlines()[0] == (
-        "📅 Графік на 17.10: точних відключень немає · <b>Дім</b>"
-    )
-
-
-def test_render_update_for_new_tomorrow() -> None:
-    slots = {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
-    outage = slots | {"23:00": "1", "23:30": "1"}
-
-    assert render_update(update_payload(None, outage)) == "\n\n".join(
-        [
-            "📅 Графік на 17.10: без світла 1 год · <b>Дім</b>",
-            "🟢 00:00–23:00 є світло\n🔴 23:00–24:00 немає світла",
-            NOTE,
-            LINK,
-        ]
-    )
-    assert render_update(update_payload(None, slots) | {"current": []}).splitlines()[0] == (
-        "📅 Графік на 17.10: відключень немає 🎉 · <b>Дім</b>"
-    )
+    assert "🔴 10:00–11:00 немає світла 🆕" in render_update(payload, NOW).splitlines()
 
 
 def test_day_with_only_switching_is_not_a_zero_outage() -> None:
@@ -404,43 +359,53 @@ def reminder_payload(**changes: object) -> dict[str, object]:
         (
             reminder_payload(),
             False,
-            "🌑 За 15 хв можуть ВИМКНУТИ світло (з 10:00, точно — о 10:30) · <b>Дім &lt;&amp;&gt;</b>",
+            "🪫 За 15 хв можуть ВИМКНУТИ світло (з 10:00, точно — о 10:30) · <b>Дім &lt;&amp;&gt;</b>",
         ),
         (
             reminder_payload(latest="2026-10-17T07:00:00+00:00"),
             False,
-            "🌑 За 15 хв ВИМКНУТЬ світло (о 10:00) · <b>Дім &lt;&amp;&gt;</b>",
+            "🪫 За 15 хв ВИМКНУТЬ світло (о 10:00) · <b>Дім &lt;&amp;&gt;</b>",
         ),
         (
             reminder_payload(latest=None),
             False,
-            "🌑 За 15 хв можливе ВИМКНЕННЯ з 10:00 · <b>Дім &lt;&amp;&gt;</b>",
+            "🪫 За 15 хв можливе ВИМКНЕННЯ з 10:00 · <b>Дім &lt;&amp;&gt;</b>",
         ),
         (
             reminder_payload(minutes=30),
             True,
-            "💡 За 30 хв мають ДАТИ світло (з 10:00, точно — о 10:30) · <b>Дім &lt;&amp;&gt;</b>",
+            "🔋 За 30 хв мають ДАТИ світло (з 10:00, точно — о 10:30) · <b>Дім &lt;&amp;&gt;</b>",
         ),
         (
             reminder_payload(latest="2026-10-17T07:00:00+00:00"),
             True,
-            "💡 За 15 хв ДАДУТЬ світло (о 10:00) · <b>Дім &lt;&amp;&gt;</b>",
+            "🔋 За 15 хв ДАДУТЬ світло (о 10:00) · <b>Дім &lt;&amp;&gt;</b>",
         ),
         (
             reminder_payload(latest=None),
             True,
-            "💡 За 15 хв можливе ПОВЕРНЕННЯ світла з 10:00 · <b>Дім &lt;&amp;&gt;</b>",
+            "🔋 За 15 хв можливе ПОВЕРНЕННЯ світла з 10:00 · <b>Дім &lt;&amp;&gt;</b>",
         ),
         (
             reminder_payload(queue_count=2),
             False,
-            "🌑 За 15 хв можуть ВИМКНУТИ світло (з 10:00, точно — о 10:30) "
+            "🪫 За 15 хв можуть ВИМКНУТИ світло (з 10:00, точно — о 10:30) "
             "· <b>Дім &lt;&amp;&gt;</b> (черга 4.1)",
         ),
         (
             reminder_payload(queue_count=2, latest="2026-10-17T07:00:00+00:00"),
             True,
-            "💡 За 15 хв ДАДУТЬ світло (о 10:00) · <b>Дім &lt;&amp;&gt;</b> (черга 4.1)",
+            "🔋 За 15 хв ДАДУТЬ світло (о 10:00) · <b>Дім &lt;&amp;&gt;</b> (черга 4.1)",
+        ),
+        (
+            reminder_payload(address_count=1, latest="2026-10-17T07:00:00+00:00"),
+            False,
+            "🪫 За 15 хв ВИМКНУТЬ світло (о 10:00)",
+        ),
+        (
+            reminder_payload(address_count=1, queue_count=2),
+            True,
+            "🔋 За 15 хв мають ДАТИ світло (з 10:00, точно — о 10:30) · черга 4.1",
         ),
     ],
 )
@@ -487,10 +452,20 @@ def test_render_settings_shows_each_setting() -> None:
         [
             "⚙️ Налаштування для <b>Дім &lt;&amp;&gt;</b>",
             "Пуші про оновлення графіка і планові роботи: вимкнено",
-            "🌑 Нагадати перед вимкненням: 15 хв",
-            "💡 Нагадати перед поверненням світла: без",
+            "🪫 Нагадати перед вимкненням: 15 хв",
+            "🔋 Нагадати перед поверненням світла: без",
+            "⏱ Нагадувати до: можливого відключення 🟡",
         ]
     )
+    assert render_settings(replace(subscription, remind_exact=True)).endswith(
+        "⏱ Нагадувати до: точного відключення 🔴"
+    )
+
+
+def test_volyn_settings_have_no_reminder_mode_since_it_has_no_switching() -> None:
+    volyn = replace(SUBSCRIPTION, subqueues=("voe:6.1",), tracked_subqueues=("voe:6.1",))
+
+    assert "⏱" not in render_settings(volyn)
 
 
 def planned_payload(**changes: object) -> dict[str, object]:
@@ -576,7 +551,7 @@ def test_a_volyn_address_points_to_volynoblenergo_not_ternopil() -> None:
 
     for text in (
         render_day(volyn, [], TOMORROW, NOW),
-        render_update(update),
+        render_update(update, NOW),
         render_subqueues_changed(gone),
     ):
         assert "energy.volyn.ua" in text
@@ -587,7 +562,7 @@ def test_render_update_withdraws_a_reminder_it_made_stale() -> None:
     off = {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
     payload = update_payload(off | {"17:30": "1"}, off)
 
-    text = render_update(payload | {"stale_reminders": ["2026-10-17T14:30:00+00:00"]})
+    text = render_update(payload | {"stale_reminders": ["2026-10-17T14:30:00+00:00"]}, NOW)
 
     assert text.splitlines()[2] == "⚠️ Нагадування про вимкнення о 17:30 уже неактуальне."
-    assert "⚠️" not in render_update(payload)
+    assert "⚠️" not in render_update(payload, NOW)

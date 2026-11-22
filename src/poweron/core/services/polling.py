@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 
@@ -44,7 +44,8 @@ class Polling:
         `should_stop` is checked between subqueues, so a shutdown does not wait for the whole pass.
         """
         async with self._lock:
-            await self._poll_each(await self._by_subqueue(), now, should_stop)
+            by_subqueue, address_counts = await self._by_subqueue()
+            await self._poll_each(by_subqueue, address_counts, now, should_stop)
 
     async def poll_new(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
         """Fetch only the subscribed subqueues that have no stored version yet.
@@ -54,27 +55,33 @@ class Polling:
         """
         # Shares the lock with poll() so a subqueue is never fetched twice at once.
         async with self._lock:
+            by_subqueue, address_counts = await self._by_subqueue()
             without_versions = {
                 cherg_gpv: subscribers
-                for cherg_gpv, subscribers in (await self._by_subqueue()).items()
+                for cherg_gpv, subscribers in by_subqueue.items()
                 if await self._repository.last_version_at(cherg_gpv) is None
                 and now - self._new_attempts.get(cherg_gpv, datetime.min.replace(tzinfo=UTC))
                 >= NEW_SUBQUEUE_RETRY
             }
             self._new_attempts.update(dict.fromkeys(without_versions, now))
-            await self._poll_each(without_versions, now, should_stop)
+            await self._poll_each(without_versions, address_counts, now, should_stop)
 
-    async def _by_subqueue(self) -> dict[str, list[Subscription]]:
-        """Every queue of a building is fetched, so that the untracked ones can be viewed too."""
+    async def _by_subqueue(self) -> tuple[dict[str, list[Subscription]], Counter[int]]:
+        """Subscribers per subqueue, and how many addresses each user has.
+
+        Every queue of a building is fetched, so that the untracked ones can be viewed too.
+        """
+        subscriptions = await self._repository.all_subscriptions()
         by_subqueue: dict[str, list[Subscription]] = defaultdict(list)
-        for subscription in await self._repository.all_subscriptions():
+        for subscription in subscriptions:
             for cherg_gpv in subscription.subqueues:
                 by_subqueue[cherg_gpv].append(subscription)
-        return by_subqueue
+        return by_subqueue, Counter(subscription.user_id for subscription in subscriptions)
 
     async def _poll_each(
         self,
         by_subqueue: dict[str, list[Subscription]],
+        address_counts: Mapping[int, int],
         now: datetime,
         should_stop: Callable[[], bool],
     ) -> None:
@@ -84,7 +91,9 @@ class Polling:
             if should_stop():
                 break
             try:
-                new_versions, new_messages = await self._poll_subqueue(cherg_gpv, subscribers, now)
+                new_versions, new_messages = await self._poll_subqueue(
+                    cherg_gpv, subscribers, address_counts, now
+                )
                 changed += new_versions
                 messages += new_messages
             except SourceError as error:
@@ -102,7 +111,11 @@ class Polling:
             )
 
     async def _poll_subqueue(
-        self, cherg_gpv: str, subscribers: list[Subscription], now: datetime
+        self,
+        cherg_gpv: str,
+        subscribers: list[Subscription],
+        address_counts: Mapping[int, int],
+        now: datetime,
     ) -> tuple[int, int]:
         """Returns how many versions were new and how many messages were queued."""
         schedules = await self._source.fetch_schedules(subscribers[0].address, cherg_gpv)
@@ -117,13 +130,19 @@ class Polling:
             and previous_poll is not None
             and subscription.created_at <= previous_poll
         ]
-        stored = [await self._store(schedule, recipients, now) for schedule in schedules]
+        stored = [
+            await self._store(schedule, recipients, address_counts, now) for schedule in schedules
+        ]
         # Recorded after the stores, so a poll that crashes while saving still looks stale.
         await self._repository.mark_polled(cherg_gpv, now)
         return sum(is_new for is_new, _ in stored), sum(count for _, count in stored)
 
     async def _store(
-        self, schedule: DaySchedule, recipients: list[Subscription], now: datetime
+        self,
+        schedule: DaySchedule,
+        recipients: list[Subscription],
+        address_counts: Mapping[int, int],
+        now: datetime,
     ) -> tuple[bool, int]:
         digest = data_hash(schedule.slots)
         previous = await self._repository.latest_version(schedule.cherg_gpv, schedule.day)
@@ -138,7 +157,7 @@ class Polling:
             if change is not None:
                 base = "new" if previous is None else previous.fetched_at.isoformat()
                 stale = await self._stale_reminders(change, recipients, now)
-                messages = _messages(change, recipients, f"{base}:{digest}", stale)
+                messages = _messages(change, recipients, f"{base}:{digest}", stale, address_counts)
         version = ScheduleVersion(
             cherg_gpv=schedule.cherg_gpv,
             day=schedule.day,
@@ -154,19 +173,26 @@ class Polling:
         self, change: ScheduleChange, recipients: list[Subscription], now: datetime
     ) -> dict[int, list[str]]:
         """Per subscription, the reminded outage starts that the new schedule moved or dropped."""
-        starts = [start.isoformat() for start in change.moved_starts(now)]
-        if not starts:
-            return {subscription.id: [] for subscription in recipients}
+        starts = {
+            exact: [start.isoformat() for start in change.moved_starts(now, exact=exact)]
+            for exact in (False, True)
+        }
         keys = {
             (subscription.id, start): reminder_key(
                 subscription, change.cherg_gpv, start, MessageKind.REMINDER_OFF
             )
             for subscription in recipients
-            for start in starts
+            for start in starts[subscription.remind_exact]
         }
+        if not keys:
+            return {subscription.id: [] for subscription in recipients}
         queued = await self._repository.queued_keys(list(keys.values()))
         return {
-            subscription.id: [start for start in starts if keys[subscription.id, start] in queued]
+            subscription.id: [
+                start
+                for start in starts[subscription.remind_exact]
+                if keys[subscription.id, start] in queued
+            ]
             for subscription in recipients
         }
 
@@ -176,6 +202,7 @@ def _messages(
     recipients: list[Subscription],
     transition: str,
     stale_reminders: dict[int, list[str]],
+    address_counts: Mapping[int, int],
 ) -> list[OutboxMessage]:
     payload = change.payload()
     return [
@@ -187,6 +214,7 @@ def _messages(
                 "subscription_id": subscription.id,
                 "label": subscription.label,
                 "queue_count": len(subscription.tracked_subqueues),
+                "address_count": address_counts[subscription.user_id],
                 "stale_reminders": stale_reminders[subscription.id],
             },
             dedupe_key=f"update:{subscription.id}:{change.cherg_gpv}:{change.day}:{transition}",

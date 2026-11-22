@@ -295,3 +295,22 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Known limits:
   - The guard is atomic under SQLite's single writer; Postgres will need a row lock (marked `ponytail:`).
   - A press that lands while the catalog re-check rewrites the building's queues can be undone by it; the user then gets the «змінилися черги» message listing what is tracked.
+
+## 2026-11-22: Shorter pushes, battery reminders, reminder mode
+
+- Done (the owner's request):
+  - A schedule push starts with «💡 Оновлення на сьогодні (22.11):» or «на завтра (23.11)», then the whole day. The «Гірше / Краще / Змінили» headline is gone, and a day without outages shows «🟢 00:00–24:00».
+  - «Сьогодні / завтра» is decided when the message is sent, so `render_update` takes `now`.
+  - Reminders: 🪫 before power goes off, 🔋 before it comes back, in the settings too.
+  - The address name is shown only to users with several addresses: both kinds of payload carry `address_count`. The queue is still named when the address tracks several. Messages queued before this change have no `address_count` and still name the address.
+  - Setting `remind_exact` (per address, Ternopil only, since Volyn has no switching): count reminders down to the sure 🔴 or 🟢 instead of the start of 🟡. An outage that is only 🟡 is not reminded in this mode.
+- Decisions:
+  - Exact events are computed separately (`queue_events(..., exact=True)`, domain `sure()`): switching keeps the state before it. Shrinking the possible event to its `latest` did not work: once 🟡 starts, the possible scan sees the outage as already begun and drops the 🔴 event, so a 30-minute reminder before 🔴 could never fire.
+  - An exact reminder's payload has `earliest == latest`, so it renders as «ВИМКНУТЬ світло (о HH:MM)». Its dedupe key uses that moment, so the stale-reminder warning names the right time.
+  - Found by the code review: for exact subscribers the stale-reminder check compares sure-OFF starts (`moved_starts(now, exact=True)`). Otherwise a 🔴 that became 🟡 while a 🟡 at the same minute became 🔴 kept every start and was not flagged.
+  - `address_count` of an update is counted once per poll, from the `all_subscriptions()` the poll already loads (found by the review bot).
+- Known limits:
+  - The push preview no longer tells whether things got better or worse (the owner's choice).
+  - Switching the mode right before an outage can bring a second reminder for it: the dedupe key holds the start of 🟡 in one mode and of 🔴 in the other.
+  - A 🟡 right after midnight does not see yesterday's 🔴, so no exact «ДАДУТЬ» reminder for it (pre-existing for the possible mode too).
+  - `remind_exact` sent for a Volyn address by a forged callback is stored and hidden; it changes nothing there.
