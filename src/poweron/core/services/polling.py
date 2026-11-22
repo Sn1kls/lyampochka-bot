@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 
@@ -138,7 +138,11 @@ class Polling:
             if change is not None:
                 base = "new" if previous is None else previous.fetched_at.isoformat()
                 stale = await self._stale_reminders(change, recipients, now)
-                messages = _messages(change, recipients, f"{base}:{digest}", stale)
+                address_counts = Counter(
+                    subscription.user_id
+                    for subscription in await self._repository.all_subscriptions()
+                )
+                messages = _messages(change, recipients, f"{base}:{digest}", stale, address_counts)
         version = ScheduleVersion(
             cherg_gpv=schedule.cherg_gpv,
             day=schedule.day,
@@ -154,19 +158,26 @@ class Polling:
         self, change: ScheduleChange, recipients: list[Subscription], now: datetime
     ) -> dict[int, list[str]]:
         """Per subscription, the reminded outage starts that the new schedule moved or dropped."""
-        starts = [start.isoformat() for start in change.moved_starts(now)]
-        if not starts:
-            return {subscription.id: [] for subscription in recipients}
+        starts = {
+            exact: [start.isoformat() for start in change.moved_starts(now, exact=exact)]
+            for exact in (False, True)
+        }
         keys = {
             (subscription.id, start): reminder_key(
                 subscription, change.cherg_gpv, start, MessageKind.REMINDER_OFF
             )
             for subscription in recipients
-            for start in starts
+            for start in starts[subscription.remind_exact]
         }
+        if not keys:
+            return {subscription.id: [] for subscription in recipients}
         queued = await self._repository.queued_keys(list(keys.values()))
         return {
-            subscription.id: [start for start in starts if keys[subscription.id, start] in queued]
+            subscription.id: [
+                start
+                for start in starts[subscription.remind_exact]
+                if keys[subscription.id, start] in queued
+            ]
             for subscription in recipients
         }
 
@@ -176,6 +187,7 @@ def _messages(
     recipients: list[Subscription],
     transition: str,
     stale_reminders: dict[int, list[str]],
+    address_counts: Mapping[int, int],
 ) -> list[OutboxMessage]:
     payload = change.payload()
     return [
@@ -187,6 +199,7 @@ def _messages(
                 "subscription_id": subscription.id,
                 "label": subscription.label,
                 "queue_count": len(subscription.tracked_subqueues),
+                "address_count": address_counts[subscription.user_id],
                 "stale_reminders": stale_reminders[subscription.id],
             },
             dedupe_key=f"update:{subscription.id}:{change.cherg_gpv}:{change.day}:{transition}",

@@ -61,7 +61,7 @@ async def test_sends_rendered_update() -> None:
 
     chat_id, text = bot.sent[0]
     assert chat_id == 42
-    assert text.splitlines()[0] == "📅 Графік на 17.10: відключень немає 🎉 · <b>Дім</b>"
+    assert text.splitlines()[0].startswith("💡 Оновлення на ")
 
 
 @pytest.mark.parametrize(
@@ -116,8 +116,8 @@ PLANNED_WORK = {
 @pytest.mark.parametrize(
     ("kind", "payload", "start"),
     [
-        ("reminder_off", REMINDER, "🌑 За 15 хв можуть ВИМКНУТИ світло"),
-        ("reminder_on", REMINDER, "💡 За 15 хв мають ДАТИ світло"),
+        ("reminder_off", REMINDER, "🪫 За 15 хв можуть ВИМКНУТИ світло"),
+        ("reminder_on", REMINDER, "🔋 За 15 хв мають ДАТИ світло"),
         ("subqueues_changed", SUBQUEUES, "🔄 Для <b>Дім</b> змінилися черги."),
         ("planned_work", PLANNED_WORK, "🛠 <b>Дім</b>: планові роботи 22.08 з 08:30 до 17:30"),
     ],

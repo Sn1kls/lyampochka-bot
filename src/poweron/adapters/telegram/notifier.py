@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from html import escape
 from typing import Any
 
@@ -21,7 +22,7 @@ CHAT_GONE_MARKERS = ("chat not found", "user not found")
 def _render(kind: str, payload: Mapping[str, Any]) -> str:
     match kind:
         case MessageKind.SCHEDULE_UPDATED:
-            return render_update(payload)
+            return render_update(payload, datetime.now(UTC))
         case MessageKind.REMINDER_OFF:
             return render_reminder(payload, power_on=False)
         case MessageKind.REMINDER_ON:

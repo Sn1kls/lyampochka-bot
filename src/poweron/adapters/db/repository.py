@@ -579,6 +579,7 @@ def _subscription(row: Row[Any], queue_rows: list[Row[Any]]) -> Subscription:
         remind_before_off_min=row.remind_before_off_min,
         remind_before_on_min=row.remind_before_on_min,
         created_at=row.created_at,
+        remind_exact=row.remind_exact,
     )
 
 

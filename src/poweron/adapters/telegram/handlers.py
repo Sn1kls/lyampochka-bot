@@ -516,7 +516,7 @@ async def change_setting(
         return
     changes: dict[str, Any] = {
         callback_data.field: bool(callback_data.value)
-        if callback_data.field == "notify_on_update"
+        if keyboards.SETTING_VALUES[callback_data.field] == (0, 1)
         else callback_data.value
     }
     subscription = await subscriptions.update_settings(

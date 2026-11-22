@@ -93,6 +93,7 @@ subscriptions = Table(
     Column("notify_on_update", Boolean, nullable=False, default=True),
     Column("remind_before_off_min", Integer, nullable=False, default=30),
     Column("remind_before_on_min", Integer, nullable=False, default=0),
+    Column("remind_exact", Boolean, nullable=False, default=False),
     Column("created_at", UtcDateTime, nullable=False, default=utc_now),
     Column("cherg_checked_at", UtcDateTime),
 )

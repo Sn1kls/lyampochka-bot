@@ -206,57 +206,38 @@ def _next_sentence(event: NextEvent, now: datetime) -> str:
     )
 
 
-def render_update(payload: Mapping[str, Any]) -> str:
+def render_update(payload: Mapping[str, Any], now: datetime) -> str:
     day = date.fromisoformat(payload["day"])
     current = _intervals(payload["current"])
-    parts = [_update_headline(payload["previous"], current, f"{day:%d.%m}") + _for(payload)]
+    day_name = _day_name(day, now.astimezone(KYIV).date())
+    parts = [texts.UPDATE_TITLE.format(day=day_name, target=_for(payload))]
     # Messages queued before this key existed have none.
     if stale := payload.get("stale_reminders"):
         times = ", ".join(
             f"{datetime.fromisoformat(start).astimezone(KYIV):%H:%M}" for start in stale
         )
         parts.append(texts.UPDATE_STALE_REMINDER.format(times=times))
-    if current:
-        # On a brand-new day everything is "added"; marking it all would mean nothing.
-        added = [] if payload["previous"] is None else _intervals(payload["added"])
-        lines = [
-            _line(interval, day) + (texts.UPDATE_NEW_LINE if interval in added else "")
-            for interval in _with_light(current, day)
-        ]
-        parts.append("\n".join(lines))
+    # On a brand-new day everything is "added"; marking it all would mean nothing.
+    added = [] if payload["previous"] is None else _intervals(payload["added"])
+    lines = [
+        _line(interval, day) + (texts.UPDATE_NEW_LINE if interval in added else "")
+        for interval in _with_light(current, day)
+    ]
+    parts.append("\n".join(lines))
     provider = provider_of(payload["cherg_gpv"])
     parts += [_note(provider), _link(provider)]
     return "\n\n".join(parts)
 
 
-def _update_headline(
-    raw_previous: Sequence[Mapping[str, str]] | None, current: list[Interval], day_text: str
-) -> str:
-    """Better, worse or the same, judged by hours without light only."""
-    outage = _state_duration(current, SlotState.OFF)
-    if outage:
-        outage_text = texts.UPDATE_OUTAGE.format(duration=_duration(outage))
-    else:
-        outage_text = texts.UPDATE_NO_SURE_OUTAGE if current else texts.UPDATE_NO_OUTAGE
-    if raw_previous is None:
-        return texts.UPDATE_NEW_DAY.format(date=day_text, outage=outage_text)
-    delta = outage - _state_duration(_intervals(raw_previous), SlotState.OFF)
-    if not delta:
-        return texts.UPDATE_SAME.format(date=day_text, outage=outage_text)
-    if not outage:
-        return texts.UPDATE_BETTER_NONE.format(date=day_text, outage=outage_text)
-    template = texts.UPDATE_WORSE if delta > timedelta() else texts.UPDATE_BETTER
-    return template.format(date=day_text, delta=_duration(abs(delta)), total=_duration(outage))
-
-
 def _for(payload: Mapping[str, Any]) -> str:
-    """Which address (and queue, if it has several) the push is about."""
-    queue = (
-        texts.UPDATE_QUEUE.format(queue=subqueue_label(payload["cherg_gpv"]))
-        if payload.get("queue_count", 1) > 1
-        else ""
-    )
-    return texts.FOR_ADDRESS.format(label=escape(payload["label"]), queue=queue)
+    """Which address (if the user has several) and queue (if it has several) the push is about."""
+    queue = subqueue_label(payload["cherg_gpv"])
+    several_queues = payload.get("queue_count", 1) > 1
+    # Messages queued before address_count existed name the address, as they used to.
+    if payload.get("address_count", 2) == 1:
+        return texts.FOR_QUEUE.format(queue=queue) if several_queues else ""
+    template = texts.FOR_ADDRESS_QUEUE if several_queues else texts.FOR_ADDRESS
+    return template.format(label=escape(payload["label"]), queue=queue)
 
 
 def _with_light(outages: list[Interval], day: date) -> list[Interval]:
@@ -333,16 +314,19 @@ def minutes_text(minutes: int) -> str:
 
 def render_settings(subscription: Subscription) -> str:
     updates = texts.SETTINGS_ENABLED if subscription.notify_on_update else texts.SETTINGS_DISABLED
-    return "\n".join(
-        [
-            texts.SETTINGS_TITLE.format(label=escape(subscription.label)),
-            texts.SETTINGS_UPDATES.format(state=updates),
-            texts.SETTINGS_REMINDER_OFF.format(
-                when=minutes_text(subscription.remind_before_off_min)
-            ),
-            texts.SETTINGS_REMINDER_ON.format(when=minutes_text(subscription.remind_before_on_min)),
-        ]
-    )
+    lines = [
+        texts.SETTINGS_TITLE.format(label=escape(subscription.label)),
+        texts.SETTINGS_UPDATES.format(state=updates),
+        texts.SETTINGS_REMINDER_OFF.format(when=minutes_text(subscription.remind_before_off_min)),
+        texts.SETTINGS_REMINDER_ON.format(when=minutes_text(subscription.remind_before_on_min)),
+    ]
+    if subscription.has_switching:
+        lines.append(
+            texts.SETTINGS_REMIND_EXACT
+            if subscription.remind_exact
+            else texts.SETTINGS_REMIND_POSSIBLE
+        )
+    return "\n".join(lines)
 
 
 def _intervals(raw_intervals: Sequence[Mapping[str, str]]) -> list[Interval]:

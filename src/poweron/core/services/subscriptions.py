@@ -74,6 +74,7 @@ class Subscriptions:
         notify_on_update: bool | None = None,
         remind_before_off_min: int | None = None,
         remind_before_on_min: int | None = None,
+        remind_exact: bool | None = None,
     ) -> Subscription | None:
         """Change only the given settings of the user's own subscription; None if not theirs."""
         for minutes in (remind_before_off_min, remind_before_on_min):
@@ -83,6 +84,7 @@ class Subscriptions:
             "notify_on_update": notify_on_update,
             "remind_before_off_min": remind_before_off_min,
             "remind_before_on_min": remind_before_on_min,
+            "remind_exact": remind_exact,
         }
         await self._repository.update_settings(
             user_id,

@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from poweron.core.domain.providers import provider_of
+from poweron.core.domain.providers import TOE, provider_of
 
 KYIV = ZoneInfo("Europe/Kyiv")
 
@@ -99,11 +99,17 @@ class Subscription:
     remind_before_off_min: int
     remind_before_on_min: int
     created_at: datetime
+    remind_exact: bool = False  # count reminders down to the sure change, not the possible one
 
     @property
     def provider(self) -> str:
         """A subscription always has queues, and all of them belong to one oblenergo."""
         return provider_of(self.subqueues[0])
+
+    @property
+    def has_switching(self) -> bool:
+        """Only Ternopil publishes possible (switching) outages."""
+        return self.provider == TOE
 
     @property
     def instance_key(self) -> str:
