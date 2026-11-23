@@ -322,6 +322,12 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Known limit: a 🔋 reminder sent in the old exact way just before the deploy can be followed by one more in the new way for the same return (different dedupe key).
 - Known limit: a 🟡 published after it has already started gets no 🔋 reminder, in either mode, since power may come back any minute.
 
+## 2026-11-23: Rename an address
+
+- Done (the owner's request): «✏️ Змінити назву» in an address's settings asks for a new name; the next text message becomes the label (trimmed, cut to 40 characters like in `/add`). `Subscriptions.rename` in core, no migration: `label` already existed.
+- Leaving: «Скасувати» (back to the settings), any menu button. A command does not leave it, like the feedback dialogue. A photo, a sticker or an invisible name gets the question again.
+- Known limit: outbox rows already queued keep the old label (it is copied into the payload), so one push may still carry the old name.
+
 ## 2026-11-23: Lviv research
 
 - Researched Lvivoblenergo for a third region; details in `docs/lviv-notes.md`.

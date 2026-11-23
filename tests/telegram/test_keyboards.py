@@ -7,6 +7,7 @@ from poweron.adapters.telegram.keyboards import (
     Page,
     Pick,
     SettingChange,
+    SubscriptionChoice,
     actions_keyboard,
     choice_keyboard,
     day_keyboard,
@@ -77,17 +78,22 @@ def test_settings_are_labelled_buttons_that_cycle_their_values() -> None:
         ["🪫 Нагадати до вимкнення: 30 хв"],
         ["🔋 Нагадати до повернення: без"],
         ["⏱ Нагадувати до: можливого 🟡"],
+        ["✏️ Змінити назву"],
     ]
-    presses = [SettingChange.unpack(row[0].callback_data or "") for row in markup.inline_keyboard]
+    *setting_rows, rename_row = markup.inline_keyboard
+    presses = [SettingChange.unpack(row[0].callback_data or "") for row in setting_rows]
     assert [(press.field, press.value) for press in presses] == [
         ("notify_on_update", 0),
         ("remind_before_off_min", 60),
         ("remind_before_on_min", 15),
         ("remind_exact", 1),
     ]
+    assert SubscriptionChoice.unpack(rename_row[0].callback_data or "") == SubscriptionChoice(
+        action="rename", subscription_id=SUBSCRIPTION.id
+    )
     exact = settings_keyboard(replace(subscription, remind_exact=True))
-    assert texts_of(exact)[-1] == ["⏱ Нагадувати до: точного 🔴"]
-    assert SettingChange.unpack(exact.inline_keyboard[-1][0].callback_data or "").value == 0
+    assert texts_of(exact)[-2] == ["⏱ Нагадувати до: точного 🔴"]
+    assert SettingChange.unpack(exact.inline_keyboard[-2][0].callback_data or "").value == 0
 
 
 def test_volyn_settings_have_no_reminder_mode_button() -> None:
@@ -118,6 +124,7 @@ def test_settings_paint_what_is_on_green_and_leave_what_is_off_plain() -> None:
     assert styles_of(settings_keyboard(subscription)) == [
         [None],
         ["success"],
+        [None],
         [None],
         [None],
         [None],

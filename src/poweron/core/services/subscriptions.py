@@ -93,6 +93,13 @@ class Subscriptions:
         )
         return await self._repository.subscription(user_id, subscription_id)
 
+    async def rename(self, user_id: int, subscription_id: int, label: str) -> Subscription | None:
+        """Rename the user's own address; None if not theirs."""
+        if not label.strip():
+            raise ValueError("label must not be blank")
+        await self._repository.update_settings(user_id, subscription_id, {"label": label})
+        return await self._repository.subscription(user_id, subscription_id)
+
     async def set_tracked(
         self, user_id: int, subscription_id: int, cherg_gpv: str, *, tracked: bool
     ) -> Subscription | None:

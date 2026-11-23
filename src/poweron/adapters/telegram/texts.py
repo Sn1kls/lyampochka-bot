@@ -100,7 +100,7 @@ HELP = (
     f"{MENU_SCHEDULE} – графік на сьогодні чи завтра\n"
     f"{MENU_NEXT} – коли вимкнуть чи увімкнуть світло\n"
     f"{MENU_LIST} – твої адреси; там же додати чи видалити\n"
-    f"{MENU_SETTINGS} – сповіщення та нагадування\n"
+    f"{MENU_SETTINGS} – сповіщення, нагадування, назва адреси\n"
     f"{MENU_FEEDBACK} – скарга, ідея чи подяка розробнику\n\n"
     "Стерти всі свої дані: /forget"
 )
@@ -205,6 +205,9 @@ BUTTON_REMINDER_OFF = "🪫 Нагадати до вимкнення: {value}"
 BUTTON_REMINDER_ON = "🔋 Нагадати до повернення: {value}"
 BUTTON_REMIND_POSSIBLE = "⏱ Нагадувати до: можливого 🟡"
 BUTTON_REMIND_EXACT = "⏱ Нагадувати до: точного 🔴"
+BUTTON_RENAME = "✏️ Змінити назву"
+ASK_NEW_LABEL = "Напиши нову назву для «{label}»."
+RENAMED = "Готово! Тепер ця адреса зветься «{label}»."
 REMINDER_NONE = "без"
 
 DURATION_HOURS = "{hours} год"
