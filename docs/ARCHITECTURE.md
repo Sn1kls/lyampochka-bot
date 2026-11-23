@@ -1,0 +1,58 @@
+# Architecture map
+
+The current shape of the code, for an agent starting a session. Rules live in `CLAUDE.md`, the product in `docs/SPEC.md`, the history and the reasons behind decisions in `docs/PROGRESS.md`. Update this file in the same PR when a flow, a module or a region changes.
+
+## What it does
+
+Users add an address. Each address maps to one or more **subqueues** (`4.1`). The worker polls each subqueue's schedule, stores a new **version** when it changes, and queues pushes and reminders in the **outbox**. The Telegram notifier sends them. Regions: Ternopil (`toe`), Volyn (`voe`).
+
+## Flow
+
+```
+oblenergo ──fetch──▶ Polling ──version + outbox rows (one transaction)──▶ SQLite
+                                                                           │
+   Reminders.tick / SubqueueChecker / PlannedWorks ──outbox rows──────────▶│
+                                                                           ▼
+                        Notifications.dispatch ──▶ TelegramNotifier ──▶ user
+```
+
+- `bot` and `worker` are separate roles (`python -m poweron bot|worker|all`), sharing only the DB.
+- Worker jobs and their intervals: `src/poweron/worker/runner.py`. Every job is one `repeat(...)` loop; a failure is logged and the loop goes on.
+- All wiring (which client serves which region, which service gets which port): `src/poweron/__main__.py`.
+
+## Modules
+
+| Where | What |
+|---|---|
+| `core/domain/` | pure logic: `models.py` (dataclasses), `schedule.py` (slots → UTC intervals, DST-safe), `diff.py` (change between versions), `providers.py` (region keys) |
+| `core/ports.py` | every Protocol (`ScheduleSource`, `CatalogSource`, `Repository`, `Notifier`, …) and the `SourceError` family |
+| `core/services/` | one class per job: `polling`, `reminders`, `groups` (`SubqueueChecker`, daily queue re-check), `planned_works`, `notifications` (outbox dispatch), `subscriptions`, `catalog`, `schedules`, `feedback`, `status`, `alerts`, `backups` |
+| `adapters/toe_api/` | Ternopil JSON API: schedules, catalogue, planned works, circuit breaker |
+| `adapters/voe_api/` | Volyn: archive PNGs decoded from pixels (`image.py`) |
+| `adapters/db/` | `tables.py`, `repository.py` (`SqlRepository`), `voe_catalog.py` (Volyn `CatalogSource` over the imported table), Alembic `migrations/` |
+| `adapters/telegram/` | `handlers.py` (commands, `/add` wizard FSM), `render.py` (payload → HTML), `keyboards.py`, `texts.py` (all Ukrainian), `notifier.py` |
+| `import_voe.py` | CLI that loads the weekly Volyn address → queue export |
+| `scripts/` | live probes (`probe*.py`), Volyn export/sync, deploy, simulate, restore |
+
+Import-linter (`pyproject.toml`) enforces it: `core` sees only stdlib and pydantic, and adapters never import each other.
+
+## Invariants that are easy to break
+
+- **Subqueue keys** carry the region: Ternopil keys are plain (`4.1`), others are prefixed (`voe:6.1`). Use `provider_of`, `plain_subqueue`, `scoped_subqueue` from `providers.py`. A subscription's region is the prefix of its first queue; there is no `provider` column.
+- **Slots**: a `DaySchedule` holds 48 half-hour slots keyed by Kyiv start time (`"00:00"`, `"00:30"`, …) with toe's raw codes: `"1"` OFF, `"0"` ON, `"10"` switching. Every source converts into this shape, and `parse_slots` turns it into intervals.
+- **Dedupe keys** use `Subscription.instance_key` (id + creation time), since SQLite reuses deleted ids. A changed key format resends or swallows pushes.
+- **Recipients of a change** are subscriptions created before the previous successful poll, so a first load is never pushed as an update.
+- `core` emits structured payloads; the text is chosen in `render.py`. Old payloads may still sit in the outbox, so a new payload field needs a default when rendered.
+- Bot texts are informal «ти», with en dashes in time ranges.
+
+## Adding a region
+
+Volyn is the worked example (`docs/volyn-notes.md`, PR `feature/volyn-oblast`).
+
+1. **Research first**: `docs/<region>-notes.md` and a stdlib probe `scripts/probe_<region>.py` (1 request/s, public street names only), with fixtures under `tests/fixtures/`. Find the schedule source, the address → queue source, and whether **the production server** gets an answer (`curl` over ssh). energy.volyn.ua challenges the server with Cloudflare; we never get around such a challenge.
+2. `core/domain/providers.py`: a region constant.
+3. Adapter `adapters/<region>_api/` implementing `ScheduleSource`. Add it to the independence contract in `pyproject.toml`.
+4. A `CatalogSource`: either the region's API (like toe) or an imported table (like Volyn: table + migration, `adapters/db/<region>_catalog.py`, an import CLI, a staleness alert like `VoeCatalogAge`, its own `cache_prefix`).
+5. `__main__.py`: add the region to `Catalog` (bot), `SchedulesByProvider` and `SubqueueChecker` (worker).
+6. Telegram: `REGIONS` and `_site` in `render.py`, plus `REGION_*` and `SITE_*` in `texts.py`. The region button and the rest of `/add` then work.
+7. Per-region features to decide: `Subscription.has_switching` (Ternopil only, it gates `remind_exact`), planned works (Ternopil only, `PlannedWorks`), and `/status`.

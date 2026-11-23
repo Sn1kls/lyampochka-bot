@@ -13,7 +13,8 @@ User-facing bot texts: Ukrainian, all in `src/poweron/adapters/telegram/texts.py
 ## Workflow
 
 - Work one phase at a time (SPEC §12), via `/phase N`. Do not start the next phase on your own.
-- At the start of a session read `docs/PROGRESS.md` first, then only the SPEC sections the phase needs.
+- At the start of a session read `docs/ARCHITECTURE.md` (the current map, incl. how to add a region). `docs/PROGRESS.md` is the dated history: read its last entry, and grep it when you need the reason behind a decision. Read SPEC sections only as the task needs them.
+- A PR that changes a flow, a module or a region updates `docs/ARCHITECTURE.md` too.
 - `docs/api-notes.md` (written in Phase 0) overrides SPEC §2 wherever they differ.
 - Never guess the unofficial API: anything still open in SPEC §2.3 is a stop-and-ask, not an assumption.
 - Do not hit the live API from tests. Live calls only from `scripts/probe.py`, max 1 request/second.
