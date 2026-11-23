@@ -1,3 +1,4 @@
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from datetime import datetime, timedelta
@@ -31,12 +32,14 @@ class Catalog:
         return _search(streets, query)
 
     async def buildings(self, city_id: int, street_id: int, now: datetime) -> list[Building]:
-        return await self._cached(
+        """In house number order: sources list them as their records go (LOE by account)."""
+        buildings = await self._cached(
             f"buildings:{city_id}:{street_id}",
             Building,
             lambda: self._source.buildings(city_id, street_id),
             now,
         )
+        return sorted(buildings, key=lambda building: _house_number_key(building.name))
 
     async def subqueues(self, city_id: int, street_id: int, building: Building) -> list[str]:
         """All subqueues of the building; empty when schedules do not apply to it."""
@@ -89,3 +92,12 @@ def _search[Item: (City, Street)](items: list[Item], query: str) -> list[Item]:
     matches = [match for match in matches if wanted in match[0]]
     matches.sort(key=lambda match: (not match[0].startswith(wanted), match[0]))
     return [item for _, item in matches]
+
+
+def _house_number_key(name: str) -> list[int | str]:
+    """«10/2» after «7», «133-А» after «133»: digit runs compare as numbers."""
+    # A captured split puts text at even and digits at odd positions: never int vs str.
+    return [
+        int(part) if position % 2 else part
+        for position, part in enumerate(re.split(r"(\d+)", normalise(name)))
+    ]
