@@ -315,26 +315,30 @@ async def feedback_by_reply(
 async def ask_feedback(
     message: Message,
     state: FSMContext,
-    user_id: int,
+    event_from_user: User,
     feedback: Feedback,
     admin_chat_id: int | None,
 ) -> None:
     if admin_chat_id is None:
         await message.answer(texts.FEEDBACK_UNAVAILABLE)
         return
-    if await _over_limit(message, feedback, user_id):
+    if await _over_limit(message, feedback, _feedback_sender(event_from_user)):
         return
     await _reset(state)
     await state.set_state(FeedbackFlow.waiting)
     await message.answer(texts.FEEDBACK_ASK, reply_markup=keyboards.cancel_keyboard("feedback"))
 
 
-async def _over_limit(message: Message, feedback: Feedback, user_id: int) -> bool:
-    wait = feedback.retry_after(user_id, _now())
+async def _over_limit(message: Message, feedback: Feedback, sender: str) -> bool:
+    wait = feedback.retry_after(sender, _now())
     if wait is not None:
         minutes = math.ceil(wait / timedelta(minutes=1))
         await message.answer(texts.FEEDBACK_LIMIT.format(minutes=minutes))
     return wait is not None
+
+
+def _feedback_sender(user: User) -> str:
+    return f"telegram:{user.id}"
 
 
 @router.callback_query(FeedbackFlow.waiting, keyboards.Decision.filter(F.action == "feedback"))
@@ -385,7 +389,8 @@ async def _send_feedback(
     admin_chat_id: int,
 ) -> None:
     await _reset(state)
-    if await _over_limit(message, feedback, user_id):
+    sender = _feedback_sender(event_from_user)
+    if await _over_limit(message, feedback, sender):
         return
     try:
         copied = await bot.copy_messages(admin_chat_id, message.chat.id, message_ids)
@@ -415,6 +420,7 @@ async def _send_feedback(
         logger.warning("feedback header was not sent: %s", error.message)
     await feedback.record(
         user_id,
+        sender,
         message_ids[0],
         [message_ref(admin_chat_id, admin_id) for admin_id in admin_ids],
         _now(),

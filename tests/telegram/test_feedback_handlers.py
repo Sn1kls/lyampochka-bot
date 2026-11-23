@@ -141,6 +141,21 @@ async def test_over_the_limit_the_user_is_told_before_writing(repository: SqlRep
     assert len(copies(chat)) == 1
 
 
+async def test_forgetting_oneself_does_not_reset_the_limit(repository: SqlRepository) -> None:
+    chat = Chat(repository, admin_chat_id=ADMIN_CHAT_ID, feedback=Feedback(repository, limit=1))
+    await chat.say("/start")
+    await send_feedback(chat)
+    # Someone registers later, so the returning user cannot get their old id back.
+    await chat.subscriptions.register("telegram", "7", "telegram", "7")
+    await chat.press(keyboards.Decision(action="forget", accepted=True))
+    await chat.say("/start")  # a new internal user, the same Telegram account
+
+    await chat.say("/feedback")
+
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_LIMIT.format(minutes=60)
+    assert len(copies(chat)) == 1
+
+
 async def test_a_message_telegram_cannot_copy_is_refused_and_not_counted(
     repository: SqlRepository,
 ) -> None:
@@ -214,7 +229,9 @@ async def test_a_reply_to_a_bot_prompt_still_reaches_the_wizard(chat: Chat) -> N
 async def test_a_reply_to_a_forgotten_user_says_so(chat: Chat) -> None:
     await chat.say("/start")
     other = await chat.subscriptions.register("telegram", "2", "telegram", "2")
-    await chat.dispatcher["feedback"].record(other, 40, ["telegram:1:77"], datetime.now(UTC))
+    await chat.dispatcher["feedback"].record(
+        other, "telegram:2", 40, ["telegram:1:77"], datetime.now(UTC)
+    )
     await chat.subscriptions.forget(other)
 
     await reply_to(chat, 77)
@@ -243,7 +260,9 @@ async def test_a_reply_outside_the_admin_chat_is_not_an_admin_reply(
 ) -> None:
     chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository))
     await chat.say("/start")
-    await chat.dispatcher["feedback"].record(1, 40, ["telegram:1:77"], datetime.now(UTC))
+    await chat.dispatcher["feedback"].record(
+        1, "telegram:5", 40, ["telegram:1:77"], datetime.now(UTC)
+    )
 
     await reply_to(chat, 77)
 

@@ -34,6 +34,7 @@ class FakeCatalogSource:
     city_calls: int = 0
     street_calls: list[int] = field(default_factory=list)
     groups: list[str] = field(default_factory=list)
+    building_list: list[Building] = field(default_factory=lambda: list(BUILDINGS))
 
     async def cities(self) -> list[City]:
         self.city_calls += 1
@@ -46,7 +47,7 @@ class FakeCatalogSource:
         return STREETS
 
     async def buildings(self, city_id: int, street_id: int) -> list[Building]:
-        return BUILDINGS
+        return self.building_list
 
     async def building_subqueues(
         self, city_id: int, street_id: int, building_name: str
@@ -115,6 +116,16 @@ async def test_cached_values_are_rebuilt_into_domain_objects(catalog: Catalog) -
     assert (await catalog.find_cities("тернопіль", NOW))[0] == TERNOPIL
     assert await catalog.buildings(1, 1, NOW) == BUILDINGS
     assert await catalog.buildings(1, 1, NOW) == BUILDINGS
+
+
+async def test_buildings_are_in_house_number_order(
+    catalog: Catalog, source: FakeCatalogSource
+) -> None:
+    names = ["145", "73", "36-42", "32-А", "7", "133-А", "Гуртожиток", "133", "1", "230-а", "10/2"]
+    source.building_list = [Building(index, name, "1.1") for index, name in enumerate(names)]
+    expected = "1 7 10/2 32-А 36-42 73 133 133-А 145 230-а Гуртожиток".split()
+    for _ in range(2):  # fresh and from the cache
+        assert [building.name for building in await catalog.buildings(1, 1, NOW)] == expected
 
 
 async def test_streets_are_cached_per_city(catalog: Catalog, source: FakeCatalogSource) -> None:
