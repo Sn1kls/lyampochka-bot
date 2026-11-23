@@ -1,9 +1,10 @@
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.methods import CopyMessages, SendMessage
 
 from poweron.adapters.db.repository import SqlRepository
@@ -229,9 +230,7 @@ async def test_a_reply_to_a_bot_prompt_still_reaches_the_wizard(chat: Chat) -> N
 async def test_a_reply_to_a_forgotten_user_says_so(chat: Chat) -> None:
     await chat.say("/start")
     other = await chat.subscriptions.register("telegram", "2", "telegram", "2")
-    await chat.dispatcher["feedback"].record(
-        other, "telegram:2", 40, ["telegram:1:77"], datetime.now(UTC)
-    )
+    await chat.dispatcher["feedback"].record(other, 40, ["telegram:1:77"], datetime.now(UTC))
     await chat.subscriptions.forget(other)
 
     await reply_to(chat, 77)
@@ -260,9 +259,7 @@ async def test_a_reply_outside_the_admin_chat_is_not_an_admin_reply(
 ) -> None:
     chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository))
     await chat.say("/start")
-    await chat.dispatcher["feedback"].record(
-        1, "telegram:5", 40, ["telegram:1:77"], datetime.now(UTC)
-    )
+    await chat.dispatcher["feedback"].record(1, 40, ["telegram:1:77"], datetime.now(UTC))
 
     await reply_to(chat, 77)
 
@@ -293,6 +290,17 @@ async def reply_to_bot(
     replied = {"message_id": replied_id, "date": 0, "chat": {"id": 1, "type": "private"}}
     replied |= {"from": BOT_USER, "text": "💬 Відповідь розробника\n\nВиправив, перевір"}
     await chat.send(message_id=91, reply_to_message=replied, text=text)
+
+
+async def test_replies_sent_at_once_cannot_slip_past_the_limit(
+    repository: SqlRepository,
+) -> None:
+    chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository, limit=1))
+    await got_answer(chat, repository)
+
+    await asyncio.gather(*(reply_to_bot(chat, text=f"спам {number}") for number in range(3)))
+
+    assert len(copies(chat)) == 1
 
 
 def header_replies(chat: Chat) -> list[int | None]:
@@ -402,6 +410,28 @@ async def test_an_unreachable_admin_chat_makes_feedback_unavailable(chat: Chat) 
 
     assert chat.sent_texts()[-1] == texts.FEEDBACK_UNAVAILABLE
     assert chat.sent_texts().count(texts.FEEDBACK_UNAVAILABLE) == 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        TelegramBadRequest(CopyMessages(chat_id=1, from_chat_id=1, message_ids=[40]), "not found"),
+        TelegramForbiddenError(CopyMessages(chat_id=1, from_chat_id=1, message_ids=[40]), "kicked"),
+    ],
+)
+async def test_feedback_that_never_reached_the_admin_keeps_the_slot(
+    repository: SqlRepository, error: Exception
+) -> None:
+    chat = Chat(repository, admin_chat_id=ADMIN_CHAT_ID, feedback=Feedback(repository, limit=1))
+    await chat.say("/start")
+    chat.session.errors[CopyMessages] = error
+    with contextlib.suppress(TelegramForbiddenError):
+        await send_feedback(chat)
+    del chat.session.errors[CopyMessages]
+
+    await send_feedback(chat, message_id=41)
+
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_SENT
 
 
 async def test_without_the_header_the_copy_still_leads_back_to_the_user(
