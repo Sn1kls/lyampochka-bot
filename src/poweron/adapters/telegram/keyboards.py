@@ -306,6 +306,10 @@ def settings_keyboard(subscription: Subscription) -> InlineKeyboardMarkup:
                 value=int(not subscription.remind_exact),
             ),
         )
+    builder.button(
+        text=texts.BUTTON_RENAME,
+        callback_data=SubscriptionChoice(action="rename", subscription_id=subscription.id),
+    )
     builder.adjust(1)
     return builder.as_markup()
 

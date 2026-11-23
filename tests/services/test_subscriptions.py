@@ -238,3 +238,32 @@ async def test_concurrent_untracks_still_leave_one_queue(
     assert (first, second) == (True, False)
     updated = await subscriptions.get(user_id, home.id)
     assert updated is not None and updated.tracked_subqueues == ("4.1",)
+
+
+async def test_rename_changes_the_label_of_the_users_own_address(
+    subscriptions: Subscriptions,
+) -> None:
+    alice = await subscriptions.register("telegram", "1", "telegram", "1")
+    bob = await subscriptions.register("telegram", "2", "telegram", "2")
+    home = await subscriptions.add(
+        alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
+    )
+
+    renamed = await subscriptions.rename(alice, home.id, "Терник")
+
+    assert renamed is not None
+    assert renamed.label == "Терник"
+    assert await subscriptions.get(alice, home.id) == renamed
+    assert await subscriptions.rename(bob, home.id, "Чуже") is None
+    assert await subscriptions.get(alice, home.id) == renamed
+
+
+async def test_rename_rejects_a_blank_label(subscriptions: Subscriptions) -> None:
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    home = await subscriptions.add(
+        user_id, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
+    )
+
+    with pytest.raises(ValueError):
+        await subscriptions.rename(user_id, home.id, "   ")
+    assert await subscriptions.get(user_id, home.id) == home
