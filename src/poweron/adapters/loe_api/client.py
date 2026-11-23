@@ -145,7 +145,7 @@ class LoeClient:
             return schedules
 
     async def _fetch_schedules(self, today: date) -> dict[date, LoeSchedule]:
-        found = []
+        readable = []
         errors: list[ApiSchemaError] = []
         for item_id in SCHEDULE_ITEMS:
             response = await self._http.get(
@@ -165,13 +165,13 @@ class LoeClient:
                 continue
             # Either item may hold a stale or a mistyped day around midnight.
             if schedule is not None and schedule.day in (today, today + timedelta(days=1)):
-                found.append(schedule)
-        if errors and not found:
+                readable.append(schedule)
+        if errors and not readable:
             raise errors[0]
         # The later text of a day wins.
         return {
             schedule.day: schedule
-            for schedule in sorted(found, key=lambda schedule: schedule.published_at)
+            for schedule in sorted(readable, key=lambda schedule: schedule.published_at)
         }
 
     async def _street_queues(self, city_id: int, street_id: int) -> dict[str, list[str]]:

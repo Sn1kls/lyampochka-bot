@@ -78,3 +78,4 @@ From the production VM (Oracle, Stockholm), with an honest User-Agent, on 2026-1
 - Pacing and retries live in `adapters/paced_http.py`, shared with `voe_api`.
 - Subqueue keys: `loe:3.1`. No migration, no new settings.
 - Like Volyn: no switching state, so no `remind_exact`; no planned works.
+- The garbage revision seen once (all `00:00 до 00:00`) is an `ApiSchemaError`, not a skipped day: if it is the only text, the poll fails, users keep the last known schedule and the admin is alerted. That is on purpose: the oblenergo published nonsense as today's schedule.
