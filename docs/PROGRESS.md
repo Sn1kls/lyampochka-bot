@@ -327,3 +327,14 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Done (the owner's request): «✏️ Змінити назву» in an address's settings asks for a new name; the next text message becomes the label (trimmed, cut to 40 characters like in `/add`). `Subscriptions.rename` in core, no migration: `label` already existed.
 - Leaving: «Скасувати» (back to the settings), any menu button. A command does not leave it, like the feedback dialogue. A photo, a sticker or an invisible name gets the question again.
 - Known limit: outbox rows already queued keep the old label (it is copied into the payload), so one push may still carry the old name.
+
+## 2026-11-23: Lviv research
+
+- Researched Lvivoblenergo for a third region; details in `docs/lviv-notes.md`.
+- Found:
+  - schedules are text per group (`Група 1.1. Електроенергії немає з 16:30 до 20:00.`) in two CMS items, «Today» and «Tomorrow», 3 KB each; only OFF and ON, no switching;
+  - the address → queue lookup is a public inneti API (`pw_cities`, `pw_streets`, `pw_accounts`), one row per consumer account, so a building can show «Не входить» next to a queue, or two queues;
+  - everything answers the production server (200), so no Mac export like Volyn.
+- Added `scripts/probe_lviv.py` and fixtures `tests/fixtures/loe_*.json` (one public address, no account numbers).
+- Open: when «Tomorrow» is filled and how both items change at midnight.
+- Next step: grill the open design points, then a plan for `feature/lviv-oblast`.
