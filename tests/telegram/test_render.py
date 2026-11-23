@@ -508,6 +508,27 @@ def test_planned_work_escapes_label_and_reason() -> None:
     assert text.endswith("a &lt; b &amp; c")
 
 
+def test_status_lists_lviv_after_the_other_regions() -> None:
+    report = StatusReport(
+        version="0.1.0",
+        users=1,
+        subscriptions=2,
+        pending_messages=0,
+        subqueues=(
+            SubqueueStatus("loe:3.1", NOW - timedelta(minutes=5), date(2026, 10, 17)),
+            SubqueueStatus("4.1", NOW - timedelta(minutes=5), None),
+        ),
+        stale_after=timedelta(minutes=15),
+    )
+
+    assert render_status(report, NOW).endswith(
+        "\n<b>Тернопільська</b>\n"
+        "4.1: опитано 17.10 17:15, графіків ще немає\n"
+        "\n<b>Львівська</b>\n"
+        "3.1: опитано 17.10 17:15, останній графік на 17.10"
+    )
+
+
 def test_status_separates_the_last_poll_from_the_last_schedule() -> None:
     report = StatusReport(
         version="0.1.0",
@@ -546,6 +567,21 @@ def test_status_stale_threshold_comes_from_the_report() -> None:
     )
 
     assert "⚠️" not in render_status(report, NOW)
+
+
+def test_a_lviv_address_points_to_lvivoblenergo() -> None:
+    lviv = replace(SUBSCRIPTION, subqueues=("loe:3.1",), tracked_subqueues=("loe:3.1",))
+
+    text = render_day(lviv, [], TOMORROW, NOW)
+
+    assert "poweron.loe.lviv.ua" in text
+    assert "toe.com.ua" not in text
+
+
+def test_lviv_settings_have_no_reminder_mode_since_it_has_no_switching() -> None:
+    lviv = replace(SUBSCRIPTION, subqueues=("loe:3.1",), tracked_subqueues=("loe:3.1",))
+
+    assert "⏱" not in render_settings(lviv)
 
 
 def test_a_volyn_address_points_to_volynoblenergo_not_ternopil() -> None:

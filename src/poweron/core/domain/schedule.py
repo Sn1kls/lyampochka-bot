@@ -14,6 +14,11 @@ SLOT_STATES: Mapping[str, SlotState] = {
 SLOT_LENGTH = timedelta(minutes=30)
 
 
+def day_slots(codes: Iterable[str]) -> dict[str, str]:
+    """Raw codes of a day's half-hour slots, in order from 00:00, keyed by Kyiv start time."""
+    return {f"{index // 2:02d}:{index % 2 * 30:02d}": code for index, code in enumerate(codes)}
+
+
 def parse_slots(
     times: Mapping[str, str],
     day: date,

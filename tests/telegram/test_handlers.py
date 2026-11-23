@@ -38,7 +38,7 @@ from poweron.core.domain.models import (
     Street,
     Subscription,
 )
-from poweron.core.domain.providers import TOE, VOE
+from poweron.core.domain.providers import LOE, TOE, VOE
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.feedback import Feedback
@@ -87,6 +87,22 @@ class FakeVolynSource:
         self, city_id: int, street_id: int, building_name: str
     ) -> list[str]:
         return ["voe:6.1"] if building_name == "19" else []
+
+
+class FakeLvivSource:
+    async def cities(self) -> list[City]:
+        return [City(693, "Львів", "Львівська")]
+
+    async def streets(self, city_id: int) -> list[Street]:
+        return [Street(31831, "Ринок. пл.")]
+
+    async def buildings(self, city_id: int, street_id: int) -> list[Building]:
+        return [Building(9, "3", "loe:3.1")]
+
+    async def building_subqueues(
+        self, city_id: int, street_id: int, building_name: str
+    ) -> list[str]:
+        return ["loe:3.1"]
 
 
 class RecordingSession(BaseSession):
@@ -191,6 +207,7 @@ class Chat:
             {
                 TOE: Catalog(repository, FakeCatalogSource()),
                 VOE: Catalog(repository, FakeVolynSource(), cache_prefix="voe:"),
+                LOE: Catalog(repository, FakeLvivSource(), cache_prefix="loe:"),
             },
             Schedules(repository),
             feedback or Feedback(repository),
@@ -835,6 +852,23 @@ async def test_a_volyn_address_is_saved_with_its_namespaced_queue(chat: Chat) ->
     assert user_id is not None
     [home] = await chat.subscriptions.of_user(user_id)
     assert (home.city_name, home.subqueues) == ("Ківерці", ("voe:6.1",))
+
+
+async def test_a_lviv_address_is_saved_with_its_namespaced_queue(chat: Chat) -> None:
+    await chat.say("/start")
+    await chat.say("/add")
+    await chat.press(keyboards.Region(provider="loe"))
+    await chat.say("львів")
+    await chat.say("Ринок. пл.")
+    await chat.say("3")
+
+    assert "3.1" in chat.sent_texts()[-1]
+    assert "loe" not in chat.sent_texts()[-1]
+    await chat.press_button(texts.BUTTON_SAVE)
+    user_id = await chat.subscriptions.find_user("telegram", "1")
+    assert user_id is not None
+    [home] = await chat.subscriptions.of_user(user_id)
+    assert (home.city_name, home.subqueues) == ("Львів", ("loe:3.1",))
 
 
 async def test_a_volyn_building_outside_the_schedules_is_refused(chat: Chat) -> None:
