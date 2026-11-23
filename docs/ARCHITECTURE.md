@@ -32,7 +32,7 @@ oblenergo ──fetch──▶ Polling ──version + outbox rows (one transact
 | `adapters/loe_api/` | Lviv: schedule text per group (`schedule.py`) and the catalogue, both live from the oblenergo's APIs |
 | `adapters/paced_http.py` | shared by `voe_api` and `loe_api`: GETs at most once a second, with retries |
 | `adapters/db/` | `tables.py`, `repository.py` (`SqlRepository`), `voe_catalog.py` (Volyn `CatalogSource` over the imported table), Alembic `migrations/` |
-| `adapters/telegram/` | `handlers.py` (commands, `/add` wizard FSM), `render.py` (payload → HTML), `keyboards.py`, `texts.py` (all Ukrainian), `notifier.py` |
+| `adapters/telegram/` | `handlers.py` (commands, FSM for the `/add` wizard, rename and feedback), `render.py` (payload → HTML), `keyboards.py`, `texts.py` (all Ukrainian), `notifier.py` |
 | `import_voe.py` | CLI that loads the weekly Volyn address → queue export |
 | `scripts/` | live probes (`probe*.py`), Volyn export/sync, deploy, simulate, restore |
 

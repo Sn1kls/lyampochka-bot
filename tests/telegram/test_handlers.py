@@ -651,6 +651,7 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
         ["🪫 Нагадати до вимкнення: 30 хв"],
         ["🔋 Нагадати до повернення: без"],
         ["⏱ Нагадувати до: можливого 🟡"],
+        ["✏️ Змінити назву"],
     ]
 
     await chat.press_button("✅ Пуші про оновлення")
@@ -680,6 +681,7 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
         ["🪫 Нагадати до вимкнення: 60 хв"],
         ["🔋 Нагадати до повернення: 15 хв"],
         ["⏱ Нагадувати до: точного 🔴"],
+        ["✏️ Змінити назву"],
     ]
 
 
@@ -690,6 +692,90 @@ async def test_settings_of_an_address_chosen_from_several(chat: Chat) -> None:
     await chat.press(keyboards.SubscriptionChoice(action="settings", subscription_id=1))
 
     assert chat.edited_texts()[-1].startswith("⚙️ Налаштування для <b>Дім</b>")
+
+
+async def test_rename_an_address_from_its_settings(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+    await chat.say("/settings")
+
+    await chat.press_button(texts.BUTTON_RENAME)
+    assert chat.edited_texts()[-1] == texts.ASK_NEW_LABEL.format(label="Дім")
+
+    await chat.say("  Терник  ")
+
+    [home] = await chat.subscriptions.of_user(1)
+    assert home.label == "Терник"
+    assert chat.sent_texts()[-2] == texts.RENAMED.format(label="Терник")
+    assert chat.sent_texts()[-1].startswith("⚙️ Налаштування для <b>Терник</b>")
+
+    await chat.say("Ще одна назва")  # the dialogue is over, this is not a rename
+    [home] = await chat.subscriptions.of_user(1)
+    assert home.label == "Терник"
+
+
+async def test_rename_cuts_a_long_label(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+    await chat.press(keyboards.SubscriptionChoice(action="rename", subscription_id=1))
+
+    await chat.say("я" * 100)
+    [home] = await chat.subscriptions.of_user(1)
+    assert home.label == "я" * texts.LABEL_MAX_LENGTH
+
+
+async def test_rename_is_left_by_cancel_or_a_menu_button(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.press(keyboards.SubscriptionChoice(action="rename", subscription_id=1))
+    await chat.press_button(texts.BUTTON_CANCEL)
+    assert chat.edited_texts()[-1].startswith("⚙️ Налаштування для <b>Дім</b>")
+    await chat.say("Терник")
+
+    await chat.press(keyboards.SubscriptionChoice(action="rename", subscription_id=1))
+    await chat.say(texts.MENU_LIST)
+    await chat.say("Терник")
+
+    [home] = await chat.subscriptions.of_user(1)
+    assert home.label == "Дім"
+
+
+async def test_rename_asks_again_for_a_photo_or_an_invisible_name(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+    await chat.press(keyboards.SubscriptionChoice(action="rename", subscription_id=1))
+
+    await chat.send(photo=[{"file_id": "a", "file_unique_id": "a", "width": 1, "height": 1}])
+    await chat.send(text="\u3000")  # Telegram keeps it, Python's strip() does not
+
+    assert chat.sent_texts()[-2:] == [texts.ASK_NEW_LABEL.format(label="Дім")] * 2
+    await chat.say("Терник")
+    [home] = await chat.subscriptions.of_user(1)
+    assert home.label == "Терник"
+
+
+async def test_a_stale_rename_cancel_leaves_the_add_wizard_alone(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+    await chat.press(keyboards.SubscriptionChoice(action="rename", subscription_id=1))
+    await chat.say("Терник")
+
+    await chat.say("/add")
+    await chat.press(keyboards.Decision(action="rename", accepted=False))
+
+    assert chat.alerts()[-1] == texts.STALE_BUTTON
+
+
+async def test_rename_of_an_address_removed_meanwhile_is_reported(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+    await chat.press(keyboards.SubscriptionChoice(action="rename", subscription_id=1))
+    await chat.subscriptions.remove(1, 1)
+
+    await chat.say("Терник")
+
+    assert chat.sent_texts()[-1] == texts.ADDRESS_GONE
 
 
 async def test_setting_of_a_missing_address_is_reported_and_stores_nothing(chat: Chat) -> None:

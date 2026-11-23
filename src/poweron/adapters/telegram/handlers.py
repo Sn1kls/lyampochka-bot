@@ -76,6 +76,10 @@ class FeedbackFlow(StatesGroup):
     waiting = State()
 
 
+class RenameFlow(StatesGroup):
+    waiting = State()
+
+
 class AddFlow(StatesGroup):
     region = State()
     city = State()
@@ -477,6 +481,7 @@ async def _next_text(schedules: Schedules, subscription: Subscription) -> str:
 async def choose_subscription(
     callback: CallbackQuery,
     callback_data: keyboards.SubscriptionChoice,
+    state: FSMContext,
     user_id: int,
     subscriptions: Subscriptions,
     schedules: Schedules,
@@ -490,6 +495,15 @@ async def choose_subscription(
         await _respond(callback, await _next_text(schedules, subscription))
     elif callback_data.action == "settings":
         await _show_settings(callback, subscription)
+    elif callback_data.action == "rename":
+        await _reset(state)
+        await state.update_data(renaming=subscription.id, old_label=subscription.label)
+        await state.set_state(RenameFlow.waiting)
+        await _respond(
+            callback,
+            texts.ASK_NEW_LABEL.format(label=escape(subscription.label)),
+            keyboards.cancel_keyboard("rename"),
+        )
     elif callback_data.action == "remove":
         await _respond(
             callback,
@@ -502,6 +516,44 @@ async def choose_subscription(
             await _finish(callback, texts.REMOVED, keyboards.menu_keyboard())
         else:
             await _respond(callback, texts.ADDRESS_GONE)
+
+
+@router.callback_query(RenameFlow.waiting, keyboards.Decision.filter(F.action == "rename"))
+async def cancel_rename(
+    callback: CallbackQuery, state: FSMContext, user_id: int, subscriptions: Subscriptions
+) -> None:
+    subscription_id = (await state.get_data())["renaming"]
+    await _reset(state)
+    subscription = await subscriptions.get(user_id, subscription_id)
+    if subscription is None:
+        await _respond(callback, texts.ADDRESS_GONE)
+    else:
+        await _show_settings(callback, subscription)
+
+
+@router.message(RenameFlow.waiting, _not_a_command)
+async def rename_address(
+    message: Message, state: FSMContext, user_id: int, subscriptions: Subscriptions
+) -> None:
+    data = await state.get_data()
+    label = _typed_label(message)
+    if not label:  # a photo, a sticker, or only characters strip() removes
+        await message.answer(
+            texts.ASK_NEW_LABEL.format(label=escape(data["old_label"])),
+            reply_markup=keyboards.cancel_keyboard("rename"),
+        )
+        return
+    await _reset(state)
+    renamed = await subscriptions.rename(user_id, data["renaming"], label)
+    if renamed is None:
+        await message.answer(texts.ADDRESS_GONE)
+        return
+    await message.answer(texts.RENAMED.format(label=escape(label)))
+    await _show_settings(message, renamed)
+
+
+def _typed_label(message: Message) -> str:
+    return (message.text or "").strip()[: texts.LABEL_MAX_LENGTH].strip()
 
 
 @router.callback_query(keyboards.SettingChange.filter())
@@ -894,7 +946,7 @@ async def _show_confirm(event: Message | CallbackQuery, state: FSMContext) -> No
 
 @router.message(AddFlow.confirm, F.text)
 async def rename(message: Message, state: FSMContext) -> None:
-    label = (message.text or "").strip()[: texts.LABEL_MAX_LENGTH]
+    label = _typed_label(message)
     if label:
         await state.update_data(label=label)
     await _show_confirm(message, state)
