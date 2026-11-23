@@ -281,28 +281,31 @@ async def test_exact_mode_skips_an_outage_that_is_only_possible(
     assert await queued(repository) == []
 
 
-async def test_exact_mode_counts_down_to_the_sure_return_of_power(
+async def test_exact_mode_still_reminds_of_the_possible_return_of_power(
     repository: SqlRepository,
     reminders: Reminders,
     subscriptions: Subscriptions,
     subscription: Subscription,
 ) -> None:
+    # Power often comes back as switching starts, so a countdown to the sure moment is too late.
     await save(repository, day_schedule(outages=SWITCHING_THEN_OUTAGE))
     await subscriptions.update_settings(
         subscription.user_id,
         subscription.id,
-        remind_before_off_min=0,
+        remind_before_off_min=15,
         remind_before_on_min=15,
         remind_exact=True,
     )
 
-    await reminders.tick(kyiv(TODAY, 20, 20))
-    assert await queued(repository) == []
+    for minute in (19 * 60 + 20, 19 * 60 + 50, 20 * 60 + 20):
+        await reminders.tick(kyiv(TODAY, minute // 60, minute % 60))
 
-    await reminders.tick(kyiv(TODAY, 20, 50))
-    [message] = await queued(repository)
-    assert message.kind is MessageKind.REMINDER_ON
-    assert message.payload["earliest"] == message.payload["latest"] == kyiv(TODAY, 21).isoformat()
+    off, on = await queued(repository)
+    assert off.kind is MessageKind.REMINDER_OFF
+    assert off.payload["earliest"] == off.payload["latest"] == kyiv(TODAY, 20).isoformat()
+    assert on.kind is MessageKind.REMINDER_ON
+    assert on.payload["earliest"] == kyiv(TODAY, 20, 30).isoformat()
+    assert on.payload["latest"] == kyiv(TODAY, 21).isoformat()
 
 
 async def test_payload_counts_the_users_addresses(

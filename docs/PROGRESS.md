@@ -314,3 +314,10 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - Switching the mode right before an outage can bring a second reminder for it: the dedupe key holds the start of 🟡 in one mode and of 🔴 in the other.
   - A 🟡 right after midnight does not see yesterday's 🔴, so no exact «ДАДУТЬ» reminder for it (pre-existing for the possible mode too).
   - `remind_exact` sent for a Volyn address by a forged callback is stored and hidden; it changes nothing there.
+
+## 2026-11-23: Exact mode for outages only
+
+- Done (the owner's request): `remind_exact` now changes only 🪫 reminders. A 🔋 reminder always counts down to the start of 🟡 and shows both times («з 12:30, точно – о 13:00»).
+- Why: on 23.11 on 4.1, power came back at 12:30, as 🟡 started. The exact reminder came at 12:45, after the power was already back. The setting is labelled «до точного відключення» anyway.
+- Known limit: a 🔋 reminder sent in the old exact way just before the deploy can be followed by one more in the new way for the same return (different dedupe key).
+- Known limit: a 🟡 published after it has already started gets no 🔋 reminder, in either mode, since power may come back any minute.
