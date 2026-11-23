@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import random
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
@@ -11,20 +10,16 @@ from typing import Annotated, Any
 import httpx
 from pydantic import AwareDatetime, BaseModel, Field, StringConstraints, ValidationError
 
+from poweron.adapters.paced_http import PacedHttp
 from poweron.adapters.voe_api.image import SUBQUEUES, decode_schedule
 from poweron.core.domain.models import KYIV, Address, DaySchedule
 from poweron.core.domain.providers import plain_subqueue
-from poweron.core.ports import ApiSchemaError, SourceError, SourceUnavailable
+from poweron.core.ports import ApiSchemaError, SourceError
 
-ATTEMPTS = 3
-RETRY_STATUSES = {429, 500, 502, 503, 504}
-MIN_REQUEST_INTERVAL = 1.0
-MAX_RETRY_AFTER = 60.0
 MAX_PAGES = 10
 MAX_IMAGE_BYTES = 5_000_000
 LIST_CACHE_SECONDS = 60.0
 IMAGES_KEPT = 8
-NOT_JSON = "not JSON"
 
 logger = logging.getLogger(__name__)
 
@@ -53,16 +48,17 @@ class VoeClient:
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
-        self._http = httpx.AsyncClient(
-            base_url=base_url,
-            headers={"User-Agent": f"poweron-bot/{version('poweron')} (personal use)"},
-            timeout=30,
+        self._http = PacedHttp(
+            httpx.AsyncClient(
+                base_url=base_url,
+                headers={"User-Agent": f"poweron-bot/{version('poweron')} (personal use)"},
+                timeout=30,
+            ),
+            monotonic,
+            sleep,
         )
         self._now = now
         self._monotonic = monotonic
-        self._sleep = sleep
-        self._lock = asyncio.Lock()
-        self._last_request_at = float("-inf")
         self._cache_lock = asyncio.Lock()
         self._current: tuple[float, date, dict[date, tuple[datetime, dict[str, str]]]] | None = None
         self._images: OrderedDict[str, dict[str, str]] = OrderedDict()
@@ -131,7 +127,7 @@ class VoeClient:
         }
         items: list[_Item] = []
         for page_number in range(1, MAX_PAGES + 1):
-            response = await self._get(
+            response = await self._http.get(
                 "/api/archive_gpv_graphs",
                 params | {"page": page_number},
                 {"Accept": "application/ld+json"},
@@ -151,7 +147,7 @@ class VoeClient:
         if content_url in self._images:
             self._images.move_to_end(content_url)
             return self._images[content_url]
-        response = await self._get(content_url, {}, {"Accept": "image/png"})
+        response = await self._http.get(content_url, {}, {"Accept": "image/png"})
         if len(response.content) > MAX_IMAGE_BYTES:
             raise ApiSchemaError(f"{content_url}: image too large")
         grid = await asyncio.to_thread(decode_schedule, response.content)
@@ -159,47 +155,3 @@ class VoeClient:
         while len(self._images) > IMAGES_KEPT:
             self._images.popitem(last=False)
         return grid
-
-    async def _get(
-        self, path: str, params: dict[str, Any], headers: dict[str, str], *, json: bool = False
-    ) -> httpx.Response:
-        async with self._lock:
-            for attempt in range(1, ATTEMPTS + 1):
-                wait = self._last_request_at + MIN_REQUEST_INTERVAL - self._monotonic()
-                if wait > 0:
-                    await self._sleep(wait)
-                try:
-                    response = await self._http.get(path, params=params, headers=headers)
-                except httpx.RequestError as error:
-                    failure = f"{type(error).__name__}: {error}"
-                    delay = _backoff(attempt)
-                else:
-                    if response.status_code == 200:
-                        try:
-                            if json:
-                                response.json()
-                            return response
-                        except ValueError:  # a server coming back up can answer 200 with a stub
-                            failure = NOT_JSON
-                            delay = _backoff(attempt)
-                    elif response.status_code not in RETRY_STATUSES:
-                        raise SourceUnavailable(f"{path}: HTTP {response.status_code}")
-                    else:
-                        failure = f"HTTP {response.status_code}"
-                        delay = _retry_after(response) or _backoff(attempt)
-                finally:
-                    self._last_request_at = self._monotonic()
-                if attempt < ATTEMPTS:
-                    await self._sleep(delay)
-            if failure == NOT_JSON:
-                raise ApiSchemaError(f"{path}: {NOT_JSON} after {ATTEMPTS} attempts")
-            raise SourceUnavailable(f"{path}: {failure} after {ATTEMPTS} attempts")
-
-
-def _backoff(attempt: int) -> float:
-    return float(2**attempt) + random.uniform(0, 1)
-
-
-def _retry_after(response: httpx.Response) -> float | None:
-    value = response.headers.get("Retry-After", "")
-    return min(float(value), MAX_RETRY_AFTER) if value.isdigit() else None

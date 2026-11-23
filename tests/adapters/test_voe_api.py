@@ -7,7 +7,8 @@ import httpx
 import pytest
 import respx
 
-from poweron.adapters.voe_api.client import ATTEMPTS, VoeClient
+from poweron.adapters.paced_http import ATTEMPTS
+from poweron.adapters.voe_api.client import VoeClient
 from poweron.adapters.voe_api.image import decode_schedule
 from poweron.core.domain.models import KYIV, Address
 from poweron.core.ports import ApiSchemaError, SourceUnavailable

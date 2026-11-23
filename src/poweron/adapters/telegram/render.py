@@ -13,7 +13,7 @@ from poweron.core.domain.models import (
     SubqueueStatus,
     Subscription,
 )
-from poweron.core.domain.providers import TOE, VOE, plain_subqueue, provider_of
+from poweron.core.domain.providers import LOE, TOE, VOE, plain_subqueue, provider_of
 
 from . import texts
 
@@ -28,12 +28,12 @@ STATE_LINES = {
 
 
 # Regions in display order, by provider.
-REGIONS = {TOE: texts.REGION_TERNOPIL, VOE: texts.REGION_VOLYN}
+REGIONS = {TOE: texts.REGION_TERNOPIL, VOE: texts.REGION_VOLYN, LOE: texts.REGION_LVIV}
 
 
 def _site(provider: str) -> tuple[str, str]:
     """The oblenergo's schedule page."""
-    return {TOE: texts.SITE_TERNOPIL, VOE: texts.SITE_VOLYN}[provider]
+    return {TOE: texts.SITE_TERNOPIL, VOE: texts.SITE_VOLYN, LOE: texts.SITE_LVIV}[provider]
 
 
 def _note(provider: str) -> str:

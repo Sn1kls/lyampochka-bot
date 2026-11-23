@@ -10,6 +10,7 @@ from aiogram import Bot, Dispatcher
 from poweron.adapters.db.repository import SqlRepository, create_engine, run_migrations
 from poweron.adapters.db.voe_catalog import VoeCatalog
 from poweron.adapters.healthcheck import HealthcheckPinger
+from poweron.adapters.loe_api.client import LoeClient
 from poweron.adapters.telegram.alerts import TelegramAdminAlerter
 from poweron.adapters.telegram.backup import TelegramBackupSink
 from poweron.adapters.telegram.bot import build_dispatcher, create_bot
@@ -17,7 +18,7 @@ from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.adapters.toe_api.client import ToeClient
 from poweron.adapters.voe_api.client import VoeClient
 from poweron.config import Settings
-from poweron.core.domain.providers import TOE, VOE, VOE_CACHE_PREFIX
+from poweron.core.domain.providers import LOE, LOE_CACHE_PREFIX, TOE, VOE, VOE_CACHE_PREFIX
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.backups import Backups
 from poweron.core.services.catalog import Catalog
@@ -63,6 +64,7 @@ async def run(role: str, settings: Settings) -> None:
     toe_client = ToeClient(settings.api_base, contact=settings.contact)
     voe_client = VoeClient(settings.voe_api_base)
     voe_catalog = VoeCatalog(engine)
+    loe_client = LoeClient()
     bot = create_bot(settings.bot_token.get_secret_value())
     alerts = (
         None
@@ -84,6 +86,7 @@ async def run(role: str, settings: Settings) -> None:
                     {
                         TOE: Catalog(repository, toe_client),
                         VOE: Catalog(repository, voe_catalog, cache_prefix=VOE_CACHE_PREFIX),
+                        LOE: Catalog(repository, loe_client, cache_prefix=LOE_CACHE_PREFIX),
                     },
                     Schedules(repository),
                     Feedback(repository),
@@ -104,12 +107,18 @@ async def run(role: str, settings: Settings) -> None:
                     run_worker(
                         Polling(
                             repository,
-                            SchedulesByProvider({TOE: toe_client, VOE: voe_client}),
+                            SchedulesByProvider(
+                                {TOE: toe_client, VOE: voe_client, LOE: loe_client}
+                            ),
                             alerts,
                         ),
                         notifications,
                         Reminders(repository, Schedules(repository)),
-                        SubqueueChecker(repository, {TOE: toe_client, VOE: voe_catalog}, alerts),
+                        SubqueueChecker(
+                            repository,
+                            {TOE: toe_client, VOE: voe_catalog, LOE: loe_client},
+                            alerts,
+                        ),
                         PlannedWorks(repository, toe_client, alerts),
                         settings.poll_interval_sec,
                         stop,
@@ -121,6 +130,7 @@ async def run(role: str, settings: Settings) -> None:
     finally:
         await toe_client.aclose()
         await voe_client.aclose()
+        await loe_client.aclose()
         await bot.session.close()
         await engine.dispose()
 

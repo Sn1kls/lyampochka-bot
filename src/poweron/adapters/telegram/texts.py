@@ -5,6 +5,7 @@ SITE_VOLYN = (
     "https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/hrafik-vidkliuchen/",
     "energy.volyn.ua",
 )
+SITE_LVIV = ("https://poweron.loe.lviv.ua", "poweron.loe.lviv.ua")
 
 MENU_SCHEDULE = "📅 Графік"
 MENU_NEXT = "⏭ Що далі"
@@ -48,6 +49,7 @@ COMMANDS = (
 ASK_REGION = "У якій області адреса?"
 REGION_TERNOPIL = "Тернопільська"
 REGION_VOLYN = "Волинська"
+REGION_LVIV = "Львівська"
 ASK_CITY = "З якого ти міста чи села? Напиши кілька літер назви."
 CHOOSE_CITY = "Обери зі списку або напиши назву ще раз:"
 ASK_STREET = "Місто: <b>{city}</b>.\nТепер напиши кілька літер назви вулиці."
