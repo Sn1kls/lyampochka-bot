@@ -322,15 +322,14 @@ async def ask_feedback(
     if admin_chat_id is None:
         await message.answer(texts.FEEDBACK_UNAVAILABLE)
         return
-    if await _over_limit(message, feedback, _feedback_sender(event_from_user)):
+    if await _over_limit(message, feedback.retry_after(_feedback_sender(event_from_user), _now())):
         return
     await _reset(state)
     await state.set_state(FeedbackFlow.waiting)
     await message.answer(texts.FEEDBACK_ASK, reply_markup=keyboards.cancel_keyboard("feedback"))
 
 
-async def _over_limit(message: Message, feedback: Feedback, sender: str) -> bool:
-    wait = feedback.retry_after(sender, _now())
+async def _over_limit(message: Message, wait: timedelta | None) -> bool:
     if wait is not None:
         minutes = math.ceil(wait / timedelta(minutes=1))
         await message.answer(texts.FEEDBACK_LIMIT.format(minutes=minutes))
@@ -389,16 +388,21 @@ async def _send_feedback(
     admin_chat_id: int,
 ) -> None:
     await _reset(state)
-    sender = _feedback_sender(event_from_user)
-    if await _over_limit(message, feedback, sender):
+    sender, admitted_at = _feedback_sender(event_from_user), _now()
+    if await _over_limit(message, feedback.admit(sender, admitted_at)):
         return
     try:
         copied = await bot.copy_messages(admin_chat_id, message.chat.id, message_ids)
     except TelegramBadRequest as error:  # the admin chat is unreachable, not the user's fault
         logger.error("feedback could not reach the admin chat: %s", error.message)
+        feedback.refund(sender, admitted_at)
         await message.answer(texts.FEEDBACK_UNAVAILABLE)
         return
+    except BaseException:  # nothing reached the admin either
+        feedback.refund(sender, admitted_at)
+        raise
     if not copied:  # Telegram skips what it cannot copy: invoices, quizzes with a hidden answer…
+        feedback.refund(sender, admitted_at)
         await state.set_state(FeedbackFlow.waiting)  # the answer asks for another message
         await message.answer(texts.FEEDBACK_NOT_COPYABLE)
         return
@@ -420,7 +424,6 @@ async def _send_feedback(
         logger.warning("feedback header was not sent: %s", error.message)
     await feedback.record(
         user_id,
-        sender,
         message_ids[0],
         [message_ref(admin_chat_id, admin_id) for admin_id in admin_ids],
         _now(),

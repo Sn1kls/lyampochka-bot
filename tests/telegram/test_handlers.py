@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -131,6 +132,7 @@ class RecordingSession(BaseSession):
         method: TelegramMethod[Any],
         timeout: int | None = None,  # noqa: ASYNC109 (signature of BaseSession)
     ) -> Any:
+        await asyncio.sleep(0)  # a real request lets other updates run meanwhile
         self.calls.append(method)
         if type(method) in self.errors:
             self.results.append(None)
