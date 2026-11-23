@@ -4,7 +4,7 @@ The current shape of the code, for an agent starting a session. Rules live in `C
 
 ## What it does
 
-Users add an address. Each address maps to one or more **subqueues** (`4.1`). The worker polls each subqueue's schedule, stores a new **version** when it changes, and queues pushes and reminders in the **outbox**. The Telegram notifier sends them. Regions: Ternopil (`toe`), Volyn (`voe`).
+Users add an address. Each address maps to one or more **subqueues** (`4.1`). The worker polls each subqueue's schedule, stores a new **version** when it changes, and queues pushes and reminders in the **outbox**. The Telegram notifier sends them. Regions: Ternopil (`toe`), Volyn (`voe`), Lviv (`loe`).
 
 ## Flow
 
@@ -29,6 +29,8 @@ oblenergo ──fetch──▶ Polling ──version + outbox rows (one transact
 | `core/services/` | one class per job: `polling`, `reminders`, `groups` (`SubqueueChecker`, daily queue re-check), `planned_works`, `notifications` (outbox dispatch), `subscriptions`, `catalog`, `schedules`, `feedback`, `status`, `alerts`, `backups` |
 | `adapters/toe_api/` | Ternopil JSON API: schedules, catalogue, planned works, circuit breaker |
 | `adapters/voe_api/` | Volyn: archive PNGs decoded from pixels (`image.py`) |
+| `adapters/loe_api/` | Lviv: schedule text per group (`schedule.py`) and the catalogue, both live from the oblenergo's APIs |
+| `adapters/paced_http.py` | shared by `voe_api` and `loe_api`: GETs at most once a second, with retries |
 | `adapters/db/` | `tables.py`, `repository.py` (`SqlRepository`), `voe_catalog.py` (Volyn `CatalogSource` over the imported table), Alembic `migrations/` |
 | `adapters/telegram/` | `handlers.py` (commands, FSM for the `/add` wizard, rename and feedback), `render.py` (payload → HTML), `keyboards.py`, `texts.py` (all Ukrainian), `notifier.py` |
 | `import_voe.py` | CLI that loads the weekly Volyn address → queue export |
@@ -47,7 +49,7 @@ Import-linter (`pyproject.toml`) enforces it: `core` sees only stdlib and pydant
 
 ## Adding a region
 
-Volyn is the worked example (`docs/volyn-notes.md`, PR `feature/volyn-oblast`).
+Worked examples: Volyn (`docs/volyn-notes.md`; imported catalogue, image schedules) and Lviv (`docs/lviv-notes.md`; everything live, the closest to a plain new region).
 
 1. **Research first**: `docs/<region>-notes.md` and a stdlib probe `scripts/probe_<region>.py` (1 request/s, public street names only), with fixtures under `tests/fixtures/`. Find the schedule source, the address → queue source, and whether **the production server** gets an answer (`curl` over ssh). energy.volyn.ua challenges the server with Cloudflare; we never get around such a challenge.
 2. `core/domain/providers.py`: a region constant.

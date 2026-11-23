@@ -5,6 +5,7 @@ SITE_VOLYN = (
     "https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/hrafik-vidkliuchen/",
     "energy.volyn.ua",
 )
+SITE_LVIV = ("https://poweron.loe.lviv.ua", "poweron.loe.lviv.ua")
 
 MENU_SCHEDULE = "📅 Графік"
 MENU_NEXT = "⏭ Що далі"
@@ -22,12 +23,13 @@ GREETING = (
 ADD_FIRST = "Почнімо з твоєї адреси 👇"
 # Profile "about" (≤120 chars) and the empty-chat description before Start (≤512 chars).
 ABOUT = (
-    "Графіки відключень світла на Тернопільщині й Волині: "
+    "Графіки відключень світла на Тернопільщині, Волині й Львівщині: "
     "сповіщення про зміни й нагадування перед вимкненням 💡"
 )
 DESCRIPTION = (
     f"Привіт! Я «{BRAND}» 💡\n\n"
-    "Стежу за графіками відключень світла Тернопільобленерго та Волиньобленерго.\n\n"
+    "Стежу за графіками відключень світла Тернопільобленерго, Волиньобленерго "
+    "та Львівобленерго.\n\n"
     "• Покажу графік для твоєї адреси на сьогодні й завтра\n"
     "• Напишу, щойно графік зміниться\n"
     "• Нагадаю перед вимкненням\n\n"
@@ -48,6 +50,7 @@ COMMANDS = (
 ASK_REGION = "У якій області адреса?"
 REGION_TERNOPIL = "Тернопільська"
 REGION_VOLYN = "Волинська"
+REGION_LVIV = "Львівська"
 ASK_CITY = "З якого ти міста чи села? Напиши кілька літер назви."
 CHOOSE_CITY = "Обери зі списку або напиши назву ще раз:"
 ASK_STREET = "Місто: <b>{city}</b>.\nТепер напиши кілька літер назви вулиці."

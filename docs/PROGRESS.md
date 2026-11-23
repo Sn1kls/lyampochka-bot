@@ -338,3 +338,13 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Added `scripts/probe_lviv.py` and fixtures `tests/fixtures/loe_*.json` (one public address, no account numbers).
 - Open: when «Tomorrow» is filled and how both items change at midnight.
 - Next step: grill the open design points, then a plan for `feature/lviv-oblast`.
+
+## 2026-11-23: Lviv region
+
+- Done: Lvivoblenergo schedules for the whole oblast; details in `docs/lviv-notes.md` ("How it is built").
+  - `adapters/loe_api`: the schedule text is parsed per group; the catalogue is read live from the inneti API. Everything answers the production server, so no Mac export.
+  - `/add` offers «Львівська» as a third region; keys are `loe:3.1`, so no migration.
+  - The pacing/retry loop of `VoeClient` moved to `adapters/paced_http.py` and is shared by both clients.
+- Decisions (owner): catalogue live with the usual 24 h cache; «Не входить» next to a queue counts as the queue, two queues are offered for picking; the hromada is shown next to the settlement; no planned works for now.
+- Checked live: today's text and пл. Ринок (3 → 3.1, 9 → 3.1 + 4.1) through the real client.
+- Known limits: when «Tomorrow» fills up and what both items do at midnight is still unobserved; the parser relies on the day in the text either way. Messy street names are shown as the oblenergo writes them.

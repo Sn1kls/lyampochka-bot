@@ -7,11 +7,13 @@ import httpx
 import pytest
 import respx
 
-from poweron.adapters.voe_api.client import ATTEMPTS, VoeClient
+from poweron.adapters.paced_http import ATTEMPTS
+from poweron.adapters.voe_api.client import VoeClient
 from poweron.adapters.voe_api.image import decode_schedule
 from poweron.core.domain.models import KYIV, Address
 from poweron.core.ports import ApiSchemaError, SourceUnavailable
 from tests.conftest import FIXTURES, load_fixture
+from tests.fakes import FakeClock, blocks
 
 BASE = "https://voe.test"
 LIST_URL = f"{BASE}/api/archive_gpv_graphs"
@@ -24,23 +26,6 @@ ARCHIVE = load_fixture("voe_archive_2026-01-14_16.json")
 
 def png(name: str) -> bytes:
     return (FIXTURES / name).read_bytes()
-
-
-def clock_time(index: int) -> str:
-    return f"{index // 2:02d}:{index % 2 * 30:02d}"
-
-
-def blocks(codes: str) -> list[tuple[str, str]]:
-    """OFF stretches as ("HH:MM", "HH:MM") pairs."""
-    found = []
-    start = None
-    for index, code in enumerate(codes + "0"):
-        if code == "1" and start is None:
-            start = index
-        if code == "0" and start is not None:
-            found.append((clock_time(start), clock_time(index)))
-            start = None
-    return found
 
 
 def tiny_png(colour: tuple[int, int, int], size: int = 4) -> bytes:
@@ -99,19 +84,6 @@ def test_decodes_an_all_on_day() -> None:
 def test_a_bad_image_is_a_schema_error(content: bytes) -> None:
     with pytest.raises(ApiSchemaError):
         decode_schedule(content)
-
-
-class FakeClock:
-    def __init__(self) -> None:
-        self.monotonic_now = 1000.0
-        self.sleeps: list[float] = []
-
-    def monotonic(self) -> float:
-        return self.monotonic_now
-
-    async def sleep(self, seconds: float) -> None:
-        self.sleeps.append(seconds)
-        self.monotonic_now += seconds
 
 
 @pytest.fixture
