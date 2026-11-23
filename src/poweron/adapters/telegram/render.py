@@ -201,9 +201,14 @@ def _next_sentence(event: NextEvent, now: datetime) -> str:
         template = texts.NEXT_OFF if event.earliest == event.latest else texts.NEXT_OFF_WINDOW
     return template.format(
         earliest=f"{earliest:%H:%M}",
-        latest=f"{latest:%H:%M}" if latest else "",
+        at_latest=_at(latest, f"{latest:%H:%M}") if latest else "",
         delta=_duration(max(event.earliest - now, timedelta())),
     )
+
+
+def _at(moment: datetime, time: str) -> str:
+    """«о 10:00», but «об 11:00»; `time` may list several times starting with `moment`."""
+    return (texts.AT_ELEVEN if moment.hour == 11 else texts.AT).format(time=time)
 
 
 def render_update(payload: Mapping[str, Any], now: datetime) -> str:
@@ -213,10 +218,9 @@ def render_update(payload: Mapping[str, Any], now: datetime) -> str:
     parts = [texts.UPDATE_TITLE.format(day=day_name, target=_for(payload))]
     # Messages queued before this key existed have none.
     if stale := payload.get("stale_reminders"):
-        times = ", ".join(
-            f"{datetime.fromisoformat(start).astimezone(KYIV):%H:%M}" for start in stale
-        )
-        parts.append(texts.UPDATE_STALE_REMINDER.format(times=times))
+        starts = [datetime.fromisoformat(start).astimezone(KYIV) for start in stale]
+        times = ", ".join(f"{start:%H:%M}" for start in starts)
+        parts.append(texts.UPDATE_STALE_REMINDER.format(at_times=_at(starts[0], times)))
     # On a brand-new day everything is "added"; marking it all would mean nothing.
     added = [] if payload["previous"] is None else _intervals(payload["added"])
     lines = [
@@ -271,7 +275,7 @@ def render_reminder(payload: Mapping[str, Any], *, power_on: bool) -> str:
     text = template.format(
         minutes=payload["minutes"],
         earliest=f"{earliest:%H:%M}",
-        latest=f"{latest:%H:%M}" if latest else "",
+        at_latest=_at(latest, f"{latest:%H:%M}") if latest else "",
     )
     return text + _for(payload)
 
