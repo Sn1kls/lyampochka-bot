@@ -30,16 +30,23 @@ class Feedback:
             received.popleft()
         return received[0] + self._window - now if len(received) >= self._limit else None
 
+    def admit(self, sender: str, now: datetime) -> timedelta | None:
+        """`retry_after` that also takes the free slot, so feedback sent at once cannot all pass."""
+        wait = self.retry_after(sender, now)
+        if wait is None:
+            self._received[sender].append(now)
+        return wait
+
+    def refund(self, sender: str, admitted_at: datetime) -> None:
+        """Frees the slot `admit` took when nothing reached the admin."""
+        received = self._received[sender]
+        if admitted_at in received:  # unless it has aged out meanwhile
+            received.remove(admitted_at)
+
     async def record(
-        self,
-        user_id: int,
-        sender: str,
-        source_message_id: int,
-        refs: Sequence[str],
-        now: datetime,
+        self, user_id: int, source_message_id: int, refs: Sequence[str], now: datetime
     ) -> None:
-        """Counts one feedback and remembers its admin-side copies."""
-        self._received[sender].append(now)
+        """Remembers the admin-side copies of one feedback."""
         await self._repository.add_feedback_messages(user_id, source_message_id, refs, now)
 
     async def thread(self, ref: str) -> FeedbackThread | None:
