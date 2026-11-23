@@ -156,7 +156,7 @@ subscriptions(
   notify_on_update DEFAULT true,
   remind_before_off_min DEFAULT 30,           -- 0 = вимк.
   remind_before_on_min  DEFAULT 0,
-  remind_exact DEFAULT false,                 -- count down to the sure change, not the possible one
+  remind_exact DEFAULT false,                 -- outage reminders count down to the sure OFF; power-on ones never
   created_at, cherg_checked_at)
 
 schedule_versions(

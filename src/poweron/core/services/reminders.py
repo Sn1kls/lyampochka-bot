@@ -16,8 +16,10 @@ class Reminders:
     Payload of `reminder_off` / `reminder_on`: {"subscription_id": int, "label": str,
     "cherg_gpv": str, "queue_count": int (tracked queues), "address_count": int (the user's
     addresses), "minutes": int (left until `earliest`, rounded up), "earliest": ISO datetime,
-    "latest": ISO datetime | None} — the event window of NextEvent. In `remind_exact` mode the
-    window shrinks to its sure moment, and an event that is only possible is not reminded.
+    "latest": ISO datetime | None} — the event window of NextEvent. In `remind_exact` mode an
+    outage window shrinks to its sure moment, and an outage that is only possible is not
+    reminded. The return of power is always reminded from its possible moment: power often
+    comes back as switching starts, so a countdown to the sure moment would come too late.
     """
 
     def __init__(self, repository: Repository, schedules: Schedules) -> None:
@@ -27,21 +29,27 @@ class Reminders:
     async def tick(self, now: datetime) -> None:
         """Remind once per event, from `earliest - setting` until the event starts."""
         events_by_queue: dict[tuple[str, bool], list[NextEvent]] = {}
+
+        async def events(cherg_gpv: str, *, exact: bool) -> list[NextEvent]:
+            if (cherg_gpv, exact) not in events_by_queue:
+                events_by_queue[cherg_gpv, exact] = await self._schedules.queue_events(
+                    cherg_gpv, now, exact=exact
+                )
+            return events_by_queue[cherg_gpv, exact]
+
         messages = []
         subscriptions = await self._repository.all_subscriptions()
         address_counts = Counter(subscription.user_id for subscription in subscriptions)
         for subscription in subscriptions:
             try:
                 for cherg_gpv in subscription.tracked_subqueues:
-                    key = (cherg_gpv, subscription.remind_exact)
-                    if key not in events_by_queue:
-                        events_by_queue[key] = await self._schedules.queue_events(
-                            cherg_gpv, now, exact=subscription.remind_exact
-                        )
+                    possible = await events(cherg_gpv, exact=False)
+                    outages = await events(cherg_gpv, exact=subscription.remind_exact)
                     messages += _due_messages(
                         subscription,
                         cherg_gpv,
-                        events_by_queue[key],
+                        [event for event in outages if not event.power_on]
+                        + [event for event in possible if event.power_on],
                         now,
                         address_counts[subscription.user_id],
                     )

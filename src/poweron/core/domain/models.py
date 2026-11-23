@@ -99,7 +99,7 @@ class Subscription:
     remind_before_off_min: int
     remind_before_on_min: int
     created_at: datetime
-    remind_exact: bool = False  # count reminders down to the sure change, not the possible one
+    remind_exact: bool = False  # outage reminders count down to the sure OFF, not the possible one
 
     @property
     def provider(self) -> str:
