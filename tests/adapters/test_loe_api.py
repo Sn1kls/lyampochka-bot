@@ -324,3 +324,41 @@ async def test_a_recheck_over_buildings_of_two_streets_asks_each_street_once(
         await client.building_subqueues(693, street_id, "9")
 
     assert route.call_count == 2
+
+
+def test_spacing_and_inline_tags_in_a_group_line_are_read() -> None:
+    lines = all_groups()
+    lines[0] = "Група 1.1.&nbsp;<b>Електроенергії  немає</b> з 16:30 до 20:00."
+
+    groups = parse_schedule(schedule_html(*lines)).groups
+
+    assert blocks(groups["1.1"]) == [("16:30", "20:00")]
+
+
+@respx.mock
+async def test_a_broken_tomorrow_does_not_hide_today(client: LoeClient) -> None:
+    mock_items(TODAY_ITEM, item(schedule_html(*all_groups()[:-1])))
+
+    [schedule] = await client.fetch_schedules(ADDRESS, "loe:1.1")
+
+    assert schedule.day == date(2026, 11, 23)
+
+
+@respx.mock
+async def test_both_items_broken_is_a_schema_error(client: LoeClient) -> None:
+    broken = item(schedule_html(*all_groups()[:-1]))
+    mock_items(broken, broken)
+
+    with pytest.raises(ApiSchemaError):
+        await client.fetch_schedules(ADDRESS, "loe:1.1")
+
+
+@respx.mock
+async def test_a_queue_value_that_is_not_a_group_is_no_queue(client: LoeClient) -> None:
+    respx.get(f"{POWER_API}/pw_accounts").respond(
+        json=[account("9", "не входить"), account("9", "3"), account("8", " 2.2 ")]
+    )
+
+    buildings = {building.name: building.cherg_gpv for building in await client.buildings(693, 1)}
+
+    assert buildings == {"9": None, "8": "loe:2.2"}

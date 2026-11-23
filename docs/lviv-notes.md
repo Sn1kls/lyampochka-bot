@@ -71,10 +71,10 @@ From the production VM (Oracle, Stockholm), with an honest User-Agent, on 2026-1
 
 ## How it is built
 
-- `adapters/loe_api/schedule.py`: `parse_schedule` turns the text into 12 groups × 48 slot codes (toe's `"1"` OFF, `"0"` ON). Strict on group lines: a missing, repeated or unreadable group, or an empty, reversed or off-grid interval, is an `ApiSchemaError`. Other lines (a note) are logged and skipped.
+- `adapters/loe_api/schedule.py`: `parse_schedule` turns the text into 12 groups × 48 slot codes (toe's `"1"` OFF, `"0"` ON). Spacing (`&nbsp;`) and inline tags are normalised away first. Strict on group lines: a missing, repeated or unreadable group, or an empty, reversed or off-grid interval, is an `ApiSchemaError`. Other lines (a note) are logged and skipped.
 - `adapters/loe_api/client.py`: `LoeClient` is both the Lviv `ScheduleSource` and `CatalogSource`.
-  - Schedules: «Today» + «Tomorrow» per poll pass, cached 60 s, so 12 subqueues cost 2 requests. A day that is neither today nor tomorrow is dropped; when both items carry the same day, the later «станом на» wins.
-  - Catalogue: `pw_cities` (hromada as `otg_name`), `pw_streets`, and `pw_accounts` gathered by building name: «Не входить» next to a queue counts as that queue, a nameless row is dropped. Building ids are crc32 of the name. The last street is cached 60 s, so `/add` asks it once.
+  - Schedules: «Today» + «Tomorrow» per poll pass, cached 60 s, so 12 subqueues cost 2 requests. A day that is neither today nor tomorrow is dropped; when both items carry the same day, the later «станом на» wins. An unreadable item is logged as an error and skipped; the poll fails only when no usable schedule is left.
+  - Catalogue: `pw_cities` (hromada as `otg_name`), `pw_streets`, and `pw_accounts` gathered by building name: «Не входить» next to a queue counts as that queue; a value that is not one of the 12 groups is no queue (logged unless it is «Не входить»); a nameless row is dropped. Building ids are crc32 of the name. Each street is cached 60 s, so `/add` and the daily queue re-check ask a street once.
 - Pacing and retries live in `adapters/paced_http.py`, shared with `voe_api`.
 - Subqueue keys: `loe:3.1`. No migration, no new settings.
 - Like Volyn: no switching state, so no `remind_exact`; no planned works.

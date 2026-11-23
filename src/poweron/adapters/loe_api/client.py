@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 import zlib
 from collections import defaultdict
@@ -23,6 +24,8 @@ POWER_API = "https://power-api.loe.lviv.ua/api"
 SCHEDULE_ITEMS = (238, 256)
 CACHE_SECONDS = 60.0
 NO_SCHEDULE = {"", "Не входить"}
+
+logger = logging.getLogger(__name__)
 
 
 class _MenuItem(BaseModel):
@@ -143,6 +146,7 @@ class LoeClient:
 
     async def _fetch_schedules(self, today: date) -> dict[date, LoeSchedule]:
         found = []
+        errors: list[ApiSchemaError] = []
         for item_id in SCHEDULE_ITEMS:
             response = await self._http.get(
                 f"{CONTENT_API}/menu_items/{item_id}",
@@ -150,10 +154,20 @@ class LoeClient:
                 {"Accept": "application/ld+json"},
                 json=True,
             )
-            schedule = parse_schedule(_validate(_MENU_ITEM, response.json(), "menu_items").rawHtml)
+            try:
+                schedule = parse_schedule(
+                    _validate(_MENU_ITEM, response.json(), "menu_items").rawHtml
+                )
+            except ApiSchemaError as error:
+                # A half-edited «Tomorrow» must not hide today; nothing usable left is an outage.
+                errors.append(error)
+                logger.error("loe schedule item %s skipped: %s", item_id, error)
+                continue
             # Either item may hold a stale or a mistyped day around midnight.
             if schedule is not None and schedule.day in (today, today + timedelta(days=1)):
                 found.append(schedule)
+        if errors and not found:
+            raise errors[0]
         # The later text of a day wins.
         return {
             schedule.day: schedule
@@ -176,8 +190,10 @@ class LoeClient:
                 continue
             subqueues = found[name]
             queue = (account.chergGpv or "").strip()
-            if queue not in NO_SCHEDULE:
+            if queue in GROUPS:
                 subqueues.add(scoped_subqueue(LOE, queue))
+            elif queue not in NO_SCHEDULE:
+                logger.warning("loe: unknown queue value %r taken as no queue", queue[:40])
         queues = {name: sorted(subqueues) for name, subqueues in found.items()}
         self._streets[(city_id, street_id)] = (now + CACHE_SECONDS, queues)
         return queues

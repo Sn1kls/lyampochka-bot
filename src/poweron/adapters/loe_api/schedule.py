@@ -34,8 +34,10 @@ class LoeSchedule:
 
 def parse_schedule(raw_html: str) -> LoeSchedule | None:
     """None for an empty item (tomorrow not published yet)."""
-    text = html.unescape(re.sub(r"<[^>]+>", "\n", raw_html))
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    # Block tags end a line; inline ones (<b>) and odd spacing (&nbsp;) are dropped.
+    text = re.sub(r"<[^>]+>", "", re.sub(r"<(?:/p|/div|br)\b[^>]*>", "\n", raw_html))
+    lines = [" ".join(line.split()) for line in html.unescape(text).splitlines()]
+    lines = [line for line in lines if line]
     if not lines:
         return None
     day = published = None
