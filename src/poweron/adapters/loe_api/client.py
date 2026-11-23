@@ -14,6 +14,7 @@ from poweron.adapters.loe_api.schedule import GROUPS, LoeSchedule, parse_schedul
 from poweron.adapters.paced_http import PacedHttp
 from poweron.core.domain.models import KYIV, Address, Building, City, DaySchedule, Street
 from poweron.core.domain.providers import LOE, plain_subqueue, scoped_subqueue
+from poweron.core.domain.schedule import day_slots
 from poweron.core.ports import ApiSchemaError, SourceError
 
 CONTENT_API = "https://api.loe.lviv.ua/api"
@@ -50,6 +51,7 @@ class _Account(BaseModel):
     chergGpv: str | None = None
 
 
+_MENU_ITEM = TypeAdapter(_MenuItem)
 _CITIES = TypeAdapter(list[_City])
 _STREETS = TypeAdapter(list[_Street])
 _ACCOUNTS = TypeAdapter(list[_Account])
@@ -76,8 +78,9 @@ class LoeClient:
         self._cache_lock = asyncio.Lock()
         self._current: tuple[float, date, dict[date, LoeSchedule]] | None = None
         self._failure: tuple[float, SourceError] | None = None
-        # `/add` lists a street's buildings, then asks the queues of one of them.
-        self._street: tuple[float, tuple[int, int], dict[str, list[str]]] | None = None
+        # `/add` lists a street's buildings, then asks the queues of one of them; the daily
+        # queue re-check goes building by building, streets mixed.
+        self._streets: dict[tuple[int, int], tuple[float, dict[str, list[str]]]] = {}
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -114,10 +117,7 @@ class LoeClient:
                 cherg_gpv=cherg_gpv,
                 day=day,
                 created_at=schedule.published_at,
-                slots={
-                    f"{slot // 2:02d}:{slot % 2 * 30:02d}": code
-                    for slot, code in enumerate(schedule.groups[group])
-                },
+                slots=day_slots(schedule.groups[group]),
             )
             for day, schedule in sorted((await self._current_schedules()).items())
         ]
@@ -142,7 +142,7 @@ class LoeClient:
             return schedules
 
     async def _fetch_schedules(self, today: date) -> dict[date, LoeSchedule]:
-        newest: dict[date, LoeSchedule] = {}
+        found = []
         for item_id in SCHEDULE_ITEMS:
             response = await self._http.get(
                 f"{CONTENT_API}/menu_items/{item_id}",
@@ -150,26 +150,22 @@ class LoeClient:
                 {"Accept": "application/ld+json"},
                 json=True,
             )
-            try:
-                item = _MenuItem.model_validate(response.json())
-            except ValidationError as error:
-                raise ApiSchemaError.from_validation("loe menu_items", error) from None
-            schedule = parse_schedule(item.rawHtml)
+            schedule = parse_schedule(_validate(_MENU_ITEM, response.json(), "menu_items").rawHtml)
             # Either item may hold a stale or a mistyped day around midnight.
-            if schedule is None or schedule.day not in (today, today + timedelta(days=1)):
-                continue
-            if (
-                schedule.day not in newest
-                or schedule.published_at > newest[schedule.day].published_at
-            ):
-                newest[schedule.day] = schedule
-        return newest
+            if schedule is not None and schedule.day in (today, today + timedelta(days=1)):
+                found.append(schedule)
+        # The later text of a day wins.
+        return {
+            schedule.day: schedule
+            for schedule in sorted(found, key=lambda schedule: schedule.published_at)
+        }
 
     async def _street_queues(self, city_id: int, street_id: int) -> dict[str, list[str]]:
         """Queues by building name; «Не входить» next to a queue in another row counts as in it."""
-        key = (city_id, street_id)
-        if self._street and self._street[1] == key and self._monotonic() < self._street[0]:
-            return self._street[2]
+        now = self._monotonic()
+        self._streets = {key: cached for key, cached in self._streets.items() if now < cached[0]}
+        if cached := self._streets.get((city_id, street_id)):
+            return cached[1]
         accounts = await self._list(
             "pw_accounts", {"city.id": city_id, "street.id": street_id}, _ACCOUNTS
         )
@@ -178,10 +174,12 @@ class LoeClient:
             name = account.buildingName.strip()
             if not name:
                 continue
+            subqueues = found[name]
             queue = (account.chergGpv or "").strip()
-            found[name].update([] if queue in NO_SCHEDULE else [scoped_subqueue(LOE, queue)])
+            if queue not in NO_SCHEDULE:
+                subqueues.add(scoped_subqueue(LOE, queue))
         queues = {name: sorted(subqueues) for name, subqueues in found.items()}
-        self._street = (self._monotonic() + CACHE_SECONDS, key, queues)
+        self._streets[(city_id, street_id)] = (now + CACHE_SECONDS, queues)
         return queues
 
     async def _list[Model](
@@ -197,10 +195,14 @@ class LoeClient:
         # Some endpoints answer a hydra collection, others a bare list.
         if isinstance(data, dict):
             data = data.get("hydra:member")
-        try:
-            return adapter.validate_python(data)
-        except ValidationError as error:
-            raise ApiSchemaError.from_validation(f"loe {endpoint}", error) from None
+        return _validate(adapter, data, endpoint)
+
+
+def _validate[Model](adapter: TypeAdapter[Model], data: Any, endpoint: str) -> Model:
+    try:
+        return adapter.validate_python(data)
+    except ValidationError as error:
+        raise ApiSchemaError.from_validation(f"loe {endpoint}", error) from None
 
 
 def _stable_id(building_name: str) -> int:

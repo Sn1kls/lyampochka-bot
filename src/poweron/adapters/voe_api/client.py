@@ -14,6 +14,7 @@ from poweron.adapters.paced_http import PacedHttp
 from poweron.adapters.voe_api.image import SUBQUEUES, decode_schedule
 from poweron.core.domain.models import KYIV, Address, DaySchedule
 from poweron.core.domain.providers import plain_subqueue
+from poweron.core.domain.schedule import day_slots
 from poweron.core.ports import ApiSchemaError, SourceError
 
 MAX_PAGES = 10
@@ -78,10 +79,7 @@ class VoeClient:
                 cherg_gpv=cherg_gpv,
                 day=day,
                 created_at=created_at,
-                slots={
-                    f"{slot // 2:02d}:{slot % 2 * 30:02d}": code
-                    for slot, code in enumerate(grid[plain])
-                },
+                slots=day_slots(grid[plain]),
             )
             for day, (created_at, grid) in sorted(current.items())
         ]
