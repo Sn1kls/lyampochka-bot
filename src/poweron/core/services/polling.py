@@ -48,7 +48,9 @@ class Polling:
             await self._poll_each(by_subqueue, address_counts, now, should_stop)
 
     async def poll_new(self, now: datetime, should_stop: Callable[[], bool] = never_stop) -> None:
-        """Fetch only the subscribed subqueues that have no stored version yet.
+        """Fetch only the subscribed subqueues that have no stored version yet, or whose last
+        poll predates their newest subscriber, so someone who subscribes to a subqueue nobody
+        followed for a while does not see its old schedule.
 
         A subqueue the source has nothing for is retried only after NEW_SUBQUEUE_RETRY,
         so a frequent caller does not hammer the API.
@@ -56,15 +58,22 @@ class Polling:
         # Shares the lock with poll() so a subqueue is never fetched twice at once.
         async with self._lock:
             by_subqueue, address_counts = await self._by_subqueue()
-            without_versions = {
+            unseen = {
                 cherg_gpv: subscribers
                 for cherg_gpv, subscribers in by_subqueue.items()
-                if await self._repository.last_version_at(cherg_gpv) is None
-                and now - self._new_attempts.get(cherg_gpv, datetime.min.replace(tzinfo=UTC))
+                if now - self._new_attempts.get(cherg_gpv, datetime.min.replace(tzinfo=UTC))
                 >= NEW_SUBQUEUE_RETRY
+                and await self._unseen(cherg_gpv, subscribers)
             }
-            self._new_attempts.update(dict.fromkeys(without_versions, now))
-            await self._poll_each(without_versions, address_counts, now, should_stop)
+            self._new_attempts.update(dict.fromkeys(unseen, now))
+            await self._poll_each(unseen, address_counts, now, should_stop)
+
+    async def _unseen(self, cherg_gpv: str, subscribers: list[Subscription]) -> bool:
+        if await self._repository.last_version_at(cherg_gpv) is None:
+            return True
+        polled_at = await self._repository.polled_at(cherg_gpv)
+        newest = max(subscription.created_at for subscription in subscribers)
+        return polled_at is None or polled_at < newest
 
     async def _by_subqueue(self) -> tuple[dict[str, list[Subscription]], Counter[int]]:
         """Subscribers per subqueue, and how many addresses each user has.

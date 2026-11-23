@@ -144,7 +144,7 @@ def test_render_day_without_tomorrow_says_it_is_not_published_yet() -> None:
     assert render_day(SUBSCRIPTION, [], TOMORROW, NOW) == "\n\n".join(
         [
             "📅 <b>Дім &lt;&amp;&gt;</b>, завтра (18.10)",
-            "Графіка на завтра ще немає — щойно з'явиться, напишу.",
+            "Графіка на завтра ще немає – щойно з'явиться, напишу.",
             NOTE,
         ]
     )
@@ -184,7 +184,7 @@ def test_subqueue_label_is_escaped_everywhere() -> None:
 
 def test_render_list_shows_one_escaped_address_per_subscription() -> None:
     assert render_list([SUBSCRIPTION]) == "\n".join(
-        ["Твої адреси:", "• <b>Дім &lt;&amp;&gt;</b> — Тернопіль, Руська, 5 (підчерга 4.1)"]
+        ["Твої адреси:", "• <b>Дім &lt;&amp;&gt;</b> – Тернопіль, Руська, 5 (підчерга 4.1)"]
     )
 
 
@@ -198,12 +198,12 @@ def kyiv_time(hour: int, minute: int = 0) -> datetime:
         (
             NextEvent(False, kyiv_time(11, 30), kyiv_time(11, 30)),
             kyiv_time(9),
-            "світло вимкнуть о 11:30 (через 2 год 30 хв)",
+            "світло вимкнуть об 11:30 (через 2 год 30 хв)",
         ),
         (
             NextEvent(False, kyiv_time(10, 30), kyiv_time(11)),
             kyiv_time(9),
-            "світло можуть вимкнути з 10:30, точно — о 11:00 (через 1 год 30 хв)",
+            "світло можуть вимкнути з 10:30, точно – об 11:00 (через 1 год 30 хв)",
         ),
         (
             NextEvent(False, kyiv_time(10, 30), None),
@@ -218,12 +218,12 @@ def kyiv_time(hour: int, minute: int = 0) -> datetime:
         (
             NextEvent(True, kyiv_time(14), kyiv_time(14, 30)),
             kyiv_time(12),
-            "світло можуть увімкнути з 14:00, точно — о 14:30 (через 2 год)",
+            "світло можуть увімкнути з 14:00, точно – о 14:30 (через 2 год)",
         ),
         (
             NextEvent(True, kyiv_time(14, 10), kyiv_time(14, 30)),
             kyiv_time(14, 10),
-            "світло можуть дати будь-якої хвилини, точно — о 14:30",
+            "світло можуть дати будь-якої хвилини, точно – о 14:30",
         ),
     ],
 )
@@ -249,7 +249,7 @@ def test_render_next_lists_each_tracked_queue() -> None:
     assert render_next(subscription, events, kyiv_time(9)) == "\n".join(
         [
             "<b>Дім &lt;&amp;&gt;</b>:",
-            "• підчерга 2.2: світло вимкнуть о 11:30 (через 2 год 30 хв)",
+            "• підчерга 2.2: світло вимкнуть об 11:30 (через 2 год 30 хв)",
             "• підчерга 4.1: світло увімкнуть о 09:45 (через 45 хв)",
         ]
     )
@@ -359,7 +359,7 @@ def reminder_payload(**changes: object) -> dict[str, object]:
         (
             reminder_payload(),
             False,
-            "🪫 За 15 хв можуть ВИМКНУТИ світло (з 10:00, точно — о 10:30) · <b>Дім &lt;&amp;&gt;</b>",
+            "🪫 За 15 хв можуть ВИМКНУТИ світло (з 10:00, точно – о 10:30) · <b>Дім &lt;&amp;&gt;</b>",
         ),
         (
             reminder_payload(latest="2026-10-17T07:00:00+00:00"),
@@ -374,7 +374,7 @@ def reminder_payload(**changes: object) -> dict[str, object]:
         (
             reminder_payload(minutes=30),
             True,
-            "🔋 За 30 хв мають ДАТИ світло (з 10:00, точно — о 10:30) · <b>Дім &lt;&amp;&gt;</b>",
+            "🔋 За 30 хв мають ДАТИ світло (з 10:00, точно – о 10:30) · <b>Дім &lt;&amp;&gt;</b>",
         ),
         (
             reminder_payload(latest="2026-10-17T07:00:00+00:00"),
@@ -389,7 +389,7 @@ def reminder_payload(**changes: object) -> dict[str, object]:
         (
             reminder_payload(queue_count=2),
             False,
-            "🪫 За 15 хв можуть ВИМКНУТИ світло (з 10:00, точно — о 10:30) "
+            "🪫 За 15 хв можуть ВИМКНУТИ світло (з 10:00, точно – о 10:30) "
             "· <b>Дім &lt;&amp;&gt;</b> (черга 4.1)",
         ),
         (
@@ -405,7 +405,12 @@ def reminder_payload(**changes: object) -> dict[str, object]:
         (
             reminder_payload(address_count=1, queue_count=2),
             True,
-            "🔋 За 15 хв мають ДАТИ світло (з 10:00, точно — о 10:30) · черга 4.1",
+            "🔋 За 15 хв мають ДАТИ світло (з 10:00, точно – о 10:30) · черга 4.1",
+        ),
+        (
+            reminder_payload(address_count=1, latest="2026-10-17T08:30:00+00:00"),
+            False,
+            "🪫 За 15 хв можуть ВИМКНУТИ світло (з 10:00, точно – об 11:30)",
         ),
     ],
 )
@@ -480,7 +485,7 @@ def planned_payload(**changes: object) -> dict[str, object]:
 
 def test_planned_work_shows_kyiv_times_and_reason() -> None:
     assert render_planned_work(planned_payload()) == (
-        "🛠 <b>Дім</b>: планові роботи 22.08 з 08:30 до 17:30 — Ремонт ПЛ"
+        "🛠 <b>Дім</b>: планові роботи 22.08 з 08:30 до 17:30 – Ремонт ПЛ"
     )
 
 
@@ -566,3 +571,13 @@ def test_render_update_withdraws_a_reminder_it_made_stale() -> None:
 
     assert text.splitlines()[2] == "⚠️ Нагадування про вимкнення о 17:30 уже неактуальне."
     assert "⚠️" not in render_update(payload, NOW)
+
+
+def test_render_update_says_ob_before_eleven_oclock() -> None:
+    off = {f"{hour:02d}:{minute:02d}": "0" for hour in range(24) for minute in (0, 30)}
+    payload = update_payload(off | {"11:00": "1"}, off)
+    stale = ["2026-10-17T08:00:00+00:00", "2026-10-17T10:00:00+00:00"]
+
+    text = render_update(payload | {"stale_reminders": stale}, NOW)
+
+    assert text.splitlines()[2] == "⚠️ Нагадування про вимкнення об 11:00, 13:00 уже неактуальне."

@@ -68,11 +68,11 @@ QUEUES_MANY = "черги {queues}"
 QUEUES_AND = " і "
 QUEUE_TRACKED = "{queue} (стежу)"
 CONFIRM_ADDRESS = (
-    "<b>{address}</b>\n{queues}\n\nЗберегти як «{label}»? Хочеш іншу назву — просто напиши її."
+    "<b>{address}</b>\n{queues}\n\nЗберегти як «{label}»? Хочеш іншу назву – просто напиши її."
 )
 ADDED = (
     "Готово! Адресу «{label}» додано. Графік з'явиться за кілька хвилин після першої "
-    f"перевірки — тоді натисни «{MENU_SCHEDULE}» внизу."
+    f"перевірки – тоді натисни «{MENU_SCHEDULE}» внизу."
 )
 CANCELLED = "Гаразд, скасовано."
 DEFAULT_LABEL = "Дім"
@@ -80,7 +80,7 @@ LABEL_MAX_LENGTH = 40
 
 NO_SUBSCRIPTIONS = "Адрес ще немає. Додай першу 👇"
 LIST_HEADER = "Твої адреси:"
-LIST_ITEM = "• <b>{label}</b> — {address} ({queues})"
+LIST_ITEM = "• <b>{label}</b> – {address} ({queues})"
 CHOOSE_SUBSCRIPTION = "Яка адреса?"
 CHOOSE_DAY = "На коли?"
 TODAY = "Сьогодні"
@@ -90,18 +90,18 @@ REMOVE_CONFIRM = "Видалити адресу «{label}»? Це не можн�
 REMOVED = "Адресу видалено."
 ADDRESS_GONE = "Такої адреси вже немає."
 FORGET_CONFIRM = "Видалити всі твої адреси та дані? Це не можна скасувати."
-FORGOTTEN = "Усе стерто. Якщо передумаєш — /start."
+FORGOTTEN = "Усе стерто. Якщо передумаєш – /start."
 
 SOURCE_DOWN = "Сервіс обленерго зараз не відповідає. Спробуй трохи пізніше."
 STALE_BUTTON = "Ця кнопка вже застаріла. Почни спочатку."
 START_FIRST = "Спершу натисни /start, щоб ми познайомились."
 
 HELP = (
-    f"{MENU_SCHEDULE} — графік на сьогодні чи завтра\n"
-    f"{MENU_NEXT} — коли вимкнуть чи увімкнуть світло\n"
-    f"{MENU_LIST} — твої адреси; там же додати чи видалити\n"
-    f"{MENU_SETTINGS} — сповіщення та нагадування\n"
-    f"{MENU_FEEDBACK} — скарга, ідея чи подяка розробнику\n\n"
+    f"{MENU_SCHEDULE} – графік на сьогодні чи завтра\n"
+    f"{MENU_NEXT} – коли вимкнуть чи увімкнуть світло\n"
+    f"{MENU_LIST} – твої адреси; там же додати чи видалити\n"
+    f"{MENU_SETTINGS} – сповіщення та нагадування\n"
+    f"{MENU_FEEDBACK} – скарга, ідея чи подяка розробнику\n\n"
     "Стерти всі свої дані: /forget"
 )
 
@@ -131,16 +131,19 @@ NO_SCHEDULE_TODAY = (
     "Графіка на сьогодні поки немає: його або ще не опубліковано, або він ще не завантажився. "
     "Спробуй за кілька хвилин."
 )
-NO_SCHEDULE_TOMORROW = "Графіка на завтра ще немає — щойно з'явиться, напишу."
+NO_SCHEDULE_TOMORROW = "Графіка на завтра ще немає – щойно з'явиться, напишу."
 STALE_DATA = "⚠️ Дані могли застаріти: востаннє з сайту оновлено {checked}."
 NOTE = "Графік може змінюватися впродовж дня, тож поглядай і на {site}"
 
-NEXT_OFF = "світло вимкнуть о {latest} (через {delta})"
-NEXT_OFF_WINDOW = "світло можуть вимкнути з {earliest}, точно — о {latest} (через {delta})"
+# Hours are read as ordinals, so only 11 («одинадцятій») starts with a vowel and takes «об».
+AT = "о {time}"
+AT_ELEVEN = "об {time}"
+NEXT_OFF = "світло вимкнуть {at_latest} (через {delta})"
+NEXT_OFF_WINDOW = "світло можуть вимкнути з {earliest}, точно – {at_latest} (через {delta})"
 NEXT_OFF_POSSIBLE = "можливе вимкнення з {earliest} (перемикання)"
-NEXT_ON = "світло увімкнуть о {latest} (через {delta})"
-NEXT_ON_WINDOW = "світло можуть увімкнути з {earliest}, точно — о {latest} (через {delta})"
-NEXT_ON_ANYTIME = "світло можуть дати будь-якої хвилини, точно — о {latest}"
+NEXT_ON = "світло увімкнуть {at_latest} (через {delta})"
+NEXT_ON_WINDOW = "світло можуть увімкнути з {earliest}, точно – {at_latest} (через {delta})"
+NEXT_ON_ANYTIME = "світло можуть дати будь-якої хвилини, точно – {at_latest}"
 NEXT_ONE = "<b>{label}</b>: {event}"
 NEXT_TITLE = "<b>{label}</b>:"
 NEXT_QUEUE = "• підчерга {queue}: {event}"
@@ -152,15 +155,17 @@ FOR_ADDRESS_QUEUE = " · <b>{label}</b> (черга {queue})"
 FOR_QUEUE = " · черга {queue}"
 UPDATE_TITLE = "💡 Оновлення на {day}{target}:"
 UPDATE_NEW_LINE = " 🆕"
-UPDATE_STALE_REMINDER = "⚠️ Нагадування про вимкнення о {times} уже неактуальне."
+UPDATE_STALE_REMINDER = "⚠️ Нагадування про вимкнення {at_times} уже неактуальне."
 UPDATE_LINK = '<a href="{url}">{site}</a>'
 
 # 🪫 means "power goes off", 🔋 means "power comes back".
-REMINDER_OFF_WINDOW = "🪫 За {minutes} хв можуть ВИМКНУТИ світло (з {earliest}, точно — о {latest})"
-REMINDER_OFF_EXACT = "🪫 За {minutes} хв ВИМКНУТЬ світло (о {latest})"
+REMINDER_OFF_WINDOW = (
+    "🪫 За {minutes} хв можуть ВИМКНУТИ світло (з {earliest}, точно – {at_latest})"
+)
+REMINDER_OFF_EXACT = "🪫 За {minutes} хв ВИМКНУТЬ світло ({at_latest})"
 REMINDER_OFF_POSSIBLE = "🪫 За {minutes} хв можливе ВИМКНЕННЯ з {earliest}"
-REMINDER_ON_WINDOW = "🔋 За {minutes} хв мають ДАТИ світло (з {earliest}, точно — о {latest})"
-REMINDER_ON_EXACT = "🔋 За {minutes} хв ДАДУТЬ світло (о {latest})"
+REMINDER_ON_WINDOW = "🔋 За {minutes} хв мають ДАТИ світло (з {earliest}, точно – {at_latest})"
+REMINDER_ON_EXACT = "🔋 За {minutes} хв ДАДУТЬ світло ({at_latest})"
 REMINDER_ON_POSSIBLE = "🔋 За {minutes} хв можливе ПОВЕРНЕННЯ світла з {earliest}"
 
 SUBQUEUES_CHANGED = (
@@ -170,16 +175,16 @@ SUBQUEUES_CHANGED = (
 )
 SUBQUEUES_GONE = (
     "⚠️ За даними обленерго, графіки відключень для <b>{label}</b>, схоже, більше не діють "
-    "на цю адресу.\nМожливо, це збій у даних, тож нічого не змінюю — перевір на {link}"
+    "на цю адресу.\nМожливо, це збій у даних, тож нічого не змінюю – перевір на {link}"
 )
 
 MENU_UPDATED = (
     "🔄 Оновив меню внизу 👇\n"
-    f"{MENU_HELP} — що вміє кожна кнопка\n"
-    f"{MENU_FEEDBACK} — напиши мені скаргу, ідею чи подяку, можна зі скріном"
+    f"{MENU_HELP} – що вміє кожна кнопка\n"
+    f"{MENU_FEEDBACK} – напиши мені скаргу, ідею чи подяку, можна зі скріном"
 )
 PLANNED_WORK = "🛠 <b>{label}</b>: планові роботи {date} з {start} до {end}"
-PLANNED_WORK_REASON = " — {reason}"
+PLANNED_WORK_REASON = " – {reason}"
 
 SETTINGS_TITLE = "⚙️ Налаштування для <b>{label}</b>"
 SETTINGS_UPDATES = "Пуші про оновлення графіка і планові роботи: {state}"
@@ -194,7 +199,7 @@ BUTTON_UPDATES_OFF = "🚫 Пуші про оновлення"
 BUTTON_QUEUE_TRACKED = "✅ Черга {queue}"
 BUTTON_QUEUE_UNTRACKED = "🚫 Черга {queue}"
 LAST_TRACKED_QUEUE = (
-    "Хоча б за однією чергою треба стежити. Щоб прибрати адресу повністю — «🗑 Видалити адресу»."
+    "Хоча б за однією чергою треба стежити. Щоб прибрати адресу повністю – «🗑 Видалити адресу»."
 )
 BUTTON_REMINDER_OFF = "🪫 Нагадати до вимкнення: {value}"
 BUTTON_REMINDER_ON = "🔋 Нагадати до повернення: {value}"
