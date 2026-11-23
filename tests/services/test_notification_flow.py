@@ -313,6 +313,37 @@ async def test_poll_new_fetches_only_subqueues_without_a_stored_version(
     assert await repository.latest_version("1.2", TODAY) is not None
 
 
+async def test_poll_new_fetches_a_dormant_subqueue_for_its_new_subscriber(
+    repository: SqlRepository, source: FakeSource
+) -> None:
+    await subscribe(repository, "101")
+    source.schedules = {"4.1": [day_schedule()]}
+    await Polling(repository, source).poll(NOW)
+    [first] = await repository.all_subscriptions()
+    await repository.remove_subscription(first.user_id, first.id)
+    later = NOW + timedelta(days=2)  # nobody polled 4.1 meanwhile: it had no subscribers
+    await subscribe(repository, "102", at=later)
+    source.requested.clear()
+
+    await Polling(repository, source).poll_new(later + timedelta(seconds=10))
+
+    assert source.requested == ["4.1"]
+    assert await repository.polled_at("4.1") == later + timedelta(seconds=10)
+
+
+async def test_poll_new_skips_a_subqueue_polled_after_its_newest_subscriber(
+    repository: SqlRepository, source: FakeSource
+) -> None:
+    await subscribe(repository, "101")
+    source.schedules = {"4.1": [day_schedule()]}
+    await Polling(repository, source).poll(NOW)
+    source.requested.clear()
+
+    await Polling(repository, source).poll_new(NOW + timedelta(seconds=10))
+
+    assert source.requested == []
+
+
 async def test_poll_new_retries_an_empty_subqueue_only_after_a_while(
     repository: SqlRepository, source: FakeSource
 ) -> None:
