@@ -10,8 +10,9 @@ class Feedback:
     """Users write to the admin and the admin replies; the messages themselves stay in the channel.
 
     A channel passes opaque `refs` of its admin-side copies, so a reply finds its author by
-    message, never by text a user could forge. The rate limit lives in memory, so a restart
-    resets it: enough against a flood.
+    message, never by text a user could forge. The rate limit counts by the channel's opaque
+    `sender` key, not by `user_id`: forgetting oneself gives a new `user_id`, never a new
+    account. It lives in memory only, so a restart resets it: enough against a flood.
     """
 
     def __init__(
@@ -20,20 +21,25 @@ class Feedback:
         self._repository = repository
         self._limit = limit
         self._window = window
-        self._received: defaultdict[int, deque[datetime]] = defaultdict(deque)
+        self._received: defaultdict[str, deque[datetime]] = defaultdict(deque)
 
-    def retry_after(self, user_id: int, now: datetime) -> timedelta | None:
-        """How long the user must wait before the next feedback; None when they may send now."""
-        received = self._received[user_id]
+    def retry_after(self, sender: str, now: datetime) -> timedelta | None:
+        """How long the sender must wait before the next feedback; None when they may send now."""
+        received = self._received[sender]
         while received and now - received[0] >= self._window:
             received.popleft()
         return received[0] + self._window - now if len(received) >= self._limit else None
 
     async def record(
-        self, user_id: int, source_message_id: int, refs: Sequence[str], now: datetime
+        self,
+        user_id: int,
+        sender: str,
+        source_message_id: int,
+        refs: Sequence[str],
+        now: datetime,
     ) -> None:
         """Counts one feedback and remembers its admin-side copies."""
-        self._received[user_id].append(now)
+        self._received[sender].append(now)
         await self._repository.add_feedback_messages(user_id, source_message_id, refs, now)
 
     async def thread(self, ref: str) -> FeedbackThread | None:
