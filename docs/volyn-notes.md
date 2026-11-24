@@ -11,6 +11,7 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
 |---|---|---|
 | Schedule form on energy.volyn.ua (`hrafik-vidkliuchen/`) | yes, the only live source | server-rendered PHP, HTML answers |
 | Queue lookup on energy.volyn.ua (`cherga/`) | yes | HTML table, address → queue, works with no outages |
+| Current outages on energy.volyn.ua (`chomu-nemaie-elektropostachannia/`) | not from the server | per-address outages with type and reason; Cloudflare like the rest of the site |
 | `api-voe-poweron.inneti.net/api` (same platform as Ternopil's API) | no | cut down: archive images and accidents only |
 | Telegram channel `@energy_volyn_official` | no | free-text posts about changes, not full schedules |
 | Viber bot `viber://pa?chatURI=botvoe`, cabinets `ok.prosvitlo.com`, `kabinet.prosvitlo.com` | no | need a personal account number |
@@ -66,6 +67,26 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
   - 13 995 buildings are «Не залучено» only;
   - 54 settlement names repeat across districts, so the district is shown next to them.
 
+## Current outages (`chomu-nemaie-elektropostachannia/`), 2026-11-24
+
+- Page: `https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/chomu-nemaie-elektropostachannia/`.
+- Per-address list of outages happening now, by NKREKP resolution No. 349. Types: planned, emergency, schedules (ГПВ/ГАВ).
+- The page says the data refreshes every 30 minutes and shows «Оновлено: DD-MM-YYYY HH:MM».
+- Search: settlement (required) + street (optional), names without «с.», «вул.», case-insensitive. Form action not captured yet (probably `pagephp.php` like `hrafik-vidkliuchen/`; unverified).
+- A result seen by the owner on 2026-11-24 (from the Mac):
+
+  | Район | Нас. пункт | Вулиця | Будинок | Тип | Причина | Дата та час відключення | Дата орієнтовного відновлення |
+  |---|---|---|---|---|---|---|---|
+  | Луцький | Ківерці | Сагайдачного | 1, 2, 3, …, 36, 6А, <> | Аварійне вимкнення | Аварійний випадок в мережах | 2026-11-24 13:13 | 2026-11-24 19:00 |
+
+  - «Будинок» is the same messy comma list as in `cherga/` (`22,,`, `<>`).
+  - Times are Kyiv local, `YYYY-MM-DD HH:MM`; the restore time is an estimate.
+- Not reachable from the production server (Cloudflare, see "Server access").
+- **The inneti API does not serve it** (probed 2026-11-24 13:35 Kyiv, `probe_volyn.py api`, while the Ківерці outage above was live on the site):
+  - `pw_accidents?page=1`, `pw_accident_planeds?page=1`, `pw_streets?page=1`: all 200 with `hydra:totalItems: 0`, unfiltered.
+  - Their filters match Ternopil's (`city.id`, `street.id`, `otg.id`, `typeOff`, `switchSubReason`, `customFilter`), but the tables are empty, like `pw_cities`.
+  - So the site's outage page is fed from somewhere else, and it is reachable only through energy.volyn.ua (Cloudflare).
+
 ## inneti API (`api-voe-poweron.inneti.net/api`)
 
 - The archive page (`hrafik-vidkliuchen-arc/`) embeds `https://voe-poweron.inneti.net/schedule_arhiv`. It is the same «Чому немає світла?» platform as Ternopil's `poweron.toe.com.ua`.
@@ -114,6 +135,7 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
   1. Ask Volynoblenergo to open the inneti API for schedules (like Ternopil) or to allow the server's IP. Contacts: call center 0 800 21 01 31; the site's «Повідомити про розбіжності у графіку» form.
   2. Fetch Volyn data from a device in Ukraine (Mac, Raspberry Pi) and pass it to the bot. Needs an HTTP endpoint in the bot. Weakness: the device loses power during outages, exactly when schedules matter.
   3. Move the whole bot to hosting the site does not challenge. Unknown which hosting passes; not tested.
+- 2026-11-24: the owner emailed `kanc@energy.volyn.ua` asking for option 1: fill `pw_accidents` / `pw_accident_planeds` in the inneti API, or allow the server IP. No answer yet.
 
 ## Probe
 

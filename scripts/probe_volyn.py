@@ -1,7 +1,8 @@
 """Live probe of the Volynoblenergo site forms (docs/volyn-notes.md).
 
 Asks the queue lookup and the schedule search, saves raw HTML to tests/fixtures/
-and prints the markers the adapter relies on. Stdlib only, sequential,
+and prints the markers the adapter relies on. `probe_volyn.py api` asks the inneti API's
+outage endpoints instead and saves raw JSON to the scratch dir given as the second argument. Stdlib only, sequential,
 at most one request per second. Only public street names, never a personal address.
 """
 
@@ -16,6 +17,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 SITE = "https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni"
+API = "https://api-voe-poweron.inneti.net/api"
 KYIV = ZoneInfo("Europe/Kyiv")
 FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 USER_AGENT = "poweron-bot/0.2 (personal use)"
@@ -29,12 +31,16 @@ MARKERS = {
 _last_call = 0.0
 
 
+def _wait() -> None:
+    time.sleep(max(0.0, 1.0 - (time.monotonic() - _last_call)))
+
+
 def request(
     opener: urllib.request.OpenerDirector, path: str, fields: dict[str, str] | None = None
 ) -> str:
     """GET, or POST when `fields` are given, with a 1 req/s floor."""
     global _last_call
-    time.sleep(max(0.0, 1.0 - (time.monotonic() - _last_call)))
+    _wait()
     data = None if fields is None else urllib.parse.urlencode(fields).encode()
     try:
         req = urllib.request.Request(
@@ -74,6 +80,27 @@ def save(name: str, html: str) -> None:
     (FIXTURES / name).write_text(html)
 
 
+def probe_api(out_dir: Path) -> None:
+    """Outage endpoints the site bundle calls; raw JSON may hold addresses, so it stays out of the repo."""
+    global _last_call
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("pw_accidents", "pw_accident_planeds", "pw_streets"):
+        _wait()
+        req = urllib.request.Request(
+            f"{API}/{name}?page=1",
+            headers={"User-Agent": USER_AGENT, "Accept": "application/ld+json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                status, raw = response.status, response.read()
+        except urllib.error.HTTPError as error:
+            status, raw = error.code, error.read()
+        finally:
+            _last_call = time.monotonic()
+        print(f"  {status} len={len(raw)} GET {name}")
+        (out_dir / f"voe_{name}.json").write_bytes(raw)
+
+
 def main() -> None:
     plain = urllib.request.build_opener()
     today = datetime.now(KYIV).date()
@@ -97,4 +124,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:2] == ["api"]:
+        probe_api(Path(sys.argv[2]))
+    else:
+        main()
