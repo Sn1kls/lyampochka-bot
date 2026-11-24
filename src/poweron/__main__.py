@@ -30,7 +30,7 @@ from poweron.core.services.planned_works import PlannedWorks
 from poweron.core.services.polling import Polling, SchedulesByProvider
 from poweron.core.services.reminders import Reminders
 from poweron.core.services.schedules import Schedules
-from poweron.core.services.status import Status
+from poweron.core.services.status import Status, stale_after
 from poweron.core.services.subscriptions import Subscriptions
 from poweron.observability import init_sentry
 from poweron.worker.runner import run_worker
@@ -111,6 +111,7 @@ async def run(role: str, settings: Settings) -> None:
                                 {TOE: toe_client, VOE: voe_client, LOE: loe_client}
                             ),
                             alerts,
+                            stale_after=stale_after(timedelta(seconds=settings.poll_interval_sec)),
                         ),
                         notifications,
                         Reminders(repository, Schedules(repository)),

@@ -19,6 +19,7 @@ class FakeBot:
         (AlertKind.API_SCHEMA, texts.ALERT_API_SCHEMA),
         (AlertKind.API_DOWN, texts.ALERT_API_DOWN),
         (AlertKind.SIDE_API_DOWN, texts.ALERT_SIDE_API_DOWN),
+        (AlertKind.SCHEDULE_STALE, texts.ALERT_SCHEDULE_STALE),
         (AlertKind.NEW_USER, texts.ALERT_NEW_USER),
         (AlertKind.BACKUP_FAILED, texts.ALERT_BACKUP_FAILED),
     ],

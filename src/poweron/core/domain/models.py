@@ -185,6 +185,7 @@ class AlertKind(StrEnum):
     API_SCHEMA = "api_schema"
     API_DOWN = "api_down"
     SIDE_API_DOWN = "side_api_down"
+    SCHEDULE_STALE = "schedule_stale"
     NEW_USER = "new_user"
     BACKUP_FAILED = "backup_failed"
     VOE_CATALOG_STALE = "voe_catalog_stale"
