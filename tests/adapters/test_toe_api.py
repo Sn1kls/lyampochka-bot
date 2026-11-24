@@ -326,6 +326,19 @@ async def test_a_success_closes_the_breaker(client: ToeClient, clock: FakeClock)
 
 
 @respx.mock
+async def test_a_failing_endpoint_does_not_pause_the_others(client: ToeClient) -> None:
+    respx.get(f"{API}/pw_accident_planeds").respond(500)
+    schedules = respx.get(f"{API}/a_gpv_g").respond(json=SCHEDULE)
+    for _ in range(4):
+        with pytest.raises(SourceUnavailable):
+            await client.planned_works(1032, 9985, NOW)
+
+    await client.fetch_schedules(SADOVA_1, "4.1")
+
+    assert schedules.call_count == 1
+
+
+@respx.mock
 async def test_schema_errors_do_not_open_the_breaker(client: ToeClient) -> None:
     route = respx.get(f"{API}/a_gpv_g")
     route.side_effect = (

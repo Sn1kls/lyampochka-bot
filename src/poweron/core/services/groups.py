@@ -3,7 +3,7 @@ from collections import defaultdict
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 
-from poweron.core.domain.models import MessageKind, OutboxMessage, Subscription
+from poweron.core.domain.models import AlertKind, MessageKind, OutboxMessage, Subscription
 from poweron.core.ports import CatalogSource, Repository, SourceError
 from poweron.core.services.alerts import Alerts, report_source_error
 from poweron.core.services.polling import never_stop
@@ -48,7 +48,7 @@ class SubqueueChecker:
                 found = await catalog.building_subqueues(city_id, street_id, building_name)
             except SourceError as error:
                 logger.warning("subqueue re-check failed for a building: %s", error)
-                await report_source_error(self._alerts, error, now)
+                await report_source_error(self._alerts, error, now, AlertKind.SIDE_API_DOWN)
                 continue
             for subscription in subscribers:
                 try:

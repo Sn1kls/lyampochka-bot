@@ -27,7 +27,7 @@ oblenergo ──fetch──▶ Polling ──version + outbox rows (one transact
 | `core/domain/` | pure logic: `models.py` (dataclasses), `schedule.py` (slots → UTC intervals, DST-safe), `diff.py` (change between versions), `providers.py` (region keys) |
 | `core/ports.py` | every Protocol (`ScheduleSource`, `CatalogSource`, `Repository`, `Notifier`, …) and the `SourceError` family |
 | `core/services/` | one class per job: `polling`, `reminders`, `groups` (`SubqueueChecker`, daily queue re-check), `planned_works`, `notifications` (outbox dispatch), `subscriptions`, `catalog`, `schedules`, `feedback`, `status`, `alerts`, `backups` |
-| `adapters/toe_api/` | Ternopil JSON API: schedules, catalogue, planned works, circuit breaker |
+| `adapters/toe_api/` | Ternopil JSON API: schedules, catalogue, planned works, a circuit breaker per endpoint |
 | `adapters/voe_api/` | Volyn: archive PNGs decoded from pixels (`image.py`) |
 | `adapters/loe_api/` | Lviv: schedule text per group (`schedule.py`) and the catalogue, both live from the oblenergo's APIs |
 | `adapters/paced_http.py` | shared by `voe_api` and `loe_api`: GETs at most once a second, with retries |
