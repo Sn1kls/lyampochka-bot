@@ -125,6 +125,8 @@ def main() -> None:
 
 if __name__ == "__main__":
     if sys.argv[1:2] == ["api"]:
+        if len(sys.argv) < 3:
+            sys.exit("usage: probe_volyn.py api <scratch-dir>")
         probe_api(Path(sys.argv[2]))
     else:
         main()
