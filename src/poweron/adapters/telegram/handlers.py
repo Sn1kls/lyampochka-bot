@@ -211,7 +211,10 @@ async def next_(
     message: Message, user_id: int, subscriptions: Subscriptions, schedules: Schedules
 ) -> None:
     async def answer_next(subscription: Subscription) -> None:
-        await message.answer(await _next_text(schedules, subscription))
+        await message.answer(
+            await _next_text(schedules, subscription),
+            reply_markup=keyboards.outages_keyboard(subscription.provider),
+        )
 
     await _choose_subscription(message, user_id, subscriptions, "next", answer_next)
 
@@ -501,7 +504,11 @@ async def choose_subscription(
     elif callback_data.action == "schedule":
         await _respond(callback, texts.CHOOSE_DAY, keyboards.day_keyboard(subscription))
     elif callback_data.action == "next":
-        await _respond(callback, await _next_text(schedules, subscription))
+        await _respond(
+            callback,
+            await _next_text(schedules, subscription),
+            keyboards.outages_keyboard(subscription.provider),
+        )
     elif callback_data.action == "settings":
         await _show_settings(callback, subscription)
     elif callback_data.action == "rename":

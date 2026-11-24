@@ -159,6 +159,13 @@ Verified live 2026-10-17 (Phase 5).
   September, so the feature was verified on the recorded sample only.
 - Sample (three items, no personal addresses): `pw_accident_planeds_1032_sample.json`.
 
+## Site pages for users (2026-11-24)
+
+Routes of the site client (`static/js/main.*.js`), for links the bot gives users:
+- `/` – address search for the schedule;
+- `/avarijni_vidkluchenna_realtime` – emergency outages now, by settlement + street (no date). The «⚡ Немає світла? Аварійні» button links here;
+- `/avarijni_vidkluchenna` – the same with a date (archive); `/planovi_vidkluchenna`, `/arhiv_planovi_vidkluchenna` – planned works.
+
 ## Fixtures
 
 | file | what |
