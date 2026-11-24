@@ -1,7 +1,9 @@
 from dataclasses import replace
 
+import pytest
 from aiogram.types import InlineKeyboardMarkup
 
+from poweron.adapters.telegram import texts
 from poweron.adapters.telegram.keyboards import (
     Decision,
     Page,
@@ -12,9 +14,12 @@ from poweron.adapters.telegram.keyboards import (
     choice_keyboard,
     day_keyboard,
     menu_keyboard,
+    outages_keyboard,
     remove_confirm_keyboard,
     settings_keyboard,
 )
+from poweron.adapters.telegram.render import REGIONS, outages_url
+from poweron.core.domain.providers import LOE, TOE, VOE
 from tests.telegram.test_render import SUBSCRIPTION
 
 LABELS = [f"Item {number}" for number in range(20)]
@@ -138,10 +143,41 @@ def test_settings_paint_what_is_on_green_and_leave_what_is_off_plain() -> None:
 def test_removing_is_red_and_today_is_the_highlighted_day() -> None:
     assert styles_of(actions_keyboard("add", "remove")) == [[None], ["danger"]]
     assert styles_of(remove_confirm_keyboard(1)) == [["danger", None]]
-    assert styles_of(day_keyboard(SUBSCRIPTION)) == [["primary", None]]
+    assert styles_of(day_keyboard(SUBSCRIPTION)) == [["primary", None], [None]]
 
 
 def test_the_schedule_is_the_highlighted_menu_button() -> None:
     styles = [[button.style for button in row] for row in menu_keyboard().keyboard]
 
     assert styles == [["primary", None], [None, None], [None, None]]
+
+
+@pytest.mark.parametrize(
+    ("provider", "url"),
+    [
+        (TOE, "https://poweron.toe.com.ua/avarijni_vidkluchenna_realtime"),
+        (
+            VOE,
+            "https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/"
+            "chomu-nemaie-elektropostachannia/",
+        ),
+        (LOE, "https://poweron.loe.lviv.ua"),
+    ],
+)
+def test_the_outages_button_opens_the_regions_current_outages_page(provider: str, url: str) -> None:
+    [[button]] = outages_keyboard(provider).inline_keyboard
+
+    assert (button.text, button.url) == (texts.BUTTON_OUTAGES, url)
+
+
+def test_the_day_keyboard_ends_with_the_outages_button() -> None:
+    [button] = day_keyboard(SUBSCRIPTION).inline_keyboard[-1]
+
+    assert (button.text, button.url) == (
+        texts.BUTTON_OUTAGES,
+        "https://poweron.toe.com.ua/avarijni_vidkluchenna_realtime",
+    )
+
+
+def test_every_region_has_an_outages_page() -> None:
+    assert all(outages_url(provider).startswith("https://") for provider in REGIONS)

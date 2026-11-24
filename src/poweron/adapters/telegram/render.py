@@ -36,6 +36,13 @@ def _site(provider: str) -> tuple[str, str]:
     return {TOE: texts.SITE_TERNOPIL, VOE: texts.SITE_VOLYN, LOE: texts.SITE_LVIV}[provider]
 
 
+def outages_url(provider: str) -> str:
+    """The oblenergo's page of current outages, opened on the user's phone past Cloudflare."""
+    return {TOE: texts.OUTAGES_TERNOPIL, VOE: texts.OUTAGES_VOLYN, LOE: texts.SITE_LVIV[0]}[
+        provider
+    ]
+
+
 def _note(provider: str) -> str:
     return texts.NOTE.format(site=_site(provider)[1])
 

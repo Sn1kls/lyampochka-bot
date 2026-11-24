@@ -57,5 +57,5 @@ Worked examples: Volyn (`docs/volyn-notes.md`; imported catalogue, image schedul
 3. Adapter `adapters/<region>_api/` implementing `ScheduleSource`. Add it to the independence contract in `pyproject.toml`.
 4. A `CatalogSource`: either the region's API (like toe) or an imported table (like Volyn: table + migration, `adapters/db/<region>_catalog.py`, an import CLI, a staleness alert like `VoeCatalogAge`, its own `cache_prefix`).
 5. `__main__.py`: add the region to `Catalog` (bot), `SchedulesByProvider` and `SubqueueChecker` (worker).
-6. Telegram: `REGIONS` and `_site` in `render.py`, plus `REGION_*` and `SITE_*` in `texts.py`. The region button and the rest of `/add` then work.
+6. Telegram: `REGIONS`, `_site` and `outages_url` (the page of current outages behind the «⚡ Немає світла? Аварійні» button) in `render.py`, plus `REGION_*`, `SITE_*` and `OUTAGES_*` (when that page is not the site itself) in `texts.py`. The region button and the rest of `/add` then work.
 7. Per-region features to decide: `Subscription.has_switching` (Ternopil only, it gates `remind_exact`), planned works (Ternopil only, `PlannedWorks`), and `/status`.

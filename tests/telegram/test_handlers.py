@@ -536,6 +536,25 @@ async def test_removing_an_address_asks_for_confirmation(chat: Chat) -> None:
     assert len(await chat.subscriptions.of_user(user_id)) == 1
 
 
+async def test_next_offers_the_regions_outages_page(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.say("/next")
+
+    assert chat.last_reply_markup() == keyboards.outages_keyboard("toe")
+
+
+async def test_next_for_an_address_chosen_from_several_offers_the_outages_page(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.press(keyboards.SubscriptionChoice(action="next", subscription_id=1))
+
+    edits = [call for call in chat.session.calls if isinstance(call, EditMessageText)]
+    assert edits[-1].reply_markup == keyboards.outages_keyboard("toe")
+
+
 @pytest.mark.parametrize(
     ("button", "command"),
     [

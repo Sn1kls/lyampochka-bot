@@ -16,7 +16,7 @@ from poweron.core.domain.providers import plain_subqueue
 from poweron.core.services.subscriptions import REMINDER_MINUTES
 
 from . import texts
-from .render import REGIONS, minutes_text, queue_name
+from .render import REGIONS, minutes_text, outages_url, queue_name
 
 PAGE_SIZE = 8
 SETTING_VALUES = {
@@ -188,6 +188,14 @@ def queue_keyboard(subqueues: Sequence[str], generation: int) -> InlineKeyboardM
     return builder.as_markup()
 
 
+def _outages_button(provider: str) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=texts.BUTTON_OUTAGES, url=outages_url(provider))
+
+
+def outages_keyboard(provider: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[_outages_button(provider)]])
+
+
 def day_keyboard(
     subscription: Subscription, shown_offset: int | None = None, shown_subqueue: str = ""
 ) -> InlineKeyboardMarkup:
@@ -213,6 +221,7 @@ def day_keyboard(
                         ).pack(),
                     )
                 )
+    builder.row(_outages_button(subscription.provider))
     return builder.as_markup()
 
 
