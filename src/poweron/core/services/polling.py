@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from poweron.core.domain.diff import ScheduleChange, data_hash, schedule_change
 from poweron.core.domain.models import (
     Address,
+    AlertKind,
     DaySchedule,
     MessageKind,
     OutboxMessage,
@@ -30,11 +31,18 @@ def never_stop() -> bool:
 
 class Polling:
     def __init__(
-        self, repository: Repository, source: ScheduleSource, alerts: Alerts | None = None
+        self,
+        repository: Repository,
+        source: ScheduleSource,
+        alerts: Alerts | None = None,
+        *,
+        stale_after: timedelta | None = None,
     ) -> None:
+        """`stale_after`: alert when a subqueue keeps failing that long, whatever the source."""
         self._repository = repository
         self._source = source
         self._alerts = alerts
+        self._stale_after = stale_after
         self._new_attempts: dict[str, datetime] = {}
         self._lock = asyncio.Lock()
 
@@ -108,8 +116,13 @@ class Polling:
             except SourceError as error:
                 logger.warning("poll failed for subqueue %s: %s", cherg_gpv, error)
                 await report_source_error(self._alerts, error, now)
-            except Exception:
+                failure: Exception = error
+            except Exception as error:
                 logger.exception("poll crashed for subqueue %s", cherg_gpv)
+                failure = error
+            else:
+                continue
+            await self._report_if_stale(cherg_gpv, subscribers, failure, now)
         if by_subqueue:
             logger.info(
                 "poll subqueues=%s changed=%s messages=%s ms=%s",
@@ -118,6 +131,25 @@ class Polling:
                 messages,
                 round((time.monotonic() - started) * 1000),
             )
+
+    async def _report_if_stale(
+        self, cherg_gpv: str, subscribers: list[Subscription], error: Exception, now: datetime
+    ) -> None:
+        """Never raises, so one subqueue's alert cannot cut the rest of the pass short."""
+        if self._alerts is None or self._stale_after is None:
+            return
+        try:
+            # A poll row outlives its last subscriber, so a re-subscribed subqueue counts afresh.
+            since = min(subscription.created_at for subscription in subscribers)
+            polled_at = await self._repository.polled_at(cherg_gpv)
+            if polled_at is not None:
+                since = max(since, polled_at)
+        except Exception:
+            logger.exception("stale check failed for subqueue %s", cherg_gpv)
+            return
+        if now - since > self._stale_after:
+            details = f"{cherg_gpv} not polled since {since:%Y-%m-%d %H:%M} UTC: {error}"
+            await self._alerts.report(AlertKind.SCHEDULE_STALE, details, now)
 
     async def _poll_subqueue(
         self,
