@@ -26,6 +26,7 @@ from tests.services.conftest import NOW, subscribe
 TERNOPIL = City(id=1032, name="Тернопіль", otg_name=None)
 SADOVA = Street(id=9985, name="вул. Садова")
 POLL_INTERVAL = timedelta(minutes=5)
+STALE_AFTER = timedelta(minutes=15)
 
 
 @dataclass
@@ -104,6 +105,84 @@ async def test_a_one_off_failure_does_not_alert(
     await Polling(repository, BrokenSource(SourceUnavailable("blip")), alerts).poll(NOW)
 
     assert alerter.alerts == []
+
+
+@pytest.mark.parametrize("ever_polled", [True, False])
+async def test_a_subqueue_failing_longer_than_stale_after_alerts(
+    repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts, ever_polled: bool
+) -> None:
+    """A never polled subqueue counts from its subscription, here also at NOW."""
+    await subscribe(repository)
+    if ever_polled:
+        await repository.mark_polled("4.1", NOW)
+    source = BrokenSource(SourceUnavailable("HTTP 403"))
+
+    await Polling(repository, source, alerts, stale_after=STALE_AFTER).poll(
+        NOW + STALE_AFTER + timedelta(minutes=1)
+    )
+
+    assert alerter.alerts == [
+        (AlertKind.SCHEDULE_STALE, "4.1 not polled since 2026-10-17 15:00 UTC: HTTP 403")
+    ]
+
+
+async def test_a_failure_within_stale_after_does_not_alert(
+    repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts
+) -> None:
+    await subscribe(repository)
+    await repository.mark_polled("4.1", NOW)
+    source = BrokenSource(SourceUnavailable("HTTP 403"))
+
+    await Polling(repository, source, alerts, stale_after=STALE_AFTER).poll(NOW + STALE_AFTER)
+
+    assert alerter.alerts == []
+
+
+async def test_a_resubscribed_subqueue_counts_from_its_new_subscription(
+    repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts
+) -> None:
+    await repository.mark_polled("4.1", NOW - timedelta(days=60))
+    await subscribe(repository)
+    source = BrokenSource(SourceUnavailable("timeout"))
+
+    await Polling(repository, source, alerts, stale_after=STALE_AFTER).poll(
+        NOW + timedelta(minutes=1)
+    )
+
+    assert alerter.alerts == []
+
+
+async def test_a_stale_subqueue_and_a_paused_source_do_not_silence_each_other(
+    repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts
+) -> None:
+    await subscribe(repository)
+    await repository.mark_polled("4.1", NOW)
+    source = BrokenSource(SourcePaused("down"))
+
+    await Polling(repository, source, alerts, stale_after=STALE_AFTER).poll(
+        NOW + STALE_AFTER + timedelta(minutes=1)
+    )
+
+    assert alerter.alerts == [
+        (AlertKind.API_DOWN, "down"),
+        (AlertKind.SCHEDULE_STALE, "4.1 not polled since 2026-10-17 15:00 UTC: down"),
+    ]
+
+
+async def test_a_subqueue_that_keeps_crashing_alerts_as_stale(
+    repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts
+) -> None:
+    await subscribe(repository)
+    await repository.mark_polled("4.1", NOW)
+    source = BrokenSource(KeyError("hours"))
+
+    await Polling(repository, source, alerts, stale_after=STALE_AFTER).poll(
+        NOW + STALE_AFTER + timedelta(minutes=1)
+    )
+
+    assert alerter.alerts == [
+        (AlertKind.SCHEDULE_STALE, "4.1 not polled since 2026-10-17 15:00 UTC: 'hours'")
+    ]
 
 
 async def test_a_failed_send_is_retried_on_the_next_report(
