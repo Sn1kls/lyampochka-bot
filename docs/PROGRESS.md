@@ -348,3 +348,11 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Decisions (owner): catalogue live with the usual 24 h cache; «Не входить» next to a queue counts as the queue, two queues are offered for picking; the hromada is shown next to the settlement; no planned works for now.
 - Checked live: today's text and пл. Ринок (3 → 3.1, 9 → 3.1 + 4.1) through the real client.
 - Known limits: when «Tomorrow» fills up and what both items do at midnight is still unobserved; the parser relies on the day in the text either way. Messy street names are shown as the oblenergo writes them.
+
+## 2026-11-24: Circuit breaker per endpoint
+
+- Bug (production, 10:23): `pw_accident_planeds` answered HTTP 500 for two streets in a row. The one shared `ToeClient` breaker opened and also skipped the schedule poll (`a_gpv_g` was healthy), and the admin got «Сайт обленерго давно не відповідає», which was false.
+- Fixed: `ToeClient` keeps a breaker per request path, so a broken endpoint pauses only itself. The 1 request/second pacing stays shared, since it is per host.
+- Alerts: a pause in planned works or the subqueue re-check is `SIDE_API_DOWN` («Частина сайту обленерго не відповідає»), rate-limited apart from `API_DOWN`, which now means schedule polling only.
+- Accepted: in a full outage each endpoint fails 3 times on its own before it pauses (about 9 requests each instead of one shared stop), and the admin gets both alerts. A 429 also pauses only its endpoint.
+- Known limit: a schema error in a side job still reports `API_SCHEMA`, whose text says schedules come from memory.

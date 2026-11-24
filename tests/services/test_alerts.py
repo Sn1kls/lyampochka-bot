@@ -83,7 +83,7 @@ async def test_schema_error_in_polling_alerts_once_within_the_hour(
     assert alerter.alerts == [(AlertKind.API_SCHEMA, "bad shape")]
 
 
-async def test_a_paused_source_alerts_in_every_job(
+async def test_a_paused_source_alerts_once_for_schedules_and_once_for_side_jobs(
     repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts
 ) -> None:
     await subscribe(repository)
@@ -93,7 +93,7 @@ async def test_a_paused_source_alerts_in_every_job(
     await SubqueueChecker(repository, {TOE: source}, alerts).check(NOW + RECHECK_AFTER)
     await PlannedWorks(repository, source, alerts).check(NOW)
 
-    assert alerter.alerts == [(AlertKind.API_DOWN, "down")]
+    assert alerter.alerts == [(AlertKind.API_DOWN, "down"), (AlertKind.SIDE_API_DOWN, "down")]
 
 
 async def test_a_one_off_failure_does_not_alert(
