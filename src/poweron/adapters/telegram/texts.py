@@ -223,6 +223,10 @@ ALERT_API_SCHEMA = (
 ALERT_API_DOWN = (
     "🚨 Сайт обленерго давно не відповідає. Показую графіки з пам'яті.\n<code>{details}</code>"
 )
+ALERT_SIDE_API_DOWN = (
+    "⚠️ Частина сайту обленерго не відповідає: планові роботи або перевірка черг. "
+    "Спробую пізніше.\n<code>{details}</code>"
+)
 ALERT_NEW_USER = "👤 Новий користувач: {details}"
 ALERT_BACKUP_FAILED = (
     "🗄 Не вдалося зробити щоденний бекап бази, спробую ще раз.\n<code>{details}</code>"

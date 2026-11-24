@@ -3,7 +3,13 @@ from collections import defaultdict
 from collections.abc import Callable
 from datetime import datetime
 
-from poweron.core.domain.models import MessageKind, OutboxMessage, PlannedWork, Subscription
+from poweron.core.domain.models import (
+    AlertKind,
+    MessageKind,
+    OutboxMessage,
+    PlannedWork,
+    Subscription,
+)
 from poweron.core.domain.providers import TOE
 from poweron.core.domain.text import normalise
 from poweron.core.ports import PlannedWorkSource, Repository, SourceError
@@ -49,7 +55,7 @@ class PlannedWorks:
                 queued += len(messages)
             except SourceError as error:
                 logger.warning("planned works check failed for street %s: %s", street_id, error)
-                await report_source_error(self._alerts, error, now)
+                await report_source_error(self._alerts, error, now, AlertKind.SIDE_API_DOWN)
             except Exception:
                 logger.exception("planned works check crashed for street %s", street_id)
         logger.info("planned_works streets=%s messages=%s", len(by_street), queued)

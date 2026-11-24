@@ -32,11 +32,19 @@ class Alerts:
         return True
 
 
-async def report_source_error(alerts: Alerts | None, error: SourceError, now: datetime) -> None:
-    """Only a schema break or a sustained outage is worth an alert; one failed request is not."""
+async def report_source_error(
+    alerts: Alerts | None,
+    error: SourceError,
+    now: datetime,
+    down_kind: AlertKind = AlertKind.API_DOWN,
+) -> None:
+    """Only a schema break or a sustained outage is worth an alert; one failed request is not.
+
+    Jobs other than schedule polling pass `SIDE_API_DOWN`: their outage leaves schedules fresh.
+    """
     if alerts is None:
         return
     if isinstance(error, ApiSchemaError):
         await alerts.report(AlertKind.API_SCHEMA, str(error), now)
     elif isinstance(error, SourcePaused):
-        await alerts.report(AlertKind.API_DOWN, str(error), now)
+        await alerts.report(down_kind, str(error), now)

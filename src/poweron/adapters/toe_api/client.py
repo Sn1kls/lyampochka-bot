@@ -3,7 +3,9 @@ import base64
 import logging
 import random
 import time
+from collections import defaultdict
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from importlib.metadata import version
 from typing import Any
@@ -51,6 +53,18 @@ class _Rejected(SourceUnavailable):
     """The API answered with a non-retryable error status; it is up, so the breaker ignores it."""
 
 
+@dataclass
+class _Breaker:
+    """Per endpoint: one broken endpoint must not stop polling the healthy ones."""
+
+    consecutive_failures: int = 0
+    paused_until: float = float("-inf")
+    last_failure: str = ""
+
+    def paused(self) -> SourcePaused:
+        return SourcePaused(f"paused after repeated failures: {self.last_failure}")
+
+
 class ToeClient:
     def __init__(
         self,
@@ -72,9 +86,7 @@ class ToeClient:
         self._sleep = sleep
         self._lock = asyncio.Lock()
         self._last_request_at = float("-inf")
-        self._consecutive_failures = 0
-        self._paused_until = float("-inf")
-        self._last_failure = ""
+        self._breakers: defaultdict[str, _Breaker] = defaultdict(_Breaker)
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -166,37 +178,36 @@ class ToeClient:
     async def _get(
         self, path: str, params: dict[str, Any], headers: dict[str, str] | None = None
     ) -> Any:
+        breaker = self._breakers[path]
         async with self._lock:
-            if self._monotonic() < self._paused_until:
-                raise self._paused()
+            if self._monotonic() < breaker.paused_until:
+                raise breaker.paused()
             try:
                 response = await self._request(path, params, headers)
             except (_Rejected, ApiSchemaError):
-                self._consecutive_failures = 0  # the API answered, so it is up
+                breaker.consecutive_failures = 0  # the API answered, so it is up
                 raise
             except SourceUnavailable as error:
-                self._last_failure = str(error)
-                if self._record_failure():
-                    raise self._paused() from error
+                breaker.last_failure = str(error)
+                if self._record_failure(path, breaker):
+                    raise breaker.paused() from error
                 raise
-            self._consecutive_failures = 0
+            breaker.consecutive_failures = 0
             return response
 
-    def _paused(self) -> SourcePaused:
-        return SourcePaused(f"paused after repeated failures: {self._last_failure}")
-
-    def _record_failure(self) -> bool:
+    def _record_failure(self, path: str, breaker: _Breaker) -> bool:
         """Returns whether the breaker is open now."""
-        self._consecutive_failures += 1
-        if self._consecutive_failures < BREAKER_THRESHOLD:
+        breaker.consecutive_failures += 1
+        if breaker.consecutive_failures < BREAKER_THRESHOLD:
             return False
-        doublings = min(self._consecutive_failures - BREAKER_THRESHOLD, MAX_DOUBLINGS)
+        doublings = min(breaker.consecutive_failures - BREAKER_THRESHOLD, MAX_DOUBLINGS)
         pause = min(BREAKER_FIRST_PAUSE * 2**doublings, BREAKER_MAX_PAUSE)
-        self._paused_until = self._monotonic() + pause
+        breaker.paused_until = self._monotonic() + pause
         logger.warning(
-            "toe api paused for %.0f s after %s failed requests in a row",
+            "toe api %s paused for %.0f s after %s failed requests in a row",
+            path,
             pause,
-            self._consecutive_failures,
+            breaker.consecutive_failures,
         )
         return True
 
