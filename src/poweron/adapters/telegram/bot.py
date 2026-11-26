@@ -9,6 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
 
 from poweron.core.services.catalog import Catalog
+from poweron.core.services.emergency import EmergencyOutages
 from poweron.core.services.feedback import Feedback
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
@@ -35,6 +36,7 @@ def build_dispatcher(
     *,
     status: Status | None = None,
     admin_chat_id: int | None = None,
+    emergency: EmergencyOutages | None = None,
 ) -> Dispatcher:
     dispatcher = Dispatcher(
         storage=MemoryStorage(),
@@ -44,6 +46,7 @@ def build_dispatcher(
         status=status,
         admin_chat_id=admin_chat_id,
         feedback=feedback,
+        emergency=emergency,
     )
     dispatcher.include_router(router)
     dispatcher.startup.register(publish_profile)

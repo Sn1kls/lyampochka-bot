@@ -8,6 +8,7 @@ from poweron.core.domain.models import (
     DayView,
     Interval,
     NextEvent,
+    PlannedWork,
     SlotState,
     StatusReport,
     SubqueueStatus,
@@ -298,6 +299,17 @@ def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
         current=_queue_list(payload["current"]),
         tracked=_queue_list(payload["tracked"]),
     )
+
+
+def render_emergency(outage: PlannedWork, now: datetime) -> str:
+    ends_at = outage.ends_at.astimezone(KYIV)
+    at = _at(ends_at, f"{ends_at:%H:%M}")
+    if ends_at.date() != now.astimezone(KYIV).date():
+        at = f"{ends_at:%d.%m} {at}"
+    text = texts.EMERGENCY.format(at=at)
+    if outage.reason:
+        text += texts.EMERGENCY_REASON.format(reason=escape(outage.reason))
+    return text
 
 
 def render_planned_work(payload: Mapping[str, Any]) -> str:

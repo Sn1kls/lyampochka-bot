@@ -356,3 +356,14 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Alerts: a pause in planned works or the subqueue re-check is `SIDE_API_DOWN` («Частина сайту обленерго не відповідає»), rate-limited apart from `API_DOWN`, which now means schedule polling only.
 - Accepted: in a full outage each endpoint fails 3 times on its own before it pauses (about 9 requests each instead of one shared stop), and the admin gets both alerts. A 429 also pauses only its endpoint.
 - Known limit: a schema error in a side job still reports `API_SCHEMA`, whose text says schedules come from memory.
+
+## 2026-11-26: Emergency outages in Ternopil
+
+- Done: «Що далі» and today's «Графік» start with «⚠️ Зараз аварійне відключення, світло обіцяють дати …» when the oblenergo lists an emergency outage on the user's building (or the whole street). Ternopil only.
+  - `ToeClient.emergency_outages` reads `/pw_accidents` with the site's realtime filter; items reuse the planned-works parser and `PlannedWork`.
+  - `core/services/emergency.py`: asked by the bot while the user waits, 5 min cache per street, 3 s timeout; a slow or broken API just drops the line, and the failure is remembered for 1 min (the timeout cuts the client's retries short, so its breaker never opens for this endpoint). An outage counts only between its start and planned end.
+  - `PlannedWork.affects` replaces `planned_works._affects`, shared by both services.
+- Research first: a day of observation (`docs/api-notes.md`, "Current outages"). Rows stay open for days after their planned end, so only rows whose planned end is ahead are shown. No pushes: the API can lag ~5 h, and ids change on every request.
+- Decisions (owner): on demand only, exact building match, Ternopil only; the «⚡ Немає світла? Аварійні» button stays.
+- Known limits: in `all` mode the bot shares the 1 request/second lock with the worker, so during a poll burst the request may time out and the line is missing. One page of 30 rows per street.
+- Volyn rechecked: still behind Cloudflare for the server, inneti tables still empty.

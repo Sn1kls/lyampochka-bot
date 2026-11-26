@@ -136,6 +136,7 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
   2. Fetch Volyn data from a device in Ukraine (Mac, Raspberry Pi) and pass it to the bot. Needs an HTTP endpoint in the bot. Weakness: the device loses power during outages, exactly when schedules matter.
   3. Move the whole bot to hosting the site does not challenge. Unknown which hosting passes; not tested.
 - 2026-11-24: the owner emailed `kanc@energy.volyn.ua` asking for option 1: fill `pw_accidents` / `pw_accident_planeds` in the inneti API, or allow the server IP. No answer yet.
+- 2026-11-26: rechecked from the server: energy.volyn.ua still 403 «Just a moment...»; inneti `pw_accidents`, `pw_accident_planeds`, `pw_cities` still `totalItems: 0`.
 
 ## Probe
 
