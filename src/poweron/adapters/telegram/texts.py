@@ -6,6 +6,13 @@ SITE_VOLYN = (
     "energy.volyn.ua",
 )
 SITE_LVIV = ("https://poweron.loe.lviv.ua", "poweron.loe.lviv.ua")
+# Each oblenergo's page of the outages happening now (Lviv: its homepage). Checked 2026-11-24.
+OUTAGES_TERNOPIL = "https://poweron.toe.com.ua/avarijni_vidkluchenna_realtime"
+OUTAGES_VOLYN = (
+    "https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/"
+    "chomu-nemaie-elektropostachannia/"
+)
+BUTTON_OUTAGES = "⚡ Немає світла? Аварійні"
 
 MENU_SCHEDULE = "📅 Графік"
 MENU_NEXT = "⏭ Що далі"
@@ -188,6 +195,8 @@ MENU_UPDATED = (
 )
 PLANNED_WORK = "🛠 <b>{label}</b>: планові роботи {date} з {start} до {end}"
 PLANNED_WORK_REASON = " – {reason}"
+EMERGENCY = "⚠️ <b>Зараз аварійне відключення</b>, світло обіцяють дати {at}"
+EMERGENCY_REASON = "\nПричина: {reason}"
 
 SETTINGS_TITLE = "⚙️ Налаштування для <b>{label}</b>"
 SETTINGS_UPDATES = "Пуші про оновлення графіка і планові роботи: {state}"

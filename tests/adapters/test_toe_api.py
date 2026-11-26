@@ -581,3 +581,47 @@ async def test_a_long_planned_work_reason_is_cut(client: ToeClient) -> None:
 
     assert len(work.reason) <= 300
     assert work.reason.endswith("…")
+
+
+ACCIDENTS = load_fixture("pw_accidents_1032_sample.json")
+KOROLIA_STREET_ID = 31786
+
+
+@respx.mock
+async def test_emergency_outages_ask_for_emergencies_on_the_street(client: ToeClient) -> None:
+    route = respx.get(f"{API}/pw_accidents").respond(json=ACCIDENTS)
+
+    (outage,) = await client.emergency_outages(1032, KOROLIA_STREET_ID)
+
+    params = route.calls.last.request.url.params
+    assert dict(params) == {
+        "city.id": "1032",
+        "street.id": str(KOROLIA_STREET_ID),
+        "typeOff": "1",
+        "switchSubReason": "0",
+    }
+    assert outage == PlannedWork(
+        id=116576768,
+        street_id=KOROLIA_STREET_ID,
+        starts_at=datetime(2026, 11, 25, 16, 7, tzinfo=UTC),
+        ends_at=datetime(2026, 11, 26, 8, 0, tzinfo=UTC),
+        reason="Пошкодження КЛ",
+        building_names=("49",),
+    )
+
+
+@respx.mock
+async def test_no_emergency_outages_is_an_empty_list(client: ToeClient) -> None:
+    respx.get(f"{API}/pw_accidents").respond(json=ACCIDENTS | {"hydra:member": []})
+
+    assert await client.emergency_outages(1032, KOROLIA_STREET_ID) == []
+
+
+@respx.mock
+async def test_emergency_outages_in_an_unknown_format_raise_schema_error(
+    client: ToeClient,
+) -> None:
+    respx.get(f"{API}/pw_accidents").respond(json=ACCIDENTS | {"hydra:member": [{"id": "x"}]})
+
+    with pytest.raises(ApiSchemaError):
+        await client.emergency_outages(1032, KOROLIA_STREET_ID)

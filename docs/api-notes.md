@@ -159,6 +159,31 @@ Verified live 2026-10-17 (Phase 5).
   September, so the feature was verified on the recorded sample only.
 - Sample (three items, no personal addresses): `pw_accident_planeds_1032_sample.json`.
 
+## Current outages (`/pw_accidents`)
+
+Observed 2026-11-25 16:04 – 2026-11-26 09:08, every 30 min (`probe.py accidents`, 36 runs).
+
+- `GET /pw_accidents?city.id=&street.id=&typeOff=1&switchSubReason=0` is the site's realtime emergency page. Hydra
+  envelope with `ld+json`, a plain array with `application/json`; 30 items per page; `DYNAMIC` (not cached).
+- Item: the planned-works shape plus `typeOff`, `switchSubReason`, `code_otg`. Dates are the same fake `+00:00` Kyiv
+  wall clock (an outage starting 19:14 was listed at 19:36 Kyiv). `koment` is often empty, else e.g. «Пошкодження КЛ».
+- Without the filter the list also holds `switchSubReason=2`, «Застосування ГПВ»: the schedule outages, which the bot
+  already knows. Up to ~570 rows for the oblast during a schedule.
+- New outages appear within ~30 min (twice), once ~5 h late (started 18:07, listed after 22:37).
+- Ended ones usually go early (Теребовля: gone ~30 min after start, before its planned end), but some stay listed for
+  days after `datePlanIn` (four rows from 19 and 24 Nov all day). → Show only rows whose `datePlanIn` is ahead.
+- `datePlanIn` moves (22:49 → next day 12:49; 10:28 → 10:30), so read it fresh.
+- `id` changes on every request for the same outage: no use as a dedupe key.
+- Bot use: `EmergencyOutages` asks per street while the user waits (5 min cache, 3 s timeout). Missing line ≠ no outage,
+  so the link button stays.
+
+## Site pages for users (2026-11-24)
+
+Routes of the site client (`static/js/main.*.js`), for links the bot gives users:
+- `/` – address search for the schedule;
+- `/avarijni_vidkluchenna_realtime` – emergency outages now, by settlement + street (no date). The «⚡ Немає світла? Аварійні» button links here;
+- `/avarijni_vidkluchenna` – the same with a date (archive); `/planovi_vidkluchenna`, `/arhiv_planovi_vidkluchenna` – planned works.
+
 ## Fixtures
 
 | file | what |
@@ -171,5 +196,6 @@ Verified live 2026-10-17 (Phase 5).
 | `a_gpv_g_not_included.json` | «Не входить» building still gets 4.1 |
 | `pw_accident_planeds_1032_9985.json` | empty planned works |
 | `pw_accident_planeds_1032_sample.json` | three real planned works for Ternopil |
+| `pw_accidents_1032_sample.json` | two emergency outages in Ternopil: an open one and one left open since 19 Nov |
 
 No personal data: public catalog data and the SPEC sample address only.

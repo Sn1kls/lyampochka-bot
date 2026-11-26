@@ -1,0 +1,90 @@
+{
+  "@context": "/api/contexts/PwAccident",
+  "@id": "/api/pw_accidents",
+  "@type": "hydra:Collection",
+  "hydra:totalItems": 2,
+  "hydra:member": [
+    {
+      "@id": "/api/pw_accidents/116576768",
+      "@type": "PwAccident",
+      "id": 116576768,
+      "code_otg": "41",
+      "city": {
+        "@id": "/api/pw_cities/1032",
+        "@type": "PwCity",
+        "id": 1032,
+        "name": "Тернопіль",
+        "codeOtg": ""
+      },
+      "street": {
+        "@id": "/api/pw_streets/31786",
+        "@type": "PwStreet",
+        "id": 31786,
+        "city": {
+          "@id": "/api/pw_cities/1032",
+          "@type": "PwCity",
+          "id": 1032,
+          "name": "Тернопіль",
+          "codeOtg": ""
+        },
+        "name": "вул. Сергія Короля"
+      },
+      "dateEvent": "2026-11-25T18:07:00+00:00",
+      "datePlanIn": "2026-11-26T10:00:00+00:00",
+      "koment": "Пошкодження КЛ",
+      "switchSubReason": 0,
+      "otg": {
+        "@id": "/api/pw_otgs/41",
+        "@type": "PwOtg",
+        "id": 41,
+        "code": "41",
+        "name": "Тернопільська"
+      },
+      "buildingNames": "49",
+      "typeOff": 1
+    },
+    {
+      "@id": "/api/pw_accidents/116576735",
+      "@type": "PwAccident",
+      "id": 116576735,
+      "code_otg": "41",
+      "city": {
+        "@id": "/api/pw_cities/1032",
+        "@type": "PwCity",
+        "id": 1032,
+        "name": "Тернопіль",
+        "codeOtg": ""
+      },
+      "street": {
+        "@id": "/api/pw_streets/10057",
+        "@type": "PwStreet",
+        "id": 10057,
+        "city": {
+          "@id": "/api/pw_cities/1032",
+          "@type": "PwCity",
+          "id": 1032,
+          "name": "Тернопіль",
+          "codeOtg": ""
+        },
+        "name": "вул. Василя Стуса"
+      },
+      "dateEvent": "2026-11-19T12:26:07+00:00",
+      "datePlanIn": "2026-11-19T14:30:00+00:00",
+      "koment": "",
+      "switchSubReason": 0,
+      "otg": {
+        "@id": "/api/pw_otgs/41",
+        "@type": "PwOtg",
+        "id": 41,
+        "code": "41",
+        "name": "Тернопільська"
+      },
+      "buildingNames": "41-А",
+      "typeOff": 1
+    }
+  ],
+  "hydra:view": {
+    "@id": "/api/pw_accidents?otg.id=&city.id=1032&street.id=&typeOff=1&switchSubReason=0",
+    "@type": "hydra:PartialCollectionView"
+  }
+}

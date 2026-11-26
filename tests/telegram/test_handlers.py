@@ -34,6 +34,7 @@ from poweron.core.domain.models import (
     AlertKind,
     Building,
     City,
+    PlannedWork,
     ScheduleVersion,
     StatusReport,
     Street,
@@ -42,6 +43,7 @@ from poweron.core.domain.models import (
 from poweron.core.domain.providers import LOE, TOE, VOE
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.catalog import Catalog
+from poweron.core.services.emergency import EmergencyOutages
 from poweron.core.services.feedback import Feedback
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
@@ -200,6 +202,7 @@ class Chat:
         admin_chat_id: int | None = None,
         alerts: Alerts | None = None,
         feedback: Feedback | None = None,
+        emergency: EmergencyOutages | None = None,
     ) -> None:
         self.subscriptions = SettingsSubscriptions(repository, alerts)
         self.session = RecordingSession()
@@ -215,6 +218,7 @@ class Chat:
             feedback or Feedback(repository),
             status=status,
             admin_chat_id=admin_chat_id,
+            emergency=emergency,
         )
         self._update_id = 0
 
@@ -534,6 +538,60 @@ async def test_removing_an_address_asks_for_confirmation(chat: Chat) -> None:
     await chat.press_button(texts.BUTTON_CANCEL)
     assert chat.edited_texts()[-1] == texts.CANCELLED
     assert len(await chat.subscriptions.of_user(user_id)) == 1
+
+
+async def test_next_offers_the_regions_outages_page(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.say("/next")
+
+    assert chat.last_reply_markup() == keyboards.outages_keyboard("toe")
+
+
+async def test_next_for_an_address_chosen_from_several_offers_the_outages_page(chat: Chat) -> None:
+    await add_address(chat, "5")
+    await chat.press_button(texts.BUTTON_SAVE)
+
+    await chat.press(keyboards.SubscriptionChoice(action="next", subscription_id=1))
+
+    edits = [call for call in chat.session.calls if isinstance(call, EditMessageText)]
+    assert edits[-1].reply_markup == keyboards.outages_keyboard("toe")
+
+
+class FakeEmergencySource:
+    """A cable fault on вул. Руська 5, the address `add_address(chat, "5")` saves."""
+
+    async def emergency_outages(self, city_id: int, street_id: int) -> list[PlannedWork]:
+        now = datetime.now(UTC)
+        fault = PlannedWork(1, 1, now - timedelta(hours=1), now + timedelta(hours=2), "", ("5",))
+        return [fault]
+
+
+@pytest.fixture
+def emergency_chat(repository: SqlRepository) -> Chat:
+    return Chat(repository, emergency=EmergencyOutages(FakeEmergencySource()))
+
+
+async def test_next_starts_with_an_emergency_outage_on_the_building(emergency_chat: Chat) -> None:
+    await add_address(emergency_chat, "5")
+    await emergency_chat.press_button(texts.BUTTON_SAVE)
+
+    await emergency_chat.say("/next")
+
+    assert emergency_chat.sent_texts()[-1].startswith("⚠️ <b>Зараз аварійне відключення</b>")
+
+
+async def test_only_todays_schedule_shows_the_emergency_outage(emergency_chat: Chat) -> None:
+    await add_address(emergency_chat, "5")
+    await emergency_chat.press_button(texts.BUTTON_SAVE)
+
+    await emergency_chat.press(keyboards.DayChoice(subscription_id=1, offset=0))
+    await emergency_chat.press(keyboards.DayChoice(subscription_id=1, offset=1))
+
+    today, tomorrow = emergency_chat.edited_texts()[-2:]
+    assert today.startswith("⚠️")
+    assert not tomorrow.startswith("⚠️")
 
 
 @pytest.mark.parametrize(

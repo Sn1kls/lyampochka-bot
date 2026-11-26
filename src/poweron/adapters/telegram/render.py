@@ -8,6 +8,7 @@ from poweron.core.domain.models import (
     DayView,
     Interval,
     NextEvent,
+    PlannedWork,
     SlotState,
     StatusReport,
     SubqueueStatus,
@@ -34,6 +35,13 @@ REGIONS = {TOE: texts.REGION_TERNOPIL, VOE: texts.REGION_VOLYN, LOE: texts.REGIO
 def _site(provider: str) -> tuple[str, str]:
     """The oblenergo's schedule page."""
     return {TOE: texts.SITE_TERNOPIL, VOE: texts.SITE_VOLYN, LOE: texts.SITE_LVIV}[provider]
+
+
+def outages_url(provider: str) -> str:
+    """The oblenergo's page of current outages, opened on the user's phone past Cloudflare."""
+    return {TOE: texts.OUTAGES_TERNOPIL, VOE: texts.OUTAGES_VOLYN, LOE: texts.SITE_LVIV[0]}[
+        provider
+    ]
 
 
 def _note(provider: str) -> str:
@@ -291,6 +299,17 @@ def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
         current=_queue_list(payload["current"]),
         tracked=_queue_list(payload["tracked"]),
     )
+
+
+def render_emergency(outage: PlannedWork, now: datetime) -> str:
+    ends_at = outage.ends_at.astimezone(KYIV)
+    at = _at(ends_at, f"{ends_at:%H:%M}")
+    if ends_at.date() != now.astimezone(KYIV).date():
+        at = f"{ends_at:%d.%m} {at}"
+    text = texts.EMERGENCY.format(at=at)
+    if outage.reason:
+        text += texts.EMERGENCY_REASON.format(reason=escape(outage.reason))
+    return text
 
 
 def render_planned_work(payload: Mapping[str, Any]) -> str:

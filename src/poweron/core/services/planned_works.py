@@ -11,7 +11,6 @@ from poweron.core.domain.models import (
     Subscription,
 )
 from poweron.core.domain.providers import TOE
-from poweron.core.domain.text import normalise
 from poweron.core.ports import PlannedWorkSource, Repository, SourceError
 from poweron.core.services.alerts import Alerts, report_source_error
 from poweron.core.services.polling import never_stop
@@ -49,7 +48,7 @@ class PlannedWorks:
                     _message(subscription, work)
                     for subscription in subscribers
                     for work in works
-                    if _affects(work, subscription)
+                    if work.affects(subscription.address.building_name)
                 ]
                 await self._repository.enqueue_messages(messages)
                 queued += len(messages)
@@ -59,13 +58,6 @@ class PlannedWorks:
             except Exception:
                 logger.exception("planned works check crashed for street %s", street_id)
         logger.info("planned_works streets=%s messages=%s", len(by_street), queued)
-
-
-def _affects(work: PlannedWork, subscription: Subscription) -> bool:
-    if not work.building_names:
-        return True
-    listed = {normalise(name) for name in work.building_names}
-    return normalise(subscription.address.building_name) in listed
 
 
 def _message(subscription: Subscription, work: PlannedWork) -> OutboxMessage:
