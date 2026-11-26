@@ -2,7 +2,9 @@
 
 Asks the queue lookup and the schedule search, saves raw HTML to tests/fixtures/
 and prints the markers the adapter relies on. `probe_volyn.py api` asks the inneti API's
-outage endpoints instead and saves raw JSON to the scratch dir given as the second argument. Stdlib only, sequential,
+outage endpoints instead and saves raw JSON to the scratch dir given as the second argument.
+`probe_volyn.py outages <dir> <settlement>...` saves the current outages page per settlement to `<dir>`,
+stamped with Kyiv time, for observing it over a day. Stdlib only, sequential,
 at most one request per second. Only public street names, never a personal address.
 """
 
@@ -101,6 +103,18 @@ def probe_api(out_dir: Path) -> None:
         (out_dir / f"voe_{name}.json").write_bytes(raw)
 
 
+def probe_outages(out_dir: Path, cities: list[str]) -> None:
+    """The settlement field matches a substring, so «а» covers every settlement with an «а» in it."""
+    plain = urllib.request.build_opener()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(KYIV).strftime("%Y%m%d-%H%M")
+    for city in cities:
+        html = request(
+            plain, "chomu-nemaie-elektropostachannia/", {"formCity": city, "formStreet": ""}
+        )
+        (out_dir / f"voe_outages_{stamp}_{city}.html").write_text(html)
+
+
 def main() -> None:
     plain = urllib.request.build_opener()
     today = datetime.now(KYIV).date()
@@ -128,5 +142,9 @@ if __name__ == "__main__":
         if len(sys.argv) < 3:
             sys.exit("usage: probe_volyn.py api <scratch-dir>")
         probe_api(Path(sys.argv[2]))
+    elif sys.argv[1:2] == ["outages"]:
+        if len(sys.argv) < 4:
+            sys.exit("usage: probe_volyn.py outages <dir> <settlement>...")
+        probe_outages(Path(sys.argv[2]), sys.argv[3:])
     else:
         main()

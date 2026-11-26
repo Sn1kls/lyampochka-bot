@@ -367,3 +367,13 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Decisions (owner): on demand only, exact building match, Ternopil only; the «⚡ Немає світла? Аварійні» button stays.
 - Known limits: in `all` mode the bot shares the 1 request/second lock with the worker, so during a poll burst the request may time out and the line is missing. One page of 30 rows per street.
 - Volyn rechecked: still behind Cloudflare for the server, inneti tables still empty.
+
+## 2026-11-26: Volyn current outages page
+
+- Researched energy.volyn.ua's current outages page from the owner's Mac; details in `docs/volyn-notes.md` ("Current outages page").
+  - A plain form POST, no session; the settlement field matches a substring and the answer is not capped, so a few requests cover the whole oblast.
+  - Rows are per street with a building list, type (emergency, planned, schedule applied), reason, start and expected end. Refreshed every 30 min.
+- `scripts/probe_volyn.py outages <dir> <settlement>...` saves the raw page; fixtures `voe_outages_lutsk.html`, `voe_outages_none.html`.
+- Server access, rechecked: the server is challenged even on `robots.txt`; a German VPN exit is challenged too. Whether a Ukrainian data-centre IP passes is open.
+- A real headless browser on the server does not pass either: Cloudflare holds it on a Turnstile challenge. We stop there (no stealth, no captcha solvers).
+- Open: a day of observation (how long rows stay after their end), and how the server gets to the page at all.
