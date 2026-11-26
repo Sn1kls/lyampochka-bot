@@ -339,7 +339,31 @@ def probe_planned(city_id: int, after: str | None = None) -> int:
     return 0
 
 
+def probe_accidents(out_dir: Path, city_id: str = "") -> int:
+    """Shape of current outages, as the site's realtime page asks; raw JSON goes to `out_dir`
+    because rows name streets and buildings."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, extra in (
+        ("emergency", {"typeOff": 1, "switchSubReason": 0}),
+        ("all", {}),
+    ):
+        params = {"page": 1, "otg.id": "", "city.id": city_id, "street.id": "", **extra}
+        _, headers, body = get("/pw_accidents", params, {"Accept": "application/ld+json"})
+        items = members(body)
+        total = body.get("hydra:totalItems") if isinstance(body, dict) else "-"
+        print(f"  {name}: total={total} on page 1={len(items)} cf={headers.get('cf-cache-status')}")
+        print(f"  keys: {sorted(items[0]) if items else '-'}")
+        kinds = sorted({(item.get("typeOff"), item.get("switchSubReason")) for item in items})
+        print(f"  (typeOff, switchSubReason) on page: {kinds}")
+        (out_dir / f"pw_accidents_{name}_{city_id or 'all'}.json").write_text(
+            json.dumps(body, ensure_ascii=False, indent=2) + "\n"
+        )
+    return 0
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["accidents"]:
+        sys.exit(probe_accidents(Path(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else ""))
     if sys.argv[1:2] == ["planned"]:
         sys.exit(probe_planned(int(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else None))
     if sys.argv[1:2] == ["building"]:

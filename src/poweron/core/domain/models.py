@@ -5,6 +5,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from poweron.core.domain.providers import TOE, provider_of
+from poweron.core.domain.text import normalise
 
 KYIV = ZoneInfo("Europe/Kyiv")
 
@@ -54,7 +55,10 @@ class Building:
 
 @dataclass(frozen=True)
 class PlannedWork:
-    """Aware UTC instants; an empty `building_names` means the whole street."""
+    """A planned work or an emergency outage on one street, as the oblenergo lists it.
+
+    Aware UTC instants; an empty `building_names` means the whole street.
+    """
 
     id: int
     street_id: int
@@ -62,6 +66,10 @@ class PlannedWork:
     ends_at: datetime
     reason: str
     building_names: tuple[str, ...]
+
+    def affects(self, building_name: str) -> bool:
+        listed = {normalise(name) for name in self.building_names}
+        return not listed or normalise(building_name) in listed
 
 
 @dataclass(frozen=True)

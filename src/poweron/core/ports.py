@@ -81,6 +81,12 @@ class PlannedWorkSource(Protocol):
         ...
 
 
+class EmergencyOutageSource(Protocol):
+    async def emergency_outages(self, city_id: int, street_id: int) -> list[PlannedWork]:
+        """Emergency outages the oblenergo lists on the street, including ones it forgot to close."""
+        ...
+
+
 class Notifier(Protocol):
     async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> str | None:
         """An opaque ref of the delivered message, if the channel has one."""

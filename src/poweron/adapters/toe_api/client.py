@@ -162,18 +162,19 @@ class ToeClient:
         }
         works: list[PlannedWork] = []
         for page in range(1, MAX_PLANNED_WORK_PAGES + 1):
-            response = await self._get("pw_accident_planeds", params | {"page": page})
-            items = _members(response)
-            if not isinstance(items, list):
-                raise ApiSchemaError("pw_accident_planeds: not a list")
+            path = "pw_accident_planeds"
+            items = _work_items(path, await self._get(path, params | {"page": page}))
             if not items:
                 return works
-            raw_works = [raw for item in items if (raw := _raw_planned_work(item))]
-            if not raw_works:
-                raise ApiSchemaError("pw_accident_planeds: no item matches the expected format")
-            works += [work for raw in raw_works if (work := _planned_work(raw, street_id))]
+            works += _parse_works(path, items, street_id)
         logger.warning("planned works of street %s cut at %s pages", street_id, page)
         return works
+
+    async def emergency_outages(self, city_id: int, street_id: int) -> list[PlannedWork]:
+        """The site's realtime filter; one page of 30 is plenty for one street."""
+        params = {"city.id": city_id, "street.id": street_id, "typeOff": 1, "switchSubReason": 0}
+        path = "pw_accidents"
+        return _parse_works(path, _work_items(path, await self._get(path, params)), street_id)
 
     async def _get(
         self, path: str, params: dict[str, Any], headers: dict[str, str] | None = None
@@ -242,6 +243,21 @@ class ToeClient:
         if failure == NOT_JSON:
             raise ApiSchemaError(f"{path}: {NOT_JSON} after {ATTEMPTS} attempts")
         raise SourceUnavailable(f"{path}: {failure} after {ATTEMPTS} attempts")
+
+
+def _work_items(path: str, response: Any) -> list[Any]:
+    items = _members(response)
+    if not isinstance(items, list):
+        raise ApiSchemaError(f"{path}: not a list")
+    return items
+
+
+def _parse_works(path: str, items: list[Any], street_id: int) -> list[PlannedWork]:
+    """Planned works and emergency outages share one item format."""
+    raw_works = [raw for item in items if (raw := _raw_planned_work(item))]
+    if items and not raw_works:
+        raise ApiSchemaError(f"{path}: no item matches the expected format")
+    return [work for raw in raw_works if (work := _planned_work(raw, street_id))]
 
 
 def _raw_planned_work(item: Any) -> RawPlannedWork | None:

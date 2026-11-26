@@ -7,6 +7,7 @@ from poweron.adapters.telegram import texts
 from poweron.adapters.telegram.render import (
     render_confirm,
     render_day,
+    render_emergency,
     render_list,
     render_next,
     render_planned_work,
@@ -24,6 +25,7 @@ from poweron.core.domain.models import (
     Address,
     DayView,
     NextEvent,
+    PlannedWork,
     StatusReport,
     SubqueueStatus,
     Subscription,
@@ -617,3 +619,27 @@ def test_render_update_says_ob_before_eleven_oclock() -> None:
     text = render_update(payload | {"stale_reminders": stale}, NOW)
 
     assert text.splitlines()[2] == "⚠️ Нагадування про вимкнення об 11:00, 13:00 уже неактуальне."
+
+
+def emergency(ends_at: datetime, reason: str = "") -> PlannedWork:
+    return PlannedWork(1, 1, ends_at - timedelta(hours=3), ends_at, reason, ("5",))
+
+
+EVENING = datetime(2026, 11, 25, 20, 0, tzinfo=KYIV)
+
+
+def test_emergency_outage_ending_today_shows_the_time() -> None:
+    text = render_emergency(emergency(datetime(2026, 11, 25, 22, 30, tzinfo=KYIV)), EVENING)
+
+    assert text == "⚠️ <b>Зараз аварійне відключення</b>, світло обіцяють дати о 22:30"
+
+
+def test_emergency_outage_ending_on_another_day_shows_the_date() -> None:
+    ends_at = datetime(2026, 11, 26, 11, 0, tzinfo=KYIV)
+
+    text = render_emergency(emergency(ends_at, "Пошкодження <КЛ>"), EVENING)
+
+    assert text == (
+        "⚠️ <b>Зараз аварійне відключення</b>, світло обіцяють дати 26.11 об 11:00\n"
+        "Причина: Пошкодження &lt;КЛ&gt;"
+    )

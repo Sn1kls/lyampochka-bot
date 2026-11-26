@@ -23,6 +23,7 @@ from poweron.core.services.alerts import Alerts
 from poweron.core.services.backups import Backups
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.catalog_age import VoeCatalogAge
+from poweron.core.services.emergency import EmergencyOutages
 from poweron.core.services.feedback import Feedback
 from poweron.core.services.groups import SubqueueChecker
 from poweron.core.services.notifications import Notifications
@@ -96,6 +97,7 @@ async def run(role: str, settings: Settings) -> None:
                         timedelta(seconds=settings.poll_interval_sec),
                     ),
                     admin_chat_id=settings.admin_chat_id,
+                    emergency=EmergencyOutages(toe_client),
                 )
                 polling_task = group.create_task(
                     dispatcher.start_polling(bot, handle_signals=False)
