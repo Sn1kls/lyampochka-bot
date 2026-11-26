@@ -38,7 +38,7 @@ from poweron.core.domain.models import (
 from poweron.core.domain.providers import TOE, plain_subqueue
 from poweron.core.ports import SourceError
 from poweron.core.services.catalog import Catalog, find_by_name
-from poweron.core.services.emergency import EmergencyOutages
+from poweron.core.services.current_outages import CurrentOutages
 from poweron.core.services.feedback import Feedback
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
@@ -49,8 +49,8 @@ from .middleware import KnownUser
 from .notifier import message_ref
 from .render import (
     render_confirm,
+    render_current_outage,
     render_day,
-    render_emergency,
     render_feedback_header,
     render_list,
     render_next,
@@ -214,11 +214,11 @@ async def next_(
     user_id: int,
     subscriptions: Subscriptions,
     schedules: Schedules,
-    emergency: EmergencyOutages | None,
+    outages: CurrentOutages | None,
 ) -> None:
     async def answer_next(subscription: Subscription) -> None:
         await message.answer(
-            await _next_text(schedules, emergency, subscription),
+            await _next_text(schedules, outages, subscription),
             reply_markup=keyboards.outages_keyboard(subscription.provider),
         )
 
@@ -491,18 +491,18 @@ async def _choose_subscription(
 
 
 async def _next_text(
-    schedules: Schedules, emergency: EmergencyOutages | None, subscription: Subscription
+    schedules: Schedules, outages: CurrentOutages | None, subscription: Subscription
 ) -> str:
     now = _now()
     text = render_next(subscription, await schedules.next_event(subscription, now), now)
-    return await _with_emergency(emergency, subscription, now, text)
+    return await _with_outage(outages, subscription, now, text)
 
 
-async def _with_emergency(
-    emergency: EmergencyOutages | None, subscription: Subscription, now: datetime, text: str
+async def _with_outage(
+    outages: CurrentOutages | None, subscription: Subscription, now: datetime, text: str
 ) -> str:
-    outage = emergency and await emergency.current(subscription, now)
-    return f"{render_emergency(outage, now)}\n\n{text}" if outage else text
+    outage = outages and await outages.current(subscription, now)
+    return f"{render_current_outage(outage, now)}\n\n{text}" if outage else text
 
 
 @router.callback_query(keyboards.SubscriptionChoice.filter())
@@ -513,7 +513,7 @@ async def choose_subscription(
     user_id: int,
     subscriptions: Subscriptions,
     schedules: Schedules,
-    emergency: EmergencyOutages | None,
+    outages: CurrentOutages | None,
 ) -> None:
     subscription = await subscriptions.get(user_id, callback_data.subscription_id)
     if subscription is None:
@@ -523,7 +523,7 @@ async def choose_subscription(
     elif callback_data.action == "next":
         await _respond(
             callback,
-            await _next_text(schedules, emergency, subscription),
+            await _next_text(schedules, outages, subscription),
             keyboards.outages_keyboard(subscription.provider),
         )
     elif callback_data.action == "settings":
@@ -654,7 +654,7 @@ async def show_day(
     user_id: int,
     subscriptions: Subscriptions,
     schedules: Schedules,
-    emergency: EmergencyOutages | None,
+    outages: CurrentOutages | None,
 ) -> None:
     subscription = await subscriptions.get(user_id, callback_data.subscription_id)
     if subscription is None:
@@ -666,7 +666,7 @@ async def show_day(
     views = await schedules.day(subscription, day, viewed[0] if viewed else None)
     text = render_day(subscription, views, day, now, viewed)
     if callback_data.offset == 0:
-        text = await _with_emergency(emergency, subscription, now, text)
+        text = await _with_outage(outages, subscription, now, text)
     await _respond(
         callback,
         text,

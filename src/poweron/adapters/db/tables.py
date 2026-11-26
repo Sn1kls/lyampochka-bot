@@ -182,3 +182,19 @@ voe_buildings = Table(
     Column("cherg_gpv", String(32)),
     Index("ix_voe_buildings_street", "settlement_id", "street_id"),
 )
+
+# Volyn outages going on now, replaced as a whole by every import from the owner's Mac.
+# Ids are the `voe_buildings` ones, derived from the same names.
+voe_outages = Table(
+    "voe_outages",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("settlement_id", Integer, nullable=False),
+    Column("street_id", Integer, nullable=False),
+    Column("kind", String(16), nullable=False),
+    Column("starts_at", UtcDateTime, nullable=False),
+    Column("ends_at", UtcDateTime, nullable=False),
+    Column("reason", String(256), nullable=False),
+    Column("building_names", JSON, nullable=False),  # list of names
+    Index("ix_voe_outages_street", "settlement_id", "street_id"),
+)

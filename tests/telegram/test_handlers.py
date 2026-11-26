@@ -43,7 +43,7 @@ from poweron.core.domain.models import (
 from poweron.core.domain.providers import LOE, TOE, VOE
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.catalog import Catalog
-from poweron.core.services.emergency import EmergencyOutages
+from poweron.core.services.current_outages import CurrentOutages
 from poweron.core.services.feedback import Feedback
 from poweron.core.services.schedules import Schedules
 from poweron.core.services.status import Status
@@ -202,7 +202,7 @@ class Chat:
         admin_chat_id: int | None = None,
         alerts: Alerts | None = None,
         feedback: Feedback | None = None,
-        emergency: EmergencyOutages | None = None,
+        outages: CurrentOutages | None = None,
     ) -> None:
         self.subscriptions = SettingsSubscriptions(repository, alerts)
         self.session = RecordingSession()
@@ -218,7 +218,7 @@ class Chat:
             feedback or Feedback(repository),
             status=status,
             admin_chat_id=admin_chat_id,
-            emergency=emergency,
+            outages=outages,
         )
         self._update_id = 0
 
@@ -559,7 +559,7 @@ async def test_next_for_an_address_chosen_from_several_offers_the_outages_page(c
     assert edits[-1].reply_markup == keyboards.outages_keyboard("toe")
 
 
-class FakeEmergencySource:
+class FakeOutageSource:
     """A cable fault on вул. Руська 5, the address `add_address(chat, "5")` saves."""
 
     async def emergency_outages(self, city_id: int, street_id: int) -> list[PlannedWork]:
@@ -567,10 +567,15 @@ class FakeEmergencySource:
         fault = PlannedWork(1, 1, now - timedelta(hours=1), now + timedelta(hours=2), "", ("5",))
         return [fault]
 
+    async def planned_works(
+        self, city_id: int, street_id: int, after: datetime
+    ) -> list[PlannedWork]:
+        return []
+
 
 @pytest.fixture
 def emergency_chat(repository: SqlRepository) -> Chat:
-    return Chat(repository, emergency=EmergencyOutages(FakeEmergencySource()))
+    return Chat(repository, outages=CurrentOutages({"toe": FakeOutageSource()}))
 
 
 async def test_next_starts_with_an_emergency_outage_on_the_building(emergency_chat: Chat) -> None:

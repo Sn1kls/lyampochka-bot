@@ -71,11 +71,15 @@ install-volyn-sync:
 	@test -n "$(TARGET)" || (echo "usage: make install-volyn-sync TARGET=user@server" && exit 1)
 	@# launchd jobs may not read /Volumes/*, so the job runs copies kept in the home folder.
 	mkdir -p $(VOLYN_SYNC_DIR)
-	cp scripts/sync_volyn_queues.sh scripts/export_volyn_queues.py $(VOLYN_SYNC_DIR)/
-	sed -e "s|__DIR__|$(VOLYN_SYNC_DIR)|" -e "s|__TARGET__|$(TARGET)|" -e "s|__HOME__|$(HOME)|" \
-		scripts/volyn-sync.plist.template > ~/Library/LaunchAgents/ua.lyampochka.volyn-sync.plist
-	launchctl bootout gui/$$(id -u)/ua.lyampochka.volyn-sync 2>/dev/null || true
-	launchctl bootstrap gui/$$(id -u) ~/Library/LaunchAgents/ua.lyampochka.volyn-sync.plist
-	@echo "installed: every Monday 10:00, log in ~/Library/Logs/lyampochka-volyn-sync.log"
-	@echo "rerun after changing either script: the job uses the copies in $(VOLYN_SYNC_DIR)"
+	cp scripts/sync_volyn_queues.sh scripts/export_volyn_queues.py \
+		scripts/sync_volyn_outages.sh scripts/export_volyn_outages.py $(VOLYN_SYNC_DIR)/
+	@set -e; for job in volyn-sync volyn-outages; do \
+		sed -e "s|__DIR__|$(VOLYN_SYNC_DIR)|" -e "s|__TARGET__|$(TARGET)|" -e "s|__HOME__|$(HOME)|" \
+			scripts/$$job.plist.template > ~/Library/LaunchAgents/ua.lyampochka.$$job.plist; \
+		launchctl bootout gui/$$(id -u)/ua.lyampochka.$$job 2>/dev/null || true; \
+		launchctl bootstrap gui/$$(id -u) ~/Library/LaunchAgents/ua.lyampochka.$$job.plist; \
+	done
+	@echo "installed: queues every Monday 10:00 (~/Library/Logs/lyampochka-volyn-sync.log),"
+	@echo "outages every 15 min (~/Library/Logs/lyampochka-volyn-outages.log)"
+	@echo "rerun after changing any script: the jobs use the copies in $(VOLYN_SYNC_DIR)"
 

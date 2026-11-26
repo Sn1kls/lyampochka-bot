@@ -26,14 +26,15 @@ oblenergo ──fetch──▶ Polling ──version + outbox rows (one transact
 |---|---|
 | `core/domain/` | pure logic: `models.py` (dataclasses), `schedule.py` (slots → UTC intervals, DST-safe), `diff.py` (change between versions), `providers.py` (region keys) |
 | `core/ports.py` | every Protocol (`ScheduleSource`, `CatalogSource`, `Repository`, `Notifier`, …) and the `SourceError` family |
-| `core/services/` | one class per job: `polling`, `reminders`, `groups` (`SubqueueChecker`, daily queue re-check), `planned_works`, `emergency` (the emergency outage on the user's building now, asked live by the bot), `notifications` (outbox dispatch), `subscriptions`, `catalog`, `schedules`, `feedback`, `status`, `alerts`, `backups` |
+| `core/services/` | one class per job: `polling`, `reminders`, `groups` (`SubqueueChecker`, daily queue re-check), `planned_works`, `current_outages` (the emergency or planned outage on the user's building now, asked live by the bot; an emergency wins), `notifications` (outbox dispatch), `subscriptions`, `catalog`, `schedules`, `feedback`, `status`, `alerts`, `backups` |
 | `adapters/toe_api/` | Ternopil JSON API: schedules, catalogue, planned works, emergency outages, a circuit breaker per endpoint |
 | `adapters/voe_api/` | Volyn: archive PNGs decoded from pixels (`image.py`) |
 | `adapters/loe_api/` | Lviv: schedule text per group (`schedule.py`) and the catalogue, both live from the oblenergo's APIs |
 | `adapters/paced_http.py` | shared by `voe_api` and `loe_api`: GETs at most once a second, with retries |
-| `adapters/db/` | `tables.py`, `repository.py` (`SqlRepository`), `voe_catalog.py` (Volyn `CatalogSource` over the imported table), Alembic `migrations/` |
+| `adapters/db/` | `tables.py`, `repository.py` (`SqlRepository`), `voe_catalog.py` (Volyn `CatalogSource` over the imported table), `voe_outages.py` (Volyn outages snapshot from the Mac), Alembic `migrations/` |
 | `adapters/telegram/` | `handlers.py` (commands, FSM for the `/add` wizard, rename and feedback), `render.py` (payload → HTML), `keyboards.py`, `texts.py` (all Ukrainian), `notifier.py` |
 | `import_voe.py` | CLI that loads the weekly Volyn address → queue export |
+| `import_voe_outages.py` | CLI that swaps the Volyn outages snapshot, piped from the Mac every 15 min into the running bot container |
 | `scripts/` | live probes (`probe*.py`), Volyn export/sync, deploy, simulate, restore |
 
 Import-linter (`pyproject.toml`) enforces it: `core` sees only stdlib and pydantic, and adapters never import each other.
@@ -58,4 +59,4 @@ Worked examples: Volyn (`docs/volyn-notes.md`; imported catalogue, image schedul
 4. A `CatalogSource`: either the region's API (like toe) or an imported table (like Volyn: table + migration, `adapters/db/<region>_catalog.py`, an import CLI, a staleness alert like `VoeCatalogAge`, its own `cache_prefix`).
 5. `__main__.py`: add the region to `Catalog` (bot), `SchedulesByProvider` and `SubqueueChecker` (worker).
 6. Telegram: `REGIONS`, `_site` and `outages_url` (the page of current outages behind the «⚡ Немає світла? Аварійні» button) in `render.py`, plus `REGION_*`, `SITE_*` and `OUTAGES_*` (when that page is not the site itself) in `texts.py`. The region button and the rest of `/add` then work.
-7. Per-region features to decide: `Subscription.has_switching` (Ternopil only, it gates `remind_exact`), planned works (Ternopil only, `PlannedWorks`), the emergency line in «Що далі» and today's «Графік» (Ternopil only, `EmergencyOutages`), and `/status`.
+7. Per-region features to decide: `Subscription.has_switching` (Ternopil only, it gates `remind_exact`), planned works (Ternopil only, `PlannedWorks`), the current-outage line in «Що далі» and today's «Графік» (`CurrentOutages`: Ternopil from the API, Volyn from the Mac's snapshot), and `/status`.
