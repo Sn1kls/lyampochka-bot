@@ -87,6 +87,10 @@ class EmergencyOutageSource(Protocol):
         ...
 
 
+class CurrentOutageSource(EmergencyOutageSource, PlannedWorkSource, Protocol):
+    """A region whose oblenergo lists both kinds of outage."""
+
+
 class Notifier(Protocol):
     async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> str | None:
         """An opaque ref of the delivered message, if the channel has one."""

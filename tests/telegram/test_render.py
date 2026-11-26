@@ -6,8 +6,8 @@ import pytest
 from poweron.adapters.telegram import texts
 from poweron.adapters.telegram.render import (
     render_confirm,
+    render_current_outage,
     render_day,
-    render_emergency,
     render_list,
     render_next,
     render_planned_work,
@@ -23,8 +23,10 @@ from poweron.core.domain.diff import schedule_change
 from poweron.core.domain.models import (
     KYIV,
     Address,
+    CurrentOutage,
     DayView,
     NextEvent,
+    OutageKind,
     PlannedWork,
     StatusReport,
     SubqueueStatus,
@@ -621,15 +623,19 @@ def test_render_update_says_ob_before_eleven_oclock() -> None:
     assert text.splitlines()[2] == "⚠️ Нагадування про вимкнення об 11:00, 13:00 уже неактуальне."
 
 
-def emergency(ends_at: datetime, reason: str = "") -> PlannedWork:
-    return PlannedWork(1, 1, ends_at - timedelta(hours=3), ends_at, reason, ("5",))
+def outage(
+    ends_at: datetime, reason: str = "", kind: OutageKind = OutageKind.EMERGENCY
+) -> CurrentOutage:
+    return CurrentOutage(
+        kind, PlannedWork(1, 1, ends_at - timedelta(hours=3), ends_at, reason, ("5",))
+    )
 
 
 EVENING = datetime(2026, 11, 25, 20, 0, tzinfo=KYIV)
 
 
 def test_emergency_outage_ending_today_shows_the_time() -> None:
-    text = render_emergency(emergency(datetime(2026, 11, 25, 22, 30, tzinfo=KYIV)), EVENING)
+    text = render_current_outage(outage(datetime(2026, 11, 25, 22, 30, tzinfo=KYIV)), EVENING)
 
     assert text == "⚠️ <b>Зараз аварійне відключення</b>, світло обіцяють дати о 22:30"
 
@@ -637,9 +643,19 @@ def test_emergency_outage_ending_today_shows_the_time() -> None:
 def test_emergency_outage_ending_on_another_day_shows_the_date() -> None:
     ends_at = datetime(2026, 11, 26, 11, 0, tzinfo=KYIV)
 
-    text = render_emergency(emergency(ends_at, "Пошкодження <КЛ>"), EVENING)
+    text = render_current_outage(outage(ends_at, "Пошкодження <КЛ>"), EVENING)
 
     assert text == (
         "⚠️ <b>Зараз аварійне відключення</b>, світло обіцяють дати 26.11 об 11:00\n"
         "Причина: Пошкодження &lt;КЛ&gt;"
+    )
+
+
+def test_planned_outage_going_on_now_has_its_own_line() -> None:
+    ends_at = datetime(2026, 11, 25, 21, 0, tzinfo=KYIV)
+
+    text = render_current_outage(outage(ends_at, "Ремонт", OutageKind.PLANNED), EVENING)
+
+    assert text == (
+        "🛠 <b>Зараз планове відключення</b>, світло обіцяють дати о 21:00\nПричина: Ремонт"
     )

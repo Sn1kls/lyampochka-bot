@@ -130,6 +130,8 @@ make sync-volyn TARGET=ubuntu@<server>          # once, by hand
 make install-volyn-sync TARGET=ubuntu@<server>  # every Monday at 10:00 via launchd
 ```
 
+The same install adds a second launchd job: every 15 minutes the Mac exports the outages going on now in the whole oblast (emergency and planned, ~10 requests) and pipes them into the running bot container. The bot shows them in «Що далі» and today's «Графік», and ignores a snapshot older than an hour (the Mac asleep or offline). Log: `~/Library/Logs/lyampochka-volyn-outages.log`.
+
 The import replaces the catalogue in one transaction. It refuses an export that's much smaller than the stored one (`--force` overrides), and reports the number of changed buildings to the admin chat. The daily queue re-check then tells subscribers whose queue moved. If no import arrives for 10 days, the bot alerts the admin. Details are in [`docs/volyn-notes.md`](docs/volyn-notes.md).
 </details>
 

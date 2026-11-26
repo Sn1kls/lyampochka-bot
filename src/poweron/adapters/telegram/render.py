@@ -5,10 +5,11 @@ from typing import Any
 
 from poweron.core.domain.models import (
     KYIV,
+    CurrentOutage,
     DayView,
     Interval,
     NextEvent,
-    PlannedWork,
+    OutageKind,
     SlotState,
     StatusReport,
     SubqueueStatus,
@@ -301,14 +302,15 @@ def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
     )
 
 
-def render_emergency(outage: PlannedWork, now: datetime) -> str:
-    ends_at = outage.ends_at.astimezone(KYIV)
+def render_current_outage(outage: CurrentOutage, now: datetime) -> str:
+    ends_at = outage.work.ends_at.astimezone(KYIV)
     at = _at(ends_at, f"{ends_at:%H:%M}")
     if ends_at.date() != now.astimezone(KYIV).date():
         at = f"{ends_at:%d.%m} {at}"
-    text = texts.EMERGENCY.format(at=at)
-    if outage.reason:
-        text += texts.EMERGENCY_REASON.format(reason=escape(outage.reason))
+    template = texts.EMERGENCY if outage.kind is OutageKind.EMERGENCY else texts.PLANNED_NOW
+    text = template.format(at=at)
+    if outage.work.reason:
+        text += texts.OUTAGE_REASON.format(reason=escape(outage.work.reason))
     return text
 
 

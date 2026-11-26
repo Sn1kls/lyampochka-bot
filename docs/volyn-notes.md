@@ -2,7 +2,8 @@
 
 Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
 - Schedules: the PNG images from the inneti API, decoded from pixels on the server (see "Schedule images").
-- Address → queue: exported weekly on the owner's Mac and imported into the bot (see "Weekly catalogue"). Only this part needs a Ukrainian IP.
+- Address → queue: exported weekly on the owner's Mac and imported into the bot (see "Weekly catalogue").
+- Current outages (emergency and planned): exported every 15 minutes on the owner's Mac (see "Outages snapshot"). These two parts need a Ukrainian IP.
 - First researched 2026-10-18 and postponed. Reopened 2026-11-08: the owner lives in Ківерці (Volyn oblast) now and wants schedules for the whole oblast.
 
 ## Sources checked
@@ -68,12 +69,25 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
   - 13 995 buildings are «Не залучено» only;
   - 54 settlement names repeat across districts, so the district is shown next to them.
 
+## Outages snapshot (every 15 min)
+
+- `scripts/export_volyn_outages.py` (stdlib, reuses the table parser and building names of the queue export): one request per vowel, 1.5 s apart, ~18 s, ~90 KB of JSON.
+  - Keeps «Аварійне вимкнення» and «Планове вимкнення»; «Застосування ГПВ/ГАВ» is the schedule the bot shows anyway. An unknown type is skipped with a warning.
+  - A page that is neither a table nor «вимкнень не знайдено» stops the export, so a changed layout never looks like a quiet oblast.
+  - A row whose buildings are only `<>` is dropped: `<>` is the site's placeholder, and an empty list would mean "the whole street".
+  - A row without both start and expected end is skipped with a warning; the reason is cut to 256 characters.
+- `scripts/sync_volyn_outages.sh`: export, then `ssh … docker compose exec -T bot python -m poweron.import_voe_outages < file`. `exec` into the running container, not `run --rm`, so the 1 GB server does not start a container every 15 minutes. A failed export sends nothing.
+- `make install-volyn-sync` installs it next to the weekly job: launchd `StartInterval` 900 s, log `~/Library/Logs/lyampochka-volyn-outages.log`.
+- Import (`adapters/db/voe_outages.py`): each row is validated with pydantic; an invalid row is skipped and counted, while a file that is not a snapshot or has only invalid rows is refused and logged as an error; Kyiv wall clock becomes UTC, names become the `voe_buildings` crc32 ids, and the `voe_outages` table and its time (`voe_outages:snapshot` in `catalog_cache`, outside the `voe:` prefix the weekly import clears) are swapped in one transaction.
+- `VoeOutages` serves both `emergency_outages` and `planned_works` from the snapshot and returns nothing once it is older than an hour.
+- Checked on 2026-11-26: the 100 Ківерці streets on the outages page all match the catalogue names; a live export had 321 rows (17 emergency, 304 planned).
+
 ## Current outages (`chomu-nemaie-elektropostachannia/`), 2026-11-24
 
 - Page: `https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/chomu-nemaie-elektropostachannia/`.
 - Per-address list of outages happening now, by NKREKP resolution No. 349. Types: planned, emergency, schedules (ГПВ/ГАВ).
 - The page says the data refreshes every 30 minutes and shows «Оновлено: DD-MM-YYYY HH:MM».
-- Search: settlement (required) + street (optional), names without «с.», «вул.», case-insensitive. Form action not captured yet (probably `pagephp.php` like `hrafik-vidkliuchen/`; unverified).
+- Search: settlement (required) + street (optional), names without «с.», «вул.», case-insensitive. The form posts to the page itself, see "Current outages page" below.
 - A result seen by the owner on 2026-11-24 (from the Mac):
 
   | Район | Нас. пункт | Вулиця | Будинок | Тип | Причина | Дата та час відключення | Дата орієнтовного відновлення |
