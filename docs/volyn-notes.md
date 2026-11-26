@@ -2,7 +2,8 @@
 
 Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
 - Schedules: the PNG images from the inneti API, decoded from pixels on the server (see "Schedule images").
-- Address → queue: exported weekly on the owner's Mac and imported into the bot (see "Weekly catalogue"). Only this part needs a Ukrainian IP.
+- Address → queue: exported weekly on the owner's Mac and imported into the bot (see "Weekly catalogue").
+- Current outages (emergency and planned): exported every 15 minutes on the owner's Mac (see "Outages snapshot"). These two parts need a Ukrainian IP.
 - First researched 2026-10-18 and postponed. Reopened 2026-11-08: the owner lives in Ківерці (Volyn oblast) now and wants schedules for the whole oblast.
 
 ## Sources checked
@@ -11,10 +12,11 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
 |---|---|---|
 | Schedule form on energy.volyn.ua (`hrafik-vidkliuchen/`) | yes, the only live source | server-rendered PHP, HTML answers |
 | Queue lookup on energy.volyn.ua (`cherga/`) | yes | HTML table, address → queue, works with no outages |
-| Current outages on energy.volyn.ua (`chomu-nemaie-elektropostachannia/`) | not from the server | per-address outages with type and reason; Cloudflare like the rest of the site |
+| Current outages on energy.volyn.ua (`chomu-nemaie-elektropostachannia/`) | yes, but not from the server | per-building outages with type, reason, start and expected end (see "Current outages page"); Cloudflare like the rest of the site |
 | `api-voe-poweron.inneti.net/api` (same platform as Ternopil's API) | no | cut down: archive images and accidents only |
-| Telegram channel `@energy_volyn_official` | no | free-text posts about changes, not full schedules |
+| Telegram channel `@energy_volyn_official` | no | free-text posts about changes, not full schedules; abandoned since 2024-10-18 (NCCC restricted Telegram for state bodies) |
 | Viber bot `viber://pa?chatURI=botvoe`, cabinets `ok.prosvitlo.com`, `kabinet.prosvitlo.com` | no | need a personal account number |
+| data.gov.ua | no | no Volynoblenergo outage dataset found (2026-11-26) |
 | Third-party Telegram bots (`@SvitloOkBot`, `@Volin_Oblenergo_grafikybot`, …) | no | unofficial, unknown sources |
 
 ## Schedule form (`hrafik-vidkliuchen/`)
@@ -67,12 +69,25 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
   - 13 995 buildings are «Не залучено» only;
   - 54 settlement names repeat across districts, so the district is shown next to them.
 
+## Outages snapshot (every 15 min)
+
+- `scripts/export_volyn_outages.py` (stdlib, reuses the table parser and building names of the queue export): one request per vowel, 1.5 s apart, ~18 s, ~90 KB of JSON.
+  - Keeps «Аварійне вимкнення» and «Планове вимкнення»; «Застосування ГПВ/ГАВ» is the schedule the bot shows anyway. An unknown type is skipped with a warning.
+  - A page that is neither a table nor «вимкнень не знайдено» stops the export, so a changed layout never looks like a quiet oblast.
+  - A row whose buildings are only `<>` is dropped: `<>` is the site's placeholder, and an empty list would mean "the whole street".
+  - A row without both start and expected end is skipped with a warning; the reason is cut to 256 characters.
+- `scripts/sync_volyn_outages.sh`: export, then `ssh … docker compose exec -T bot python -m poweron.import_voe_outages < file`. `exec` into the running container, not `run --rm`, so the 1 GB server does not start a container every 15 minutes. A failed export sends nothing.
+- `make install-volyn-sync` installs it next to the weekly job: launchd `StartInterval` 900 s, log `~/Library/Logs/lyampochka-volyn-outages.log`.
+- Import (`adapters/db/voe_outages.py`): each row is validated with pydantic; an invalid row is skipped and counted, while a file that is not a snapshot or has only invalid rows is refused and logged as an error; Kyiv wall clock becomes UTC, names become the `voe_buildings` crc32 ids, and the `voe_outages` table and its time (`voe_outages:snapshot` in `catalog_cache`, outside the `voe:` prefix the weekly import clears) are swapped in one transaction.
+- `VoeOutages` serves both `emergency_outages` and `planned_works` from the snapshot and returns nothing once it is older than an hour.
+- Checked on 2026-11-26: the 100 Ківерці streets on the outages page all match the catalogue names; a live export had 321 rows (17 emergency, 304 planned).
+
 ## Current outages (`chomu-nemaie-elektropostachannia/`), 2026-11-24
 
 - Page: `https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/chomu-nemaie-elektropostachannia/`.
 - Per-address list of outages happening now, by NKREKP resolution No. 349. Types: planned, emergency, schedules (ГПВ/ГАВ).
 - The page says the data refreshes every 30 minutes and shows «Оновлено: DD-MM-YYYY HH:MM».
-- Search: settlement (required) + street (optional), names without «с.», «вул.», case-insensitive. Form action not captured yet (probably `pagephp.php` like `hrafik-vidkliuchen/`; unverified).
+- Search: settlement (required) + street (optional), names without «с.», «вул.», case-insensitive. The form posts to the page itself, see "Current outages page" below.
 - A result seen by the owner on 2026-11-24 (from the Mac):
 
   | Район | Нас. пункт | Вулиця | Будинок | Тип | Причина | Дата та час відключення | Дата орієнтовного відновлення |
@@ -125,6 +140,28 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
 - A vision LLM is not needed and would be worse here: it costs money, it is not deterministic, and it needs a prompt-injection review.
 - The address → queue lookup (`cherga/`) is still only on energy.volyn.ua, which the server cannot reach.
 
+## Current outages page (`chomu-nemaie-elektropostachannia/`)
+
+Looked at from the owner's Mac on 2026-11-26 ~11:40 (fixtures `voe_outages_lutsk.html`, `voe_outages_none.html`).
+
+- Page: `https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/chomu-nemaie-elektropostachannia/`.
+  - Says the data refreshes every 30 minutes, with «Оновлено: DD-MM-YYYY HH:MM».
+  - Published under NEURC resolution No. 349 (26.03.2022): settlement, street, buildings and the kind of outage are public on purpose.
+- Search: `POST` to the page itself, form-encoded `formCity` (required) + `formStreet` (optional). No session, no hidden fields (like `cherga/`).
+- `formCity` matches a substring: «Луцьк» also returns «Прилуцьке». «а» returned 606 rows in 97 settlements of 4 districts (248 KB, 0.3 s).
+  - Not capped and not paged: Цумань has 35 rows both inside the «а» answer and asked directly.
+- Answer: one `<table>` (all on one HTML line), a header row, then rows of 7 cells:
+
+  | Район | Нас. пункт | Вулиця | Будинок | Тип | Причина | Дата та час відключення / Дата орієнтовного відновлення |
+  |---|---|---|---|---|---|---|
+  | Луцький | Луцьк | Андрія Марцинюка | 1, 3, 9 | Аварійне вимкнення | Аварійний випадок в мережах | `2026-11-26 10:10<hr …>2026-11-26 16:00` |
+
+  - «Будинок» is a comma-separated list like in `cherga/`, including the `<>` placeholder.
+  - The last cell holds start and expected end, `YYYY-MM-DD HH:MM` each, split by an `<hr>`.
+  - Type / reason pairs seen: «Аварійне вимкнення» / «Аварійний випадок в мережах», «Планове вимкнення» / «Планові ремонтні роботи», «Застосування ГПВ» / «Встановлено ліміт споживання» (the hourly schedule being applied; its end is the end of the schedule block).
+- No outages: the filter line and «За вашим запитом станом на DD-MM-YYYY HH:MM вимкнень не знайдено.», no table.
+- Not observed yet: how long rows stay after their expected end, whether ends move, and how often an emergency row appears and goes.
+
 ## Server access
 
 - From the production VM (Oracle Cloud, Stockholm) every energy.volyn.ua page answers **403** with a Cloudflare «Just a moment...» challenge (checked with an honest User-Agent).
@@ -137,6 +174,11 @@ Status: **built** (2026-11-08, branch `feature/volyn-oblast`).
   3. Move the whole bot to hosting the site does not challenge. Unknown which hosting passes; not tested.
 - 2026-11-24: the owner emailed `kanc@energy.volyn.ua` asking for option 1: fill `pw_accidents` / `pw_accident_planeds` in the inneti API, or allow the server IP. No answer yet.
 - 2026-11-26: rechecked from the server: energy.volyn.ua still 403 «Just a moment...»; inneti `pw_accidents`, `pw_accident_planeds`, `pw_cities` still `totalItems: 0`.
+- 2026-11-26: the challenge also covers `robots.txt` and `favicon.ico` for the server (`cf-mitigated: challenge`), so the rule is per IP, not per page. `robots.txt` (from the Mac) is `Allow: /`.
+  - Through a VPN exit in Germany: 403 too. A Ukrainian VPN exit could not be tested (the tunnel did not carry the traffic). Whether a Ukrainian data-centre IP passes is still unknown; only a test from such a server answers it.
+- 2026-11-26: a real headless Chromium (Playwright 1.49, honest `HeadlessChrome` UA, no stealth) on the server stayed on «Just a moment...» for 30 s; the page holds a Turnstile challenge, and no `cf_clearance` was issued (only `__cf_bm`). Getting further would need stealth or a captcha solver, which we do not do.
+- 2026-11-26: the other Volyn hosts answer the server (200, no challenge): `ok.prosvitlo.com` (the household consumer cabinet, login only), `kabinet.prosvitlo.com` (ASTOR8: service centre, connections, contractors; its only outage screen, «Заявки на вимкнення», is for contractors), and the inneti API. None has public outage data.
+  - Also: the server has 954 MB of RAM, too little to run Chromium next to the bot regularly anyway.
 
 ## Probe
 

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Volyn outages every 15 minutes while the Mac is awake. Installed by `make install-volyn-sync`. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ua.lyampochka.volyn-outages</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>__DIR__/sync_volyn_outages.sh</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:__HOME__/.local/bin:/usr/bin:/bin</string>
+        <key>VOE_SYNC_TARGET</key>
+        <string>__TARGET__</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>900</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/lyampochka-volyn-outages.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/lyampochka-volyn-outages.log</string>
+</dict>
+</plist>

@@ -58,19 +58,25 @@ class TableParser(HTMLParser):
             self._cell.append(data)
 
 
-def lookup(settlement: str, street: str) -> list[list[str]]:
-    body = urllib.parse.urlencode({"formCity": settlement, "formStreet": street}).encode()
-    request = urllib.request.Request(URL, data=body, headers={"User-Agent": USER_AGENT})
-    for attempt in range(1, ATTEMPTS + 1):
+def post(url: str, fields: dict[str, str], user_agent: str) -> str:
+    """A form POST, retried with a growing pause; also used by export_volyn_outages.py."""
+    body = urllib.parse.urlencode(fields).encode()
+    request = urllib.request.Request(url, data=body, headers={"User-Agent": user_agent})
+    attempt = 1
+    while True:
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
-                html = response.read().decode("utf-8")
-            break
+                return str(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError) as error:
             if attempt == ATTEMPTS:
                 raise
-            print(f"  retry {settlement}/{street}: {error}", file=sys.stderr)
+            print(f"  retry {fields}: {error}", file=sys.stderr)
             time.sleep(10 * attempt)
+            attempt += 1
+
+
+def lookup(settlement: str, street: str) -> list[list[str]]:
+    html = post(URL, {"formCity": settlement, "formStreet": street}, USER_AGENT)
     if "Фільтр:" not in html:
         raise SystemExit(f"{settlement}/{street}: the page has no filter line, layout changed?")
     parser = TableParser()

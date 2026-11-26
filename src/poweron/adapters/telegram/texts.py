@@ -196,7 +196,8 @@ MENU_UPDATED = (
 PLANNED_WORK = "🛠 <b>{label}</b>: планові роботи {date} з {start} до {end}"
 PLANNED_WORK_REASON = " – {reason}"
 EMERGENCY = "⚠️ <b>Зараз аварійне відключення</b>, світло обіцяють дати {at}"
-EMERGENCY_REASON = "\nПричина: {reason}"
+PLANNED_NOW = "🛠 <b>Зараз планове відключення</b>, світло обіцяють дати {at}"
+OUTAGE_REASON = "\nПричина: {reason}"
 
 SETTINGS_TITLE = "⚙️ Налаштування для <b>{label}</b>"
 SETTINGS_UPDATES = "Пуші про оновлення графіка і планові роботи: {state}"

@@ -13,7 +13,7 @@ def test_dispatcher_carries_services_and_bot_defaults_to_html() -> None:
         **services,
         "status": None,
         "admin_chat_id": None,
-        "emergency": None,
+        "outages": None,
     }
     bot = create_bot("123:abc")
     assert bot.default.parse_mode == "HTML"

@@ -367,3 +367,26 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Decisions (owner): on demand only, exact building match, Ternopil only; the «⚡ Немає світла? Аварійні» button stays.
 - Known limits: in `all` mode the bot shares the 1 request/second lock with the worker, so during a poll burst the request may time out and the line is missing. One page of 30 rows per street.
 - Volyn rechecked: still behind Cloudflare for the server, inneti tables still empty.
+
+## 2026-11-26: Volyn current outages page
+
+- Researched energy.volyn.ua's current outages page from the owner's Mac; details in `docs/volyn-notes.md` ("Current outages page").
+  - A plain form POST, no session; the settlement field matches a substring and the answer is not capped, so a few requests cover the whole oblast.
+  - Rows are per street with a building list, type (emergency, planned, schedule applied), reason, start and expected end. Refreshed every 30 min.
+- `scripts/probe_volyn.py outages <dir> <settlement>...` saves the raw page; fixtures `voe_outages_lutsk.html`, `voe_outages_none.html`.
+- Server access, rechecked: the server is challenged even on `robots.txt`; a German VPN exit is challenged too. Whether a Ukrainian data-centre IP passes is open.
+- A real headless browser on the server does not pass either: Cloudflare holds it on a Turnstile challenge. We stop there (no stealth, no captcha solvers).
+- Open: a day of observation (how long rows stay after their end), and how the server gets to the page at all.
+
+## 2026-11-26: Current outages in Volyn and planned works now
+
+- Done (the owner's request): «Що далі» and today's «Графік» start with the outage going on now on the user's building, emergency or planned; an emergency wins.
+  - «⚠️ Зараз аварійне відключення …» as before, and «🛠 Зараз планове відключення, світло обіцяють дати …».
+  - Ternopil: planned works now come from the same `planned_works` request as the pushes (it filters on the planned end, so a started work is returned). It is asked only when there is no emergency.
+  - Volyn: the owner's Mac exports the whole oblast's outages every 15 minutes and pipes them into the running bot container (`docs/volyn-notes.md`, "Outages snapshot"). A snapshot older than an hour is ignored.
+- `EmergencyOutages` became `CurrentOutages` with a source per region (`CurrentOutageSource` = emergency + planned).
+- Why the Mac: the server is challenged by Cloudflare on energy.volyn.ua, even a real headless browser (Turnstile). We do not get around it; the formal request to Volynoblenergo is still the way to drop the Mac.
+- Known limits:
+  - Volyn depends on the Mac being awake and online; asleep for over an hour means no line (the link button stays).
+  - In Ternopil a user may wait for two API requests (emergency, then planned); during a poll burst one may time out and the line is missing.
+  - Volyn rows carry the site's reason text as is («Планові ремонтні роботи»).

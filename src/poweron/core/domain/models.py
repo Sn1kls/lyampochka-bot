@@ -72,6 +72,19 @@ class PlannedWork:
         return not listed or normalise(building_name) in listed
 
 
+class OutageKind(StrEnum):
+    EMERGENCY = "emergency"
+    PLANNED = "planned"
+
+
+@dataclass(frozen=True)
+class CurrentOutage:
+    """An outage going on right now on the subscription's building."""
+
+    kind: OutageKind
+    work: PlannedWork
+
+
 @dataclass(frozen=True)
 class DaySchedule:
     """`slots`: Kyiv wall-clock "HH:MM" -> raw value. Show `created_at` without tz conversion."""
