@@ -1,4 +1,4 @@
-.PHONY: check test fmt lint typecheck layers run migrate probe up down logs simulate announce-menu nudge-no-address backup sync-volyn install-volyn-sync staging staging-volyn
+.PHONY: check test fmt lint typecheck layers run migrate probe up down logs simulate announce-menu backup sync-volyn install-volyn-sync staging staging-volyn
 
 check: lint typecheck layers test
 
@@ -42,9 +42,6 @@ simulate:
 
 announce-menu:
 	docker compose exec -T bot python scripts/announce_menu.py $(VERSION)
-
-nudge-no-address:
-	docker compose exec -T bot python scripts/nudge_no_address.py
 
 # A test bot on this Mac with its own token and database (README, «Staging»).
 staging:

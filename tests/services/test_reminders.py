@@ -49,7 +49,7 @@ def subscriptions(repository: SqlRepository) -> Subscriptions:
 
 @pytest.fixture
 async def subscription(subscriptions: Subscriptions) -> Subscription:
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     return await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
     )
@@ -150,7 +150,7 @@ async def test_a_changed_schedule_moves_the_reminder(
 async def test_only_tracked_queues_are_reminded(
     repository: SqlRepository, subscriptions: Subscriptions, reminders: Reminders
 ) -> None:
-    user_id = await subscriptions.register("telegram", "2", "telegram", "2")
+    user_id = await subscriptions.register("telegram", "2", "telegram", "2", now=NOW)
     await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, Building(2, "2", "4.1"), ["2.2", "4.1"], ["4.1"], NOW
     )
@@ -209,7 +209,7 @@ class FailingQueue(Schedules):
 async def test_a_failing_subscription_does_not_drop_the_others(
     repository: SqlRepository, subscriptions: Subscriptions, subscription: Subscription
 ) -> None:
-    user_id = await subscriptions.register("telegram", "2", "telegram", "2")
+    user_id = await subscriptions.register("telegram", "2", "telegram", "2", now=NOW)
     broken = await subscriptions.add(
         user_id, "Дача", TERNOPIL, SADOVA, Building(2, "2", "2.2"), ["2.2"], ["2.2"], NOW
     )
@@ -224,7 +224,7 @@ async def test_a_failing_subscription_does_not_drop_the_others(
 async def test_a_queue_shared_by_subscriptions_is_computed_once_per_tick(
     repository: SqlRepository, subscriptions: Subscriptions, subscription: Subscription
 ) -> None:
-    user_id = await subscriptions.register("telegram", "3", "telegram", "3")
+    user_id = await subscriptions.register("telegram", "3", "telegram", "3", now=NOW)
     await subscriptions.add(
         user_id, "Дача", TERNOPIL, SADOVA, Building(3, "3", "4.1"), ["4.1"], ["4.1"], NOW
     )

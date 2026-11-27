@@ -516,7 +516,7 @@ async def test_start_and_a_finished_add_show_the_phone_menu(chat: Chat) -> None:
     assert [[button.text for button in row] for row in markup.keyboard] == [
         ["📅 Графік", "⏭ Що далі"],
         ["📋 Мої адреси", "⚙️ Налаштування"],
-        ["❓ Допомога", "✉️ Відгук"],
+        ["❓ Допомога", "✉️ Написати розробнику"],
     ]
 
     await add_address(chat, "5")
@@ -635,6 +635,7 @@ async def test_only_todays_schedule_shows_the_emergency_outage(emergency_chat: C
         (texts.MENU_REMOVE, "/remove"),
         (texts.MENU_HELP, "/help"),
         (texts.MENU_FEEDBACK, "/feedback"),
+        (texts.MENU_FEEDBACK_OLD, "/feedback"),
     ],
 )
 async def test_each_menu_button_runs_the_command_handler(
@@ -730,21 +731,21 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
     assert chat.sent_texts()[-1] == "\n".join(
         [
             "⚙️ Налаштування для <b>Дім</b>",
-            "Пуші про оновлення графіка і планові роботи: увімкнено",
+            "Сповіщення про оновлення графіка і планові роботи: увімкнено",
             "🪫 Нагадати перед вимкненням: 30 хв",
             "🔋 Нагадати перед поверненням світла: без",
             "⏱ Нагадувати до: можливого відключення 🟡",
         ]
     )
     assert button_texts(chat.last_reply_markup()) == [
-        ["✅ Пуші про оновлення"],
+        ["✅ Сповіщення про оновлення"],
         ["🪫 Нагадати до вимкнення: 30 хв"],
         ["🔋 Нагадати до повернення: без"],
         ["⏱ Нагадувати до: можливого 🟡"],
         ["✏️ Змінити назву"],
     ]
 
-    await chat.press_button("✅ Пуші про оновлення")
+    await chat.press_button("✅ Сповіщення про оновлення")
     await chat.press_button("🪫 Нагадати до вимкнення: 30 хв")
     await chat.press_button("🔋 Нагадати до повернення: без")
     await chat.press_button("⏱ Нагадувати до: можливого 🟡")
@@ -758,7 +759,7 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
         }
     }
     assert chat.edited_texts()[-1].splitlines()[1:] == [
-        "Пуші про оновлення графіка і планові роботи: вимкнено",
+        "Сповіщення про оновлення графіка і планові роботи: вимкнено",
         "🪫 Нагадати перед вимкненням: 60 хв",
         "🔋 Нагадати перед поверненням світла: 15 хв",
         "⏱ Нагадувати до: точного відключення 🔴",
@@ -767,7 +768,7 @@ async def test_settings_shows_the_state_and_each_press_edits_the_same_message(ch
         -1
     ].reply_markup
     assert button_texts(edited_markup) == [
-        ["🚫 Пуші про оновлення"],
+        ["🚫 Сповіщення про оновлення"],
         ["🪫 Нагадати до вимкнення: 60 хв"],
         ["🔋 Нагадати до повернення: 15 хв"],
         ["⏱ Нагадувати до: точного 🔴"],

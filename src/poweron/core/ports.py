@@ -226,8 +226,10 @@ class Repository(Protocol):
         """Users with an active delivery target on `channel`."""
         ...
 
-    async def user_ids_without_address(self, channel: str, joined_before: datetime) -> list[int]:
-        """Users reachable on `channel` who joined before `joined_before` and have no subscription."""
+    async def user_ids_without_address(
+        self, channel: str, joined_after: datetime, joined_before: datetime
+    ) -> list[int]:
+        """Users reachable on `channel` who joined in that window and have no subscription."""
         ...
 
     async def count_pending_messages(self, max_attempts: int) -> int:
@@ -239,7 +241,7 @@ class Repository(Protocol):
     async def deactivate_target(self, target_id: int) -> None: ...
 
     async def add_feedback_messages(
-        self, user_id: int, source_message_id: int, refs: Sequence[str], now: datetime
+        self, user_id: int, source_message_id: int | None, refs: Sequence[str], now: datetime
     ) -> None: ...
 
     async def feedback_thread(self, ref: str) -> FeedbackThread | None: ...
@@ -266,6 +268,9 @@ class Heartbeat(Protocol):
 
 
 class AdminAlerter(Protocol):
-    async def alert(self, kind: AlertKind, details: str) -> None:
-        """Tell the bot owner that something needs attention; `details` is technical, not for users."""
+    async def alert(self, kind: AlertKind, details: str) -> str:
+        """Tell the bot owner that something needs attention; returns the sent message's ref.
+
+        `details` is technical, not for users.
+        """
         ...

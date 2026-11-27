@@ -5,6 +5,7 @@ from aiogram import Bot
 from poweron.core.domain.models import AlertKind
 
 from . import texts
+from .notifier import message_ref
 
 MAX_DETAILS = 500
 ALERT_TEXTS = {
@@ -25,6 +26,7 @@ class TelegramAdminAlerter:
         self._bot = bot
         self._chat_id = chat_id
 
-    async def alert(self, kind: AlertKind, details: str) -> None:
+    async def alert(self, kind: AlertKind, details: str) -> str:
         text = ALERT_TEXTS[kind].format(details=escape(details[:MAX_DETAILS]))
-        await self._bot.send_message(self._chat_id, text)
+        sent = await self._bot.send_message(self._chat_id, text)
+        return message_ref(self._chat_id, sent.message_id)

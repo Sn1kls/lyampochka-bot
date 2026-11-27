@@ -28,7 +28,7 @@ async def subscribe(
     at: datetime = NOW - timedelta(hours=1),
 ) -> None:
     subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", chat_id, "telegram", chat_id)
+    user_id = await subscriptions.register("telegram", chat_id, "telegram", chat_id, now=NOW)
     building = Building(id=int(chat_id), name="1", cherg_gpv=queues[0])
     await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, building, queues, tracked or queues, at
@@ -169,7 +169,7 @@ async def test_blocked_target_is_deactivated(
 
 async def test_address_without_schedule_cannot_be_subscribed(repository: SqlRepository) -> None:
     subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", "101", "telegram", "101")
+    user_id = await subscriptions.register("telegram", "101", "telegram", "101", now=NOW)
     building = Building(id=350657, name="23", cherg_gpv=None)
     queues: list[str] = []
 
@@ -179,8 +179,8 @@ async def test_address_without_schedule_cannot_be_subscribed(repository: SqlRepo
 
 async def test_registering_twice_returns_the_same_user(repository: SqlRepository) -> None:
     subscriptions = Subscriptions(repository)
-    first = await subscriptions.register("telegram", "101", "telegram", "101")
-    assert await subscriptions.register("telegram", "101", "telegram", "101") == first
+    first = await subscriptions.register("telegram", "101", "telegram", "101", now=NOW)
+    assert await subscriptions.register("telegram", "101", "telegram", "101", now=NOW) == first
 
 
 async def test_a_subscriber_who_joined_while_the_source_was_empty_gets_the_first_schedule(
@@ -238,7 +238,7 @@ async def test_update_counts_all_addresses_of_the_user(
 ) -> None:
     await subscribe(repository, "101")
     subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", "101", "telegram", "101")
+    user_id = await subscriptions.register("telegram", "101", "telegram", "101", now=NOW)
     building = Building(id=202, name="2", cherg_gpv="1.2")
     await subscriptions.add(
         user_id, "Дача", TERNOPIL, SADOVA, building, ["1.2"], ["1.2"], NOW - timedelta(hours=1)
