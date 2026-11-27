@@ -15,13 +15,15 @@ from poweron.adapters.telegram.keyboards import (
     day_keyboard,
     menu_keyboard,
     outages_keyboard,
+    region_keyboard,
     remove_confirm_keyboard,
     settings_keyboard,
 )
-from poweron.adapters.telegram.render import REGIONS, outages_url
-from poweron.core.domain.providers import LOE, TOE, VOE
+from poweron.adapters.telegram.render import outages_url
+from poweron.core.domain.providers import CEK, DNEM, LOE, TOE, VOE
 from tests.telegram.test_render import SUBSCRIPTION
 
+PROVIDERS = (TOE, VOE, LOE, DNEM, CEK)
 LABELS = [f"Item {number}" for number in range(20)]
 
 
@@ -162,6 +164,8 @@ def test_the_schedule_is_the_highlighted_menu_button() -> None:
             "chomu-nemaie-elektropostachannia/",
         ),
         (LOE, "https://poweron.loe.lviv.ua"),
+        (DNEM, "https://www.dtek-dnem.com.ua/ua/shutdowns"),
+        (CEK, "https://cek.dp.ua/index.php/cpojivaham/vidkliuchennia/2-uncategorised/961-gav.html"),
     ],
 )
 def test_the_outages_button_opens_the_regions_current_outages_page(provider: str, url: str) -> None:
@@ -179,5 +183,14 @@ def test_the_day_keyboard_ends_with_the_outages_button() -> None:
     )
 
 
-def test_every_region_has_an_outages_page() -> None:
-    assert all(outages_url(provider).startswith("https://") for provider in REGIONS)
+def test_every_provider_has_an_outages_page() -> None:
+    assert all(outages_url(provider).startswith("https://") for provider in PROVIDERS)
+
+
+def test_regions_are_offered_in_alphabetical_order() -> None:
+    assert texts_of(region_keyboard())[:-1] == [
+        ["Волинська"],
+        ["Дніпропетровська"],
+        ["Львівська"],
+        ["Тернопільська"],
+    ]

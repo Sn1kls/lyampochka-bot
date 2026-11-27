@@ -7,11 +7,26 @@ other providers' subqueues are namespaced ("voe:6.1").
 TOE = "toe"
 VOE = "voe"
 LOE = "loe"
+# Dnipropetrovsk oblast has two operators whose group names collide, so each is a provider.
+DNEM = "dnem"
+CEK = "cek"
+# The region button and catalogue shared by both Dnipropetrovsk operators.
+DNIPRO = "dnipro"
+# catalog_cache keys of YASNO's merged city list.
+YASNO_CACHE_PREFIX = "yasno:"
 LOE_CACHE_PREFIX = "loe:"
 # catalog_cache keys of the Volyn lists; every import clears them.
 VOE_CACHE_PREFIX = "voe:"
 # The catalog_cache row whose `fetched_at` is the last Volyn catalogue import.
 VOE_CATALOG_IMPORTED_KEY = VOE_CACHE_PREFIX + "imported"
+
+
+# Providers that share a region; every other provider is a region of its own.
+REGION_OF = {DNEM: DNIPRO, CEK: DNIPRO}
+
+
+def region_of(provider: str) -> str:
+    return REGION_OF.get(provider, provider)
 
 
 def provider_of(cherg_gpv: str) -> str:

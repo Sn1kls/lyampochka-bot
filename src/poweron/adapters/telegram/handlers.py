@@ -876,6 +876,11 @@ async def _choose_street(
     city: dict[str, Any],
     street: dict[str, Any],
 ) -> None:
+    if catalog.asks_building_number:
+        await state.update_data(street=street)
+        await state.set_state(AddFlow.building)
+        await _respond(event, texts.ASK_BUILDING_NUMBER.format(street=escape(street["name"])))
+        return
     buildings = await catalog.buildings(city["id"], street["id"], _now())
     if not buildings:
         await _respond(event, texts.NO_BUILDINGS)
@@ -904,7 +909,11 @@ async def type_building(
     message: Message, state: FSMContext, catalogs: Mapping[str, Catalog]
 ) -> None:
     catalog = await _catalog(state, catalogs)
-    buildings = [Building(**raw) for raw in (await state.get_data())["options"]]
+    data = await state.get_data()
+    if catalog.asks_building_number:
+        await _search_building(message, state, catalog, data)
+        return
+    buildings = [Building(**raw) for raw in data["options"]]
     building = find_by_name(buildings, message.text or "")
     if building is None:
         await message.answer(texts.BUILDING_NOT_FOUND)
@@ -912,14 +921,31 @@ async def type_building(
     await _choose_building(message, state, catalog, building)
 
 
+async def _search_building(
+    message: Message, state: FSMContext, catalog: Catalog, data: dict[str, Any]
+) -> None:
+    """A searched catalogue: every typed number is a new search."""
+    street = data["street"]
+    text = message.text or ""
+    buildings = await catalog.find_buildings(data["city"]["id"], street["id"], text, _now())
+    exact = find_by_name(buildings, text)
+    if exact is not None:
+        await _choose_building(message, state, catalog, exact)
+    elif buildings:
+        prompt = texts.CHOOSE_BUILDING.format(street=escape(street["name"]))
+        await _offer(message, state, "building", buildings, prompt)
+    else:
+        await message.answer(texts.NOTHING_FOUND)
+
+
 async def _choose_building(
     event: Message | CallbackQuery, state: FSMContext, catalog: Catalog, building: Building
 ) -> None:
-    if building.cherg_gpv is None:
-        await _reject_address(event, state, building)
-        return
     data = await state.get_data()
     subqueues = await catalog.subqueues(data["city"]["id"], data["street"]["id"], building)
+    if not subqueues:
+        await _reject_address(event, state, building)
+        return
     await state.update_data(
         building=asdict(building),
         subqueues=subqueues,

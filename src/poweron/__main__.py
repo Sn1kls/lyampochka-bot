@@ -18,8 +18,20 @@ from poweron.adapters.telegram.bot import build_dispatcher, create_bot
 from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.adapters.toe_api.client import ToeClient
 from poweron.adapters.voe_api.client import VoeClient
+from poweron.adapters.yasno_api.client import YasnoClient
 from poweron.config import Settings
-from poweron.core.domain.providers import LOE, LOE_CACHE_PREFIX, TOE, VOE, VOE_CACHE_PREFIX
+from poweron.core.domain.models import AlertKind
+from poweron.core.domain.providers import (
+    CEK,
+    DNEM,
+    DNIPRO,
+    LOE,
+    LOE_CACHE_PREFIX,
+    TOE,
+    VOE,
+    VOE_CACHE_PREFIX,
+    YASNO_CACHE_PREFIX,
+)
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.backups import Backups
 from poweron.core.services.catalog import Catalog
@@ -73,6 +85,12 @@ async def run(role: str, settings: Settings) -> None:
         if settings.admin_chat_id is None
         else Alerts(TelegramAdminAlerter(bot, settings.admin_chat_id))
     )
+
+    async def report_suspended(details: str) -> None:
+        if alerts is not None:  # the client sends each one once a day, so no rate limit
+            await alerts.send(AlertKind.SCHEDULE_SUSPENDED, details)
+
+    yasno_client = YasnoClient(on_suspended=report_suspended)
     heartbeat = (
         None
         if settings.healthcheck_url is None
@@ -89,6 +107,7 @@ async def run(role: str, settings: Settings) -> None:
                         TOE: Catalog(repository, toe_client),
                         VOE: Catalog(repository, voe_catalog, cache_prefix=VOE_CACHE_PREFIX),
                         LOE: Catalog(repository, loe_client, cache_prefix=LOE_CACHE_PREFIX),
+                        DNIPRO: Catalog(repository, yasno_client, cache_prefix=YASNO_CACHE_PREFIX),
                     },
                     Schedules(repository),
                     Feedback(repository),
@@ -98,7 +117,10 @@ async def run(role: str, settings: Settings) -> None:
                         timedelta(seconds=settings.poll_interval_sec),
                     ),
                     admin_chat_id=settings.admin_chat_id,
-                    outages=CurrentOutages({TOE: toe_client, VOE: VoeOutages(engine)}),
+                    outages=CurrentOutages(
+                        {TOE: toe_client, VOE: VoeOutages(engine)},
+                        suspensions={DNEM: yasno_client, CEK: yasno_client},
+                    ),
                 )
                 polling_task = group.create_task(
                     dispatcher.start_polling(bot, handle_signals=False)
@@ -111,7 +133,13 @@ async def run(role: str, settings: Settings) -> None:
                         Polling(
                             repository,
                             SchedulesByProvider(
-                                {TOE: toe_client, VOE: voe_client, LOE: loe_client}
+                                {
+                                    TOE: toe_client,
+                                    VOE: voe_client,
+                                    LOE: loe_client,
+                                    DNEM: yasno_client,
+                                    CEK: yasno_client,
+                                }
                             ),
                             alerts,
                             stale_after=stale_after(timedelta(seconds=settings.poll_interval_sec)),
@@ -120,7 +148,13 @@ async def run(role: str, settings: Settings) -> None:
                         Reminders(repository, Schedules(repository)),
                         SubqueueChecker(
                             repository,
-                            {TOE: toe_client, VOE: voe_catalog, LOE: loe_client},
+                            {
+                                TOE: toe_client,
+                                VOE: voe_catalog,
+                                LOE: loe_client,
+                                DNEM: yasno_client,
+                                CEK: yasno_client,
+                            },
                             alerts,
                         ),
                         PlannedWorks(repository, toe_client, alerts),
@@ -135,6 +169,7 @@ async def run(role: str, settings: Settings) -> None:
         await toe_client.aclose()
         await voe_client.aclose()
         await loe_client.aclose()
+        await yasno_client.aclose()
         await bot.session.close()
         await engine.dispose()
 

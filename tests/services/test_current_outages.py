@@ -6,7 +6,7 @@ import pytest
 
 from poweron.adapters.db.repository import SqlRepository
 from poweron.core.domain.models import CurrentOutage, OutageKind, PlannedWork, Subscription
-from poweron.core.domain.providers import TOE, VOE
+from poweron.core.domain.providers import DNEM, TOE, VOE
 from poweron.core.ports import SourceUnavailable
 from poweron.core.services.current_outages import CACHE_TTL, FAILURE_TTL, CurrentOutages
 from tests.services.conftest import NOW
@@ -168,3 +168,53 @@ async def test_answers_are_cached_per_street_and_kind_for_a_while(home: Subscrip
 
     await current.current(home, NOW + CACHE_TTL)
     assert source.calls == ["emergency", "planned"] * 2
+
+
+@dataclass
+class FakeSuspensions:
+    suspended_queues: set[str] = field(default_factory=set)
+    delay: float = 0.0
+    error: Exception | None = None
+
+    async def suspended(self, cherg_gpv: str) -> bool:
+        await asyncio.sleep(self.delay)
+        if self.error:
+            raise self.error
+        return cherg_gpv in self.suspended_queues
+
+
+def in_dnipro(home: Subscription, *queues: str) -> Subscription:
+    return replace(home, subqueues=queues, tracked_subqueues=queues)
+
+
+async def test_emergency_shutdowns_of_the_operator_are_shown(home: Subscription) -> None:
+    suspensions = FakeSuspensions({"dnem:17.1"})
+
+    found = await CurrentOutages({}, suspensions={DNEM: suspensions}).current(
+        in_dnipro(home, "dnem:17.1"), NOW
+    )
+
+    assert found == CurrentOutage(OutageKind.SUSPENDED, None)
+
+
+async def test_a_schedule_that_applies_shows_nothing(home: Subscription) -> None:
+    suspensions = FakeSuspensions({"dnem:9.1"})
+
+    found = await CurrentOutages({}, suspensions={DNEM: suspensions}).current(
+        in_dnipro(home, "dnem:17.1"), NOW
+    )
+
+    assert found is None
+
+
+@pytest.mark.parametrize(
+    "suspensions",
+    [FakeSuspensions({"dnem:17.1"}, error=SourceUnavailable("down")), FakeSuspensions(delay=1.0)],
+    ids=["failing", "slow"],
+)
+async def test_a_failing_or_slow_suspension_check_shows_nothing(
+    home: Subscription, suspensions: FakeSuspensions
+) -> None:
+    current = CurrentOutages({}, timeout=0.01, suspensions={DNEM: suspensions})
+
+    assert await current.current(in_dnipro(home, "dnem:17.1"), NOW) is None

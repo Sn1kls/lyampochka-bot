@@ -40,7 +40,7 @@ from poweron.core.domain.models import (
     Street,
     Subscription,
 )
-from poweron.core.domain.providers import LOE, TOE, VOE
+from poweron.core.domain.providers import DNIPRO, LOE, TOE, VOE
 from poweron.core.services.alerts import Alerts
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.current_outages import CurrentOutages
@@ -106,6 +106,30 @@ class FakeLvivSource:
         self, city_id: int, street_id: int, building_name: str
     ) -> list[str]:
         return ["loe:3.1"]
+
+
+class FakeDniproSource:
+    """Search only, like YASNO; house 10 is in both operators, 12А outside the schedules."""
+
+    houses = {"10": ["cek:1.2", "dnem:17.1"], "12": ["dnem:17.1"], "12А": []}
+
+    async def cities(self) -> list[City]:
+        return [City(600006, "м. Дніпро", None)]
+
+    async def search_streets(self, city_id: int, query: str) -> list[Street]:
+        return [Street(260800147, "вул. Братів Горобців")]
+
+    async def search_buildings(self, city_id: int, street_id: int, query: str) -> list[Building]:
+        return [
+            Building(index, name, None)
+            for index, name in enumerate(self.houses)
+            if query.strip() in name
+        ]
+
+    async def building_subqueues(
+        self, city_id: int, street_id: int, building_name: str
+    ) -> list[str]:
+        return self.houses[building_name]
 
 
 class RecordingSession(BaseSession):
@@ -213,6 +237,7 @@ class Chat:
                 TOE: Catalog(repository, FakeCatalogSource()),
                 VOE: Catalog(repository, FakeVolynSource(), cache_prefix="voe:"),
                 LOE: Catalog(repository, FakeLvivSource(), cache_prefix="loe:"),
+                DNIPRO: Catalog(repository, FakeDniproSource(), cache_prefix="yasno:"),
             },
             Schedules(repository),
             feedback or Feedback(repository),
@@ -996,3 +1021,62 @@ async def test_queue_button_of_a_queue_the_address_no_longer_has_is_stale(chat: 
     await chat.press(keyboards.QueueTracking(subscription_id=1, queue="9.9", tracked=False))
 
     assert chat.alerts() == [texts.STALE_BUTTON]
+
+
+async def open_dnipro_street(chat: Chat) -> None:
+    await chat.say("/start")
+    await chat.say("/add")
+    await chat.press(keyboards.Region(provider="dnipro"))
+    await chat.say("дніпро")
+    await chat.say("Братів Горобців")
+
+
+async def test_a_dnipro_street_asks_for_the_house_number(chat: Chat) -> None:
+    await open_dnipro_street(chat)
+
+    assert chat.sent_texts()[-1] == texts.ASK_BUILDING_NUMBER.format(street="вул. Братів Горобців")
+
+
+async def test_a_typed_dnipro_house_is_saved_with_its_operator(chat: Chat) -> None:
+    await open_dnipro_street(chat)
+    await chat.say("12")
+
+    assert "17.1 (ДТЕК)" in chat.sent_texts()[-1]
+    await chat.press_button(texts.BUTTON_SAVE)
+    [home] = await chat.subscriptions.of_user(1)
+    assert (home.city_name, home.address.building_name, home.subqueues) == (
+        "м. Дніпро",
+        "12",
+        ("dnem:17.1",),
+    )
+
+
+async def test_a_part_of_a_number_offers_the_matching_houses(chat: Chat) -> None:
+    await open_dnipro_street(chat)
+    await chat.say("1")
+
+    assert button_texts(chat.last_reply_markup())[0] == ["10", "12", "12А"]
+
+
+async def test_a_house_of_both_operators_offers_both_queues(chat: Chat) -> None:
+    await open_dnipro_street(chat)
+    await chat.say("1")
+    await chat.press_button("10")
+
+    assert chat.edited_texts()[-1] == texts.CHOOSE_QUEUES.format(queues="1.2 (ЦЕК), 17.1 (ДТЕК)")
+
+
+async def test_an_unknown_dnipro_house_asks_again(chat: Chat) -> None:
+    await open_dnipro_street(chat)
+    await chat.say("99")
+
+    assert chat.sent_texts()[-1] == texts.NOTHING_FOUND
+
+
+async def test_a_dnipro_house_outside_the_schedules_is_refused(chat: Chat) -> None:
+    await open_dnipro_street(chat)
+    await chat.say("12А")
+
+    assert chat.sent_texts()[-1] == texts.NO_SCHEDULE_FOR_ADDRESS.format(
+        address="м. Дніпро, вул. Братів Горобців, 12А"
+    )

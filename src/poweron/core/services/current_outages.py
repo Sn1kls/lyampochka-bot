@@ -10,7 +10,7 @@ from poweron.core.domain.models import (
     PlannedWork,
     Subscription,
 )
-from poweron.core.ports import CurrentOutageSource, SourceError
+from poweron.core.ports import CurrentOutageSource, SourceError, SuspensionSource
 
 CACHE_TTL = timedelta(minutes=5)
 # The timeout cuts the client's retries short, so its breaker never opens for these endpoints.
@@ -27,14 +27,21 @@ class CurrentOutages:
     """
 
     def __init__(
-        self, sources: Mapping[str, CurrentOutageSource], timeout: float = TIMEOUT_SEC
+        self,
+        sources: Mapping[str, CurrentOutageSource],
+        timeout: float = TIMEOUT_SEC,
+        *,
+        suspensions: Mapping[str, SuspensionSource] | None = None,
     ) -> None:
         self._sources = sources
         self._timeout = timeout
+        self._suspensions = suspensions or {}
         # (region, kind, city id, street id) → (expires at, works)
         self._cache: dict[tuple[str, OutageKind, int, int], tuple[datetime, list[PlannedWork]]] = {}
 
     async def current(self, subscription: Subscription, now: datetime) -> CurrentOutage | None:
+        if await self._suspended(subscription):
+            return CurrentOutage(OutageKind.SUSPENDED, None)
         source = self._sources.get(subscription.provider)
         if source is None:
             return None
@@ -48,6 +55,19 @@ class CurrentOutages:
                 if work.starts_at <= now < work.ends_at and work.affects(address.building_name):
                     return CurrentOutage(kind, work)
         return None
+
+    async def _suspended(self, subscription: Subscription) -> bool:
+        suspensions = self._suspensions.get(subscription.provider)
+        if suspensions is None:
+            return False
+        try:
+            async with asyncio.timeout(self._timeout):
+                for cherg_gpv in subscription.tracked_subqueues:
+                    if await suspensions.suspended(cherg_gpv):
+                        return True
+        except (SourceError, TimeoutError) as error:
+            logger.warning("suspension check of %s: %r", subscription.provider, error)
+        return False
 
     async def _works(
         self,

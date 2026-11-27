@@ -4,7 +4,7 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 
 from poweron.core.domain.models import AlertKind, MessageKind, OutboxMessage, Subscription
-from poweron.core.ports import CatalogSource, Repository, SourceError
+from poweron.core.ports import QueueLookup, Repository, SourceError
 from poweron.core.services.alerts import Alerts, report_source_error
 from poweron.core.services.polling import never_stop
 
@@ -24,7 +24,7 @@ class SubqueueChecker:
     def __init__(
         self,
         repository: Repository,
-        catalogs: Mapping[str, CatalogSource],
+        catalogs: Mapping[str, QueueLookup],
         alerts: Alerts | None = None,
     ) -> None:
         self._repository = repository

@@ -15,7 +15,17 @@ from poweron.core.domain.models import (
     SubqueueStatus,
     Subscription,
 )
-from poweron.core.domain.providers import LOE, TOE, VOE, plain_subqueue, provider_of
+from poweron.core.domain.providers import (
+    CEK,
+    DNEM,
+    DNIPRO,
+    LOE,
+    TOE,
+    VOE,
+    plain_subqueue,
+    provider_of,
+    region_of,
+)
 
 from . import texts
 
@@ -29,20 +39,36 @@ STATE_LINES = {
 }
 
 
-# Regions in display order, by provider.
-REGIONS = {TOE: texts.REGION_TERNOPIL, VOE: texts.REGION_VOLYN, LOE: texts.REGION_LVIV}
+# Regions in alphabetical (display) order, keyed by `region_of` their providers.
+REGIONS = {
+    VOE: texts.REGION_VOLYN,
+    DNIPRO: texts.REGION_DNIPRO,
+    LOE: texts.REGION_LVIV,
+    TOE: texts.REGION_TERNOPIL,
+}
+OPERATORS = {DNEM: texts.OPERATOR_DNEM, CEK: texts.OPERATOR_CEK}
 
 
 def _site(provider: str) -> tuple[str, str]:
     """The oblenergo's schedule page."""
-    return {TOE: texts.SITE_TERNOPIL, VOE: texts.SITE_VOLYN, LOE: texts.SITE_LVIV}[provider]
+    return {
+        TOE: texts.SITE_TERNOPIL,
+        VOE: texts.SITE_VOLYN,
+        LOE: texts.SITE_LVIV,
+        DNEM: texts.SITE_DNEM,
+        CEK: texts.SITE_CEK,
+    }[provider]
 
 
 def outages_url(provider: str) -> str:
     """The oblenergo's page of current outages, opened on the user's phone past Cloudflare."""
-    return {TOE: texts.OUTAGES_TERNOPIL, VOE: texts.OUTAGES_VOLYN, LOE: texts.SITE_LVIV[0]}[
-        provider
-    ]
+    return {
+        TOE: texts.OUTAGES_TERNOPIL,
+        VOE: texts.OUTAGES_VOLYN,
+        LOE: texts.SITE_LVIV[0],
+        DNEM: texts.SITE_DNEM[0],
+        CEK: texts.OUTAGES_CEK,
+    }[provider]
 
 
 def _note(provider: str) -> str:
@@ -55,8 +81,10 @@ def _link(provider: str) -> str:
 
 
 def queue_name(cherg_gpv: str) -> str:
-    """The queue as people know it: no region prefix, no API suffix."""
-    return plain_subqueue(cherg_gpv).split("#")[0]
+    """The queue as people know it: no region prefix, no API suffix; the operator if it matters."""
+    name = plain_subqueue(cherg_gpv).split("#")[0]
+    operator = OPERATORS.get(provider_of(cherg_gpv))
+    return f"{name} ({operator})" if operator else name
 
 
 def subqueue_label(cherg_gpv: str) -> str:
@@ -303,6 +331,8 @@ def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
 
 
 def render_current_outage(outage: CurrentOutage, now: datetime) -> str:
+    if outage.work is None:
+        return texts.SUSPENDED
     ends_at = outage.work.ends_at.astimezone(KYIV)
     at = _at(ends_at, f"{ends_at:%H:%M}")
     if ends_at.date() != now.astimezone(KYIV).date():
@@ -401,7 +431,7 @@ def _duration(span: timedelta) -> str:
 
 
 def _region(subqueue: SubqueueStatus) -> str:
-    return provider_of(subqueue.cherg_gpv)
+    return region_of(provider_of(subqueue.cherg_gpv))
 
 
 def render_status(report: StatusReport, now: datetime) -> str:
