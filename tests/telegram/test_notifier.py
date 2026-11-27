@@ -142,6 +142,14 @@ async def test_menu_update_brings_the_new_keyboard() -> None:
     assert bot.silent == [True]  # news about the menu is not worth a buzz
 
 
+async def test_a_user_without_an_address_is_nudged_with_a_buzz() -> None:
+    bot = FakeBot()
+    await notifier_with(bot).send("42", "no_address", {})
+
+    assert bot.sent == [(42, texts.NO_ADDRESS_NUDGE)]
+    assert bot.silent == [None]
+
+
 async def test_every_push_refreshes_the_menu_without_a_separate_announcement() -> None:
     bot = FakeBot()
 

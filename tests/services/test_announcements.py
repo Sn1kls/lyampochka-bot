@@ -1,8 +1,10 @@
+from datetime import UTC, datetime, timedelta
+
 from poweron.adapters.db.repository import SqlRepository
 from poweron.core.services.announcements import Announcements
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.subscriptions import Subscriptions
-from tests.services.conftest import NOW, FakeNotifier
+from tests.services.conftest import NOW, FakeNotifier, subscribe
 
 
 async def register(repository: SqlRepository, *chat_ids: str) -> list[int]:
@@ -40,3 +42,23 @@ async def test_users_who_blocked_the_bot_are_skipped(repository: SqlRepository) 
 
     assert await Announcements(repository).menu_updated(2) == 1
     assert blocked not in await repository.user_ids_on("telegram")
+
+
+async def test_users_without_an_address_are_nudged_once(repository: SqlRepository) -> None:
+    await register(repository, "101")
+    await subscribe(repository, "102")
+    announcements = Announcements(repository)
+    notifier = FakeNotifier()
+    later = datetime.now(UTC) + timedelta(days=2)
+
+    assert await announcements.nudge_without_address(later) == 1
+    assert await announcements.nudge_without_address(later) == 0
+    await Notifications(repository, {"telegram": notifier}).dispatch(later)
+
+    assert notifier.sent == [("101", "no_address", {})]
+
+
+async def test_a_user_who_just_joined_is_not_nudged_yet(repository: SqlRepository) -> None:
+    await register(repository, "101")
+
+    assert await Announcements(repository).nudge_without_address(datetime.now(UTC)) == 0

@@ -102,6 +102,7 @@ class MessageKind(StrEnum):
     SUBQUEUES_CHANGED = "subqueues_changed"
     PLANNED_WORK = "planned_work"
     MENU_UPDATED = "menu_updated"
+    NO_ADDRESS = "no_address"
     FEEDBACK_REPLY = "feedback_reply"
 
 

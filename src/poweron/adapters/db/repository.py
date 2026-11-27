@@ -402,6 +402,25 @@ class SqlRepository:
                 )
             )
 
+    async def user_ids_without_address(self, channel: str, joined_before: datetime) -> list[int]:
+        async with self._engine.connect() as connection:
+            return list(
+                await connection.scalars(
+                    select(delivery_targets.c.user_id)
+                    .join(users, users.c.id == delivery_targets.c.user_id)
+                    .where(
+                        delivery_targets.c.channel == channel,
+                        delivery_targets.c.is_active,
+                        users.c.created_at < joined_before,
+                        ~select(subscriptions.c.id)
+                        .where(subscriptions.c.user_id == users.c.id)
+                        .exists(),
+                    )
+                    .distinct()
+                    .order_by(delivery_targets.c.user_id)
+                )
+            )
+
     async def count_pending_messages(self, max_attempts: int) -> int:
         async with self._engine.connect() as connection:
             return (
