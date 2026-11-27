@@ -127,7 +127,8 @@ class Subscription:
 
     @property
     def provider(self) -> str:
-        """A subscription always has queues, and all of them belong to one oblenergo."""
+        """The first queue's: the repository lists tracked queues first (a Dnipropetrovsk house
+        may have queues of both operators)."""
         return provider_of(self.subqueues[0])
 
     @property

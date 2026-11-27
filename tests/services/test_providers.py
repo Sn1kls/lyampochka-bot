@@ -10,6 +10,7 @@ from poweron.core.domain.models import (
     Street,
 )
 from poweron.core.domain.providers import (
+    DNEM,
     TOE,
     VOE,
     VOE_CATALOG_IMPORTED_KEY,
@@ -134,3 +135,17 @@ async def test_a_missing_or_old_volyn_import_alerts_the_admin(repository: SqlRep
         AlertKind.VOE_CATALOG_STALE,
         AlertKind.VOE_CATALOG_STALE,
     ]
+
+
+async def test_a_house_of_two_operators_belongs_to_the_tracked_one(
+    repository: SqlRepository,
+) -> None:
+    subscriptions = Subscriptions(repository)
+    user_id = await subscriptions.register("telegram", "77", "telegram", "77")
+    queues = ["cek:1.2", "dnem:17.1"]
+
+    home = await subscriptions.add(
+        user_id, "Дім", KIVERTSI, NEZALEZHNOSTI, Building(1, "10", None), queues, queues[1:], NOW
+    )
+
+    assert home.provider == DNEM

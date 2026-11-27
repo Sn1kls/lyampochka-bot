@@ -6,6 +6,7 @@ SITE_VOLYN = (
     "energy.volyn.ua",
 )
 SITE_LVIV = ("https://poweron.loe.lviv.ua", "poweron.loe.lviv.ua")
+# Behind a bot check that a person's browser passes; also DTEK's current outages page.
 SITE_DNEM = ("https://www.dtek-dnem.com.ua/ua/shutdowns", "dtek-dnem.com.ua")
 SITE_CEK = ("https://cek.dp.ua/index.php/cpojivaham/vidkliuchennia.html", "cek.dp.ua")
 # Each oblenergo's page of the outages happening now (Lviv: its homepage). Checked 2026-11-24.
@@ -14,7 +15,6 @@ OUTAGES_VOLYN = (
     "https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/"
     "chomu-nemaie-elektropostachannia/"
 )
-# DTEK's page is behind a bot check that a person's browser passes.
 OUTAGES_CEK = "https://cek.dp.ua/index.php/cpojivaham/vidkliuchennia/2-uncategorised/961-gav.html"
 BUTTON_OUTAGES = "⚡ Немає світла? Аварійні"
 

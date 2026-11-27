@@ -4,9 +4,9 @@ from datetime import date, datetime
 import pytest
 import respx
 
-from poweron.adapters.yasno_api.client import YasnoClient
+from poweron.adapters.yasno_api.client import PAIR_BASE, YasnoClient
 from poweron.core.domain.models import KYIV, Address
-from poweron.core.ports import ApiSchemaError
+from poweron.core.ports import ApiSchemaError, SourceUnavailable
 from tests.conftest import load_fixture
 from tests.fakes import FakeClock, blocks
 
@@ -140,16 +140,16 @@ async def test_a_city_of_both_operators_is_one_city(client: YasnoClient) -> None
     cities = {city.name: city for city in await client.cities()}
 
     assert "Дніпро" not in cities  # CEK's spelling of «м. Дніпро»
-    assert cities["м. Дніпро"].id == 6 * 100_000 + 6
+    assert cities["м. Дніпро"].id == 6 * PAIR_BASE + 6
     assert cities["Жовті Води"].id == 8  # CEK only
     # DnEM lists Kamianske twice; one operator's duplicates are kept as they are.
     assert [city.id for city in await client.cities() if "Кам" in city.name] == [
-        8 * 100_000,
-        9 * 100_000,
+        8 * PAIR_BASE,
+        9 * PAIR_BASE,
     ]
 
 
-DNIPRO = 6 * 100_000 + 6
+DNIPRO = 6 * PAIR_BASE + 6
 ZHOVTI_VODY = 8  # CEK only
 
 
@@ -167,14 +167,14 @@ async def test_a_street_of_both_operators_is_one_street(client: YasnoClient) -> 
     streets = await client.search_streets(DNIPRO, "Шевч")
 
     assert [(street.id, street.name) for street in streets] == [
-        (5 * 100_000 + 235, "вул. Шевченка"),
+        (5 * PAIR_BASE + 235, "вул. Шевченка"),
         (7, "пл. Шевченка"),
     ]
     assert dict(dnem.calls.last.request.url.params) == {
         "regionId": "3",
         "dsoId": "301",
         "cityId": "6",
-        "query": "Шевч",
+        "query": "шевч",
     }
 
 
@@ -197,7 +197,7 @@ async def test_a_street_query_under_three_letters_asks_nothing(client: YasnoClie
     assert not route.called
 
 
-STREET = 2608 * 100_000 + 147  # вул. Братів Горобців: DnEM 2608, CEK 147
+STREET = 2608 * PAIR_BASE + 147  # вул. Братів Горобців: DnEM 2608, CEK 147
 DNEM_HOUSES = [
     {"id": 11, "value": "1 ввод 1"},
     {"id": 12, "value": "1 ввод 2"},
@@ -243,7 +243,8 @@ async def test_building_ids_survive_a_new_search(client: YasnoClient) -> None:
     first = await client.search_buildings(DNIPRO, STREET, "1")
     again = await client.search_buildings(DNIPRO, STREET, "10")
 
-    assert {b.name: b.id for b in first}["10"] == {b.name: b.id for b in again}["10"]
+    ids = {building.name: building.id for building in first}
+    assert ids["10"] == {building.name: building.id for building in again}["10"]
 
 
 @respx.mock
@@ -321,3 +322,38 @@ async def test_emergency_shutdowns_are_reported_once_per_operator_and_day(
         await client.aclose()
 
     assert reported == ["dnem 2026-11-27"]
+
+
+@respx.mock
+async def test_latin_letters_and_a_type_prefix_are_cleaned_from_a_query(
+    client: YasnoClient,
+) -> None:
+    dnem, _ = mock_houses()
+    streets = mock_streets("301", [])
+    mock_streets("303", [])
+
+    await client.search_streets(DNIPRO, "вул. Кoрoленкa")
+    await client.search_buildings(DNIPRO, STREET, " 12a ")
+
+    assert streets.calls.last.request.url.params["query"] == "короленка"
+    assert dnem.calls.last.request.url.params["query"] == "12а"
+
+
+@respx.mock
+async def test_an_id_too_big_for_a_pair_id_is_skipped(client: YasnoClient) -> None:
+    mock_streets("301", [{"id": 1_000_000, "value": "вул. Нова"}, {"id": 5, "value": "вул. Стара"}])
+    mock_streets("303", [])
+
+    streets = await client.search_streets(DNIPRO, "вул")
+
+    assert [street.name for street in streets] == ["вул. Стара"]
+
+
+@respx.mock
+async def test_a_house_missing_from_a_cut_off_answer_is_unknown(client: YasnoClient) -> None:
+    others = [{"id": number, "value": f"{number}"} for number in range(100, 120)]  # 20: the cap
+    respx.get(f"{ADDRESSES}/houses", params={"dsoId": "301"}).respond(json=others)
+    respx.get(f"{ADDRESSES}/houses", params={"dsoId": "303"}).respond(json=[])
+
+    with pytest.raises(SourceUnavailable):
+        await client.building_subqueues(DNIPRO, STREET, "1")

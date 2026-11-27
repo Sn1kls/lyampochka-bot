@@ -3,6 +3,7 @@ import logging
 import re
 import time
 import zlib
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -22,8 +23,8 @@ from poweron.core.domain.providers import (
     scoped_subqueue,
 )
 from poweron.core.domain.schedule import day_slots
-from poweron.core.domain.text import normalise
-from poweron.core.ports import ApiSchemaError, SourceError
+from poweron.core.domain.text import LATIN_LOOKALIKES, TYPE_PREFIX, normalise
+from poweron.core.ports import ApiSchemaError, SourceError, SourceUnavailable
 
 API = "https://app.yasno.ua/api/blackout-service/public/shutdowns"
 REGION_ID = 3  # «Дніпро» in YASNO's region list: the whole oblast
@@ -37,10 +38,13 @@ WITH_SCHEDULE = {"ScheduleApplies", "NoOutages"}
 WAITING = "WaitingForSchedule"
 SUSPENDED = "EmergencyShutdowns"
 # A city or street of both operators is one item whose id carries both ids (0: absent).
-# ponytail: ids up to 10^10 fit SQLite's INTEGER; Postgres would need BIGINT for them.
-PAIR_BASE = 100_000
+# ponytail: pair ids up to 10^12 fit SQLite's INTEGER; Postgres would need BIGINT for them.
+PAIR_BASE = 1_000_000
+LATIN = str.maketrans(LATIN_LOOKALIKES)
 # YASNO answers nothing to a shorter street query.
 MIN_STREET_QUERY = 3
+# YASNO cuts every search answer off at this many items.
+SEARCH_LIMIT = 20
 # «1 ввод 2»: the second power input of house 1, listed as a house of its own.
 INPUT = re.compile(r"\s+ввод\s+\d+$", re.IGNORECASE)
 
@@ -169,7 +173,7 @@ class YasnoClient:
         return [City(id=item_id, name=name, otg_name=None) for item_id, name in _merge(named)]
 
     async def search_streets(self, city_id: int, query: str) -> list[Street]:
-        query = " ".join(query.split())
+        query = _query(query)
         if len(query) < MIN_STREET_QUERY:
             return []
         named = {
@@ -194,7 +198,8 @@ class YasnoClient:
         cities, streets = _unpair(city_id), _unpair(street_id)
         wanted = normalise(building_name)
         subqueues = set()
-        for provider, house in await self._houses(city_id, street_id, building_name):
+        houses = await self._houses(city_id, street_id, building_name)
+        for provider, house in houses:
             if normalise(_house_name(house)) != wanted:
                 continue
             response = await self._http.get(
@@ -211,6 +216,11 @@ class YasnoClient:
             )
             found = _validate(_HOUSE_GROUP, response.json(), "group")
             subqueues.add(scoped_subqueue(provider, f"{found.group}.{found.subgroup}"))
+        # A house beyond a cut-off answer is unknown, not gone: the daily re-check keeps its queues.
+        # ponytail: one input cut off still drops its queue; YASNO has no lookup by house id.
+        answered = Counter(provider for provider, _ in houses)
+        if not subqueues and SEARCH_LIMIT in answered.values():
+            raise SourceUnavailable(f"yasno: house {building_name!r} beyond a cut-off answer")
         return sorted(subqueues)
 
     async def _houses(self, city_id: int, street_id: int, query: str) -> list[tuple[str, _Named]]:
@@ -221,7 +231,7 @@ class YasnoClient:
             key: cached for key, cached in self._houses_cache.items() if now < cached[0]
         }
         for provider, provider_street in _unpair(street_id).items():
-            key = (provider, cities[provider], provider_street, query.strip())
+            key = (provider, cities[provider], provider_street, _query(query))
             if (cached := self._houses_cache.get(key)) is None:
                 houses = await self._addresses(
                     "houses",
@@ -281,7 +291,8 @@ def _merge(named: dict[str, list[_Named]]) -> list[tuple[int, str]]:
     for provider in (DNEM, CEK):
         for item in named.get(provider, []):
             if not 0 < item.id < PAIR_BASE:
-                raise ApiSchemaError(f"yasno: id {item.id} does not fit a pair id")
+                logger.error("yasno: %s id %s does not fit a pair id, skipped", provider, item.id)
+                continue
             entry = by_name.get(normalise(item.value))
             # One operator's own duplicates stay apart: only the other operator merges in.
             if entry is None or provider in entry.ids:
@@ -292,6 +303,11 @@ def _merge(named: dict[str, list[_Named]]) -> list[tuple[int, str]]:
     return [
         (entry.ids.get(DNEM, 0) * PAIR_BASE + entry.ids.get(CEK, 0), entry.name) for entry in merged
     ]
+
+
+def _query(text: str) -> str:
+    """YASNO matches a plain substring: no type prefix, no Latin look-alikes typed by mistake."""
+    return TYPE_PREFIX.sub("", " ".join(text.casefold().translate(LATIN).split()))
 
 
 def _unpair(pair_id: int) -> dict[str, int]:
