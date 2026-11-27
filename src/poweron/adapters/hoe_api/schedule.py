@@ -18,6 +18,9 @@ OFF, ON = "1", "0"  # toe's raw slot codes
 _ARCHIVE_ENTRY = re.compile(
     r'href="([^"]+)"[^>]*>\s*Графік погодинних відключень (\d\d\.\d\d\.\d{4})[^<]*<'
 )
+# A post appears twice in the list (picture and title); only the title has text.
+_NEWS_ENTRY = re.compile(r'href="(/post/[^"]+)"[^>]*>\s*([^<]+?)\s*<')
+_NEWS_DAY = re.compile(r"(?:ГПВ|[Пп]огодинні відключення) на (\d\d?) ([а-яіїє]+)")
 _TIME = r"\d\d:[03]0"
 _SUBQUEUE_LINE = re.compile(
     rf"Підчерга ([1-6]\.[12]) [–-] (?:(?P<intervals>{_TIME}-{_TIME}(?:; {_TIME}-{_TIME})*)\.?"
@@ -40,18 +43,34 @@ MONTHS = {
 
 
 def parse_archive(page: str, base_url: str) -> dict[date, list[str]]:
-    """Every entry's link by day; a day may have several (in October each update was a picture)."""
+    """Every entry's link by day; a day may have several (in October each update was a picture).
+
+    Filed by hand, hours after the post (27.11: the 28.11 post was out at 20:00, not filed).
+    """
     entries: dict[date, list[str]] = {}
     for link, day in _ARCHIVE_ENTRY.findall(page):
         parsed = datetime.strptime(day, "%d.%m.%Y").date()
         entries.setdefault(parsed, []).append(urljoin(base_url, html.unescape(link)))
-    if not entries:
-        raise ApiSchemaError("hoe archive: no schedule entries")
     return entries
 
 
+def parse_news(page: str, base_url: str, days: tuple[date, ...]) -> dict[date, list[str]]:
+    """Posts of the news list whose title names one of `days` («Прогноз ГПВ на 28 листопада»)."""
+    found: dict[date, list[str]] = {}
+    for link, title in _NEWS_ENTRY.findall(page):
+        match = _NEWS_DAY.search(title)
+        if match is None:
+            continue
+        named = (int(match.group(1)), MONTHS.get(match.group(2)))
+        for day in days:
+            url = urljoin(base_url, html.unescape(link))
+            if named == (day.day, day.month) and url not in found.get(day, []):
+                found.setdefault(day, []).append(url)
+    return found
+
+
 def announced_day(page: str) -> tuple[int, int] | None:
-    """(day, month) the newest block of a post or of the schedule page is about, if it says."""
+    """(day, month) the newest block of a post is about, if it says."""
     start = page.find('<div class="post">')
     for line in _lines(page[start:] if start >= 0 else ""):
         if not line.startswith(_HEADER):
