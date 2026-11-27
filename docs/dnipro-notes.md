@@ -2,7 +2,7 @@
 
 Status: **researched** (2026-11-27, branch `chore/dnipro-research`); not built yet.
 
-Short version: the oblast has two distribution operators, **DTEK Dnipro Grids (ДнЕМ)** and **CEK (ЦЕК)**, and both are served by one public JSON API of YASNO (DTEK's supplier), `app.yasno.ua`. It gives schedules per group as minute intervals and the address → group lookup for both operators. Closer to Lviv than to Volyn: no images, no export from the Mac, *if* the production server gets through Incapsula (still open, see "Server access").
+Short version: the oblast has two distribution operators, **DTEK Dnipro Grids (ДнЕМ)** and **CEK (ЦЕК)**, and both are served by one public JSON API of YASNO (DTEK's supplier), `app.yasno.ua`. It gives schedules per group as minute intervals and the address → group lookup for both operators. Closer to Lviv than to Volyn: no images, no export from the Mac: the production server gets through Incapsula.
 
 ## Sources
 
@@ -16,13 +16,13 @@ The Home Assistant integration `denysdovhan/ha-yasno-outages` reads the same API
 
 ## Server access
 
-**Open, and it decides the whole design.** `app.yasno.ua` sits behind Incapsula too: `app.yasno.ua/robots.txt` answers the challenge page, while the API paths answered JSON to the owner's Mac (Ukrainian home IP). A data-centre IP may well get the challenge. To check from the production VM:
+`app.yasno.ua` sits behind Incapsula: `app.yasno.ua/robots.txt` answers the challenge page, the API paths answer JSON.
+
+From the production VM (Oracle, Stockholm), with an honest User-Agent, on 2026-11-27: `addresses/v2/regions` answered **200 `application/json`** with both regions. No Mac export like Volyn. The other endpoints were checked from the Mac only. The client must still treat an HTML answer as a source error: Incapsula may start challenging at any time, and then we stop (no headless browsers, no workarounds).
 
 ```bash
 ssh ubuntu@<server> 'curl -s -A "poweron-bot/0.16 (personal use)" -w "\n%{http_code} %{content_type}\n" https://app.yasno.ua/api/blackout-service/public/shutdowns/addresses/v2/regions | tail -c 400'
 ```
-
-JSON with two regions means go. An HTML page with `_Incapsula_Resource` means stop: no headless browsers, no workarounds; the only way left is a Mac export like Volyn, or asking YASNO.
 
 ## Regions and operators
 
@@ -86,7 +86,6 @@ All under `.../addresses/v2/`, each takes `regionId=3&dsoId=…`:
 
 ## Still unknown
 
-- Server access (above). Blocks everything else.
 - When «tomorrow» gets filled, and how often `updatedOn` moves in a day.
 - `EmergencyShutdowns`: its slots and how long it lasts.
 - Whether a house's inputs are ever in different groups.

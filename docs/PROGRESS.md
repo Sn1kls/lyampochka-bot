@@ -406,5 +406,5 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - the catalogue is search-only (at least 3 letters, at most 20 results), and the operators overlap in Dnipro, Kryvyi Rih and a few other towns, so the bot must search both;
   - dtek-dnem.com.ua challenges even the Mac with Incapsula; CEK's own schedule form was stale on 27.11.
 - Added `scripts/probe_dnipro.py` and fixtures `tests/fixtures/yasno_*.json` (public streets only).
-- Open, and blocking: whether the production server gets JSON from `app.yasno.ua`, which is behind Incapsula too.
-- Next step: the server check, then grill the design points in the notes, then a plan for `feature/dnipro-oblast`. The owner asked for the region buttons in alphabetical order in the same feature.
+- Server access: the production VM gets JSON from `app.yasno.ua` (200), although the host is behind Incapsula too.
+- Next step: grill the design points in the notes, then a plan for `feature/dnipro-oblast`. The owner asked for the region buttons in alphabetical order in the same feature.
