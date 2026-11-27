@@ -33,6 +33,8 @@ def _render(kind: str, payload: Mapping[str, Any]) -> str:
             return render_planned_work(payload)
         case MessageKind.MENU_UPDATED:
             return texts.MENU_UPDATED
+        case MessageKind.NO_ADDRESS:
+            return texts.NO_ADDRESS_NUDGE
         case MessageKind.FEEDBACK_REPLY:
             return texts.FEEDBACK_REPLY.format(text=escape(payload["text"]))
         case _:

@@ -202,6 +202,10 @@ class Repository(Protocol):
         """Users with an active delivery target on `channel`."""
         ...
 
+    async def user_ids_without_address(self, channel: str, joined_before: datetime) -> list[int]:
+        """Users reachable on `channel` who joined before `joined_before` and have no subscription."""
+        ...
+
     async def count_pending_messages(self, max_attempts: int) -> int:
         """Messages not sent and not given up on."""
         ...
