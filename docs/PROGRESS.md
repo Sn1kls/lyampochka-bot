@@ -461,3 +461,8 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Alert in production after 0.19.0: «hoe: the schedule page shows 2026-11-28, the archive not», then `SCHEDULE_STALE` for every hoe subqueue. Users kept today's schedule from memory; tomorrow's was missing.
 - Cause: the archive is filed by hand hours after the post; the 0.19.0 check took that lag for a broken archive. The «Погодинні відключення» page is no better: it had dropped 27.11's 12:30 addition and still showed 26.11.
 - Fix: days are found through the news list and the archive together; the schedule page is not read; a post must still announce its own day. Regression test from the production state (fixtures `hoe_news.html`, `hoe_post_28.html`).
+
+## 2026-11-28: Khmelnytskyi «Підчерга 5.1.»
+
+- Alert in production on 0.19.1: «hoe post: unexpected subqueue line 'Підчерга 5.1. - 00:00-01:00'», then `SCHEDULE_STALE`. The 28.11 23:50 addition put a dot after the number.
+- Fix: the subqueue line accepts an optional dot after the number. Regression test on the production post (`hoe_post_dotted.html`).
