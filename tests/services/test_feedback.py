@@ -11,7 +11,9 @@ from tests.services.conftest import NOW, FakeNotifier
 
 
 async def register(repository: SqlRepository, chat_id: str) -> int:
-    return await Subscriptions(repository).register("telegram", chat_id, "telegram", chat_id)
+    return await Subscriptions(repository).register(
+        "telegram", chat_id, "telegram", chat_id, now=NOW
+    )
 
 
 async def test_the_sixth_feedback_within_an_hour_waits_until_the_first_one_ages_out(

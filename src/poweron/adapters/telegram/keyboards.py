@@ -32,11 +32,13 @@ MENU_ROWS = (
     (texts.MENU_LIST, texts.MENU_SETTINGS),
     (texts.MENU_HELP, texts.MENU_FEEDBACK),
 )
-# Older clients may still show the previous seven-button keyboard, so its labels keep working.
-MENU_LABELS = frozenset(label for row in MENU_ROWS for label in row) | {
-    texts.MENU_ADD,
-    texts.MENU_REMOVE,
-}
+# Older clients may still show a previous keyboard, so its labels keep working.
+FEEDBACK_LABELS = frozenset({texts.MENU_FEEDBACK, texts.MENU_FEEDBACK_OLD})
+MENU_LABELS = (
+    frozenset(label for row in MENU_ROWS for label in row)
+    | FEEDBACK_LABELS
+    | {texts.MENU_ADD, texts.MENU_REMOVE}
+)
 ActionName = Literal["add", "remove"]
 ACTION_LABELS: dict[ActionName, str] = {"add": texts.MENU_ADD, "remove": texts.MENU_REMOVE}
 ACTION_STYLES: dict[ActionName, ButtonStyle | None] = {"add": None, "remove": ButtonStyle.DANGER}

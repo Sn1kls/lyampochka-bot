@@ -12,7 +12,7 @@ from poweron.core.domain.models import MessageKind
 from poweron.core.ports import DeliveryTargetGone
 
 from . import texts
-from .keyboards import menu_keyboard
+from .keyboards import actions_keyboard, menu_keyboard
 from .render import render_planned_work, render_reminder, render_subqueues_changed, render_update
 
 SEND_INTERVAL = 0.04
@@ -54,13 +54,15 @@ class TelegramNotifier:
     async def send(self, address: str, kind: str, payload: Mapping[str, Any]) -> str:
         text = _render(kind, payload)
         reply_to = payload.get("reply_to")
+        # A reply keyboard only changes when a message brings one, so every push refreshes it;
+        # the nudge brings its add button instead, as the menu has none.
+        markup = actions_keyboard("add") if kind == MessageKind.NO_ADDRESS else menu_keyboard()
         await self._wait_for_slot()
         try:
             sent = await self._bot.send_message(
                 int(address),
                 text,
-                # A reply keyboard only changes when a message brings one, so every push refreshes it.
-                reply_markup=menu_keyboard(),
+                reply_markup=markup,
                 # News about the menu alone is not worth a buzz.
                 disable_notification=True if kind == MessageKind.MENU_UPDATED else None,
                 # Still sent when the user has deleted the message it answers.

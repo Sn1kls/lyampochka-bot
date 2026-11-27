@@ -8,6 +8,7 @@ from poweron.core.services.alerts import Alerts
 from poweron.core.services.backups import Backups
 from poweron.core.services.subscriptions import Subscriptions
 from tests.fakes import FakeAlerter
+from tests.services.conftest import NOW
 
 FOUR_AM = datetime(2026, 10, 19, 4, 5, tzinfo=KYIV)
 
@@ -39,7 +40,7 @@ async def test_one_backup_a_day_at_four_in_the_morning(repository: SqlRepository
 
 
 async def test_the_backup_is_a_full_copy_of_the_database(repository: SqlRepository) -> None:
-    await Subscriptions(repository).register("telegram", "101", "telegram", "101")
+    await Subscriptions(repository).register("telegram", "101", "telegram", "101", now=NOW)
     sink = FakeSink()
 
     await Backups(repository, sink).run(FOUR_AM)

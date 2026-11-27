@@ -9,7 +9,9 @@ from aiogram.methods import CopyMessages, SendMessage
 
 from poweron.adapters.db.repository import SqlRepository
 from poweron.adapters.telegram import handlers, keyboards, texts
-from poweron.core.domain.models import FeedbackThread
+from poweron.adapters.telegram.notifier import message_ref
+from poweron.core.domain.models import AlertKind, FeedbackThread
+from poweron.core.services.alerts import Alerts
 from poweron.core.services.feedback import Feedback
 from tests.telegram.test_handlers import Chat, add_address
 
@@ -147,7 +149,7 @@ async def test_forgetting_oneself_does_not_reset_the_limit(repository: SqlReposi
     await chat.say("/start")
     await send_feedback(chat)
     # Someone registers later, so the returning user cannot get their old id back.
-    await chat.subscriptions.register("telegram", "7", "telegram", "7")
+    await chat.subscriptions.register("telegram", "7", "telegram", "7", now=LATER)
     await chat.press(keyboards.Decision(action="forget", accepted=True))
     await chat.say("/start")  # a new internal user, the same Telegram account
 
@@ -229,7 +231,7 @@ async def test_a_reply_to_a_bot_prompt_still_reaches_the_wizard(chat: Chat) -> N
 
 async def test_a_reply_to_a_forgotten_user_says_so(chat: Chat) -> None:
     await chat.say("/start")
-    other = await chat.subscriptions.register("telegram", "2", "telegram", "2")
+    other = await chat.subscriptions.register("telegram", "2", "telegram", "2", now=LATER)
     await chat.dispatcher["feedback"].record(other, 40, ["telegram:1:77"], datetime.now(UTC))
     await chat.subscriptions.forget(other)
 
@@ -342,14 +344,20 @@ async def test_the_reply_to_an_answer_keeps_the_limit(repository: SqlRepository)
     assert len(copies(chat)) == 1
 
 
-async def test_a_reply_to_another_bot_message_is_not_a_feedback(
+async def test_a_reply_to_another_bot_message_is_new_feedback_not_a_continuation(
     user_chat: Chat, repository: SqlRepository
 ) -> None:
     await got_answer(user_chat, repository)
 
     await reply_to_bot(user_chat, replied_id=77)  # looks like an answer, but is not one
 
-    assert copies(user_chat) == []
+    assert len(copies(user_chat)) == 1
+    [header] = [
+        call
+        for call in user_chat.session.calls
+        if isinstance(call, SendMessage) and call.text.startswith("✉️")
+    ]
+    assert header.reply_parameters is None  # not tied to the admin's answer
 
 
 async def test_a_command_sent_as_a_reply_to_an_answer_runs(
@@ -446,3 +454,79 @@ async def test_without_the_header_the_copy_still_leads_back_to_the_user(
     feedback = user_chat.dispatcher["feedback"]
     assert await feedback.thread(f"telegram:999:{copy_id}") == FeedbackThread(1, 40)
     assert user_chat.sent_texts()[-1] == texts.FEEDBACK_SENT
+
+
+class AlertInAdminChat:
+    """Puts every alert at message 90 of the admin chat, as Telegram would number it."""
+
+    async def alert(self, kind: AlertKind, details: str) -> str:
+        return message_ref(ADMIN_CHAT_ID, 90)
+
+
+async def test_the_admin_writes_first_by_answering_a_new_user_alert(
+    repository: SqlRepository,
+) -> None:
+    chat = Chat(
+        repository,
+        alerts=Alerts(AlertInAdminChat()),
+        admin_chat_id=ADMIN_CHAT_ID,
+        feedback=Feedback(repository),
+    )
+    await chat.say("/start")
+
+    await reply_to(chat, 90, "Привіт! Не вийшло знайти вулицю?")
+
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_REPLY_SENT
+    assert await queued(repository) == [
+        (
+            "feedback_reply",
+            {"text": "Привіт! Не вийшло знайти вулицю?", "reply_to": None, "answer": 61},
+        )
+    ]
+
+
+async def test_any_message_outside_a_wizard_goes_to_the_developer(
+    repository: SqlRepository,
+) -> None:
+    chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository))
+    await chat.say("/start")
+
+    await chat.send(message_id=40, text="Не знаходжу свою вулицю")
+
+    assert [copied for copied, _ in copies(chat)] == [[40]]
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_SENT
+
+
+async def test_the_admin_writing_to_their_own_bot_is_not_feedback(chat: Chat) -> None:
+    await chat.say("/start")
+
+    await chat.send(message_id=40, text="просто перевіряю")
+
+    assert copies(chat) == []
+
+
+async def test_an_uncopyable_message_out_of_the_blue_starts_no_feedback(
+    repository: SqlRepository,
+) -> None:
+    chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository))
+    await chat.say("/start")
+    chat.session.uncopyable = {40}  # a pin or a timer change: service messages are not copied
+
+    await chat.send(message_id=40, text="📌")
+    await chat.send(message_id=41, text="Шевченка")
+
+    assert texts.FEEDBACK_NOT_COPYABLE not in chat.sent_texts()
+    assert [copied for copied, admin_ids in copies(chat) if admin_ids] == [[41]]
+
+
+async def test_messages_out_of_the_blue_leave_the_button_its_own_limit(
+    repository: SqlRepository,
+) -> None:
+    chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository, limit=1))
+    await chat.say("/start")
+    await chat.send(message_id=40, text="Руська")
+    await chat.send(message_id=41, text="Руська 5")
+
+    await chat.say(texts.MENU_FEEDBACK)
+
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_ASK

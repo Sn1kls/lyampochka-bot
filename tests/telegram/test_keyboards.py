@@ -81,7 +81,7 @@ def test_settings_are_labelled_buttons_that_cycle_their_values() -> None:
     markup = settings_keyboard(subscription)
 
     assert texts_of(markup) == [
-        ["✅ Пуші про оновлення"],
+        ["✅ Сповіщення про оновлення"],
         ["🪫 Нагадати до вимкнення: 30 хв"],
         ["🔋 Нагадати до повернення: без"],
         ["⏱ Нагадувати до: можливого 🟡"],

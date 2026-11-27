@@ -55,7 +55,9 @@ async def subscribe(
     label: str = "Дім",
 ) -> Subscription:
     subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", external_id, "telegram", external_id)
+    user_id = await subscriptions.register(
+        "telegram", external_id, "telegram", external_id, now=NOW
+    )
     building = Building(1, building_name, "4.1")
     return await subscriptions.add(
         user_id, label, TERNOPIL, street, building, ["4.1"], ["4.1"], NOW

@@ -33,6 +33,7 @@ from poweron.core.domain.providers import (
     YASNO_CACHE_PREFIX,
 )
 from poweron.core.services.alerts import Alerts
+from poweron.core.services.announcements import Announcements
 from poweron.core.services.backups import Backups
 from poweron.core.services.catalog import Catalog
 from poweron.core.services.catalog_age import VoeCatalogAge
@@ -163,6 +164,7 @@ async def run(role: str, settings: Settings) -> None:
                         heartbeat,
                         _backups(settings, repository, bot, alerts),
                         None if alerts is None else VoeCatalogAge(repository, alerts),
+                        Announcements(repository),
                     )
                 )
     finally:

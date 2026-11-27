@@ -24,8 +24,8 @@ def subscriptions(repository: SqlRepository) -> Subscriptions:
 
 
 async def test_of_user_and_get_are_scoped_to_the_user(subscriptions: Subscriptions) -> None:
-    alice = await subscriptions.register("telegram", "1", "telegram", "1")
-    bob = await subscriptions.register("telegram", "2", "telegram", "2")
+    alice = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
+    bob = await subscriptions.register("telegram", "2", "telegram", "2", now=NOW)
     home = await subscriptions.add(
         alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
     )
@@ -42,8 +42,8 @@ async def test_of_user_and_get_are_scoped_to_the_user(subscriptions: Subscriptio
 async def test_forget_removes_everything_of_the_user_only(
     repository: SqlRepository, subscriptions: Subscriptions
 ) -> None:
-    alice = await subscriptions.register("telegram", "1", "telegram", "1")
-    bob = await subscriptions.register("telegram", "2", "telegram", "2")
+    alice = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
+    bob = await subscriptions.register("telegram", "2", "telegram", "2", now=NOW)
     await subscriptions.add(
         alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
     )
@@ -74,8 +74,8 @@ async def test_forget_removes_everything_of_the_user_only(
 async def test_register_does_not_rebind_a_target_of_another_user(
     repository: SqlRepository, subscriptions: Subscriptions
 ) -> None:
-    alice = await subscriptions.register("telegram", "1", "telegram", "chat-1")
-    mallory = await subscriptions.register("telegram", "2", "telegram", "chat-1")
+    alice = await subscriptions.register("telegram", "1", "telegram", "chat-1", now=NOW)
+    mallory = await subscriptions.register("telegram", "2", "telegram", "chat-1", now=NOW)
 
     assert mallory != alice
     assert [target.address for target in await repository.delivery_targets(alice)] == ["chat-1"]
@@ -85,17 +85,17 @@ async def test_register_does_not_rebind_a_target_of_another_user(
 async def test_register_reactivates_the_own_target(
     repository: SqlRepository, subscriptions: Subscriptions
 ) -> None:
-    alice = await subscriptions.register("telegram", "1", "telegram", "chat-1")
+    alice = await subscriptions.register("telegram", "1", "telegram", "chat-1", now=NOW)
     (target,) = await repository.delivery_targets(alice)
     await repository.deactivate_target(target.id)
 
-    assert await subscriptions.register("telegram", "1", "telegram", "chat-1") == alice
+    assert await subscriptions.register("telegram", "1", "telegram", "chat-1", now=NOW) == alice
     assert len(await repository.delivery_targets(alice)) == 1
 
 
 async def test_find_user_is_read_only_and_does_not_register(subscriptions: Subscriptions) -> None:
     assert await subscriptions.find_user("telegram", "1") is None
-    alice = await subscriptions.register("telegram", "1", "telegram", "1")
+    alice = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     assert await subscriptions.find_user("telegram", "1") == alice
     assert await subscriptions.find_user("telegram", "2") is None
 
@@ -103,7 +103,7 @@ async def test_find_user_is_read_only_and_does_not_register(subscriptions: Subsc
 async def test_subscription_keeps_all_queues_with_the_tracked_ones_first(
     subscriptions: Subscriptions,
 ) -> None:
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     building = Building(1, "96", "4.1")
 
     added = await subscriptions.add(
@@ -116,7 +116,7 @@ async def test_subscription_keeps_all_queues_with_the_tracked_ones_first(
 
 
 async def test_tracked_queues_must_be_a_non_empty_subset(subscriptions: Subscriptions) -> None:
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     building = Building(1, "96", "4.1")
 
     for tracked in ([], ["9.9"]):
@@ -135,7 +135,7 @@ def settings_of(subscription: Subscription) -> tuple[bool, int, int]:
 
 
 async def test_update_settings_changes_only_the_given_fields(subscriptions: Subscriptions) -> None:
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     home = await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
     )
@@ -153,8 +153,8 @@ async def test_update_settings_changes_only_the_given_fields(subscriptions: Subs
 async def test_update_settings_cannot_touch_another_users_subscription(
     subscriptions: Subscriptions,
 ) -> None:
-    alice = await subscriptions.register("telegram", "1", "telegram", "1")
-    bob = await subscriptions.register("telegram", "2", "telegram", "2")
+    alice = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
+    bob = await subscriptions.register("telegram", "2", "telegram", "2", now=NOW)
     home = await subscriptions.add(
         alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
     )
@@ -164,7 +164,7 @@ async def test_update_settings_cannot_touch_another_users_subscription(
 
 
 async def test_update_settings_rejects_unsupported_minutes(subscriptions: Subscriptions) -> None:
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     home = await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
     )
@@ -179,7 +179,7 @@ async def test_update_settings_rejects_unsupported_minutes(subscriptions: Subscr
 
 
 async def test_set_tracked_stops_and_resumes_one_queue(subscriptions: Subscriptions) -> None:
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     building = Building(1, "96", "4.1")
     home = await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["2.2", "4.1"], NOW
@@ -195,7 +195,7 @@ async def test_set_tracked_stops_and_resumes_one_queue(subscriptions: Subscripti
 
 
 async def test_set_tracked_keeps_at_least_one_queue(subscriptions: Subscriptions) -> None:
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     building = Building(1, "96", "4.1")
     home = await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["4.1"], NOW
@@ -211,8 +211,8 @@ async def test_set_tracked_keeps_at_least_one_queue(subscriptions: Subscriptions
 async def test_set_tracked_cannot_touch_another_users_subscription(
     subscriptions: Subscriptions,
 ) -> None:
-    alice = await subscriptions.register("telegram", "1", "telegram", "1")
-    bob = await subscriptions.register("telegram", "2", "telegram", "2")
+    alice = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
+    bob = await subscriptions.register("telegram", "2", "telegram", "2", now=NOW)
     building = Building(1, "96", "4.1")
     home = await subscriptions.add(
         alice, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["2.2", "4.1"], NOW
@@ -225,7 +225,7 @@ async def test_set_tracked_cannot_touch_another_users_subscription(
 async def test_concurrent_untracks_still_leave_one_queue(
     subscriptions: Subscriptions, repository: SqlRepository
 ) -> None:
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     building = Building(1, "96", "4.1")
     home = await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["2.2", "4.1"], NOW
@@ -243,8 +243,8 @@ async def test_concurrent_untracks_still_leave_one_queue(
 async def test_rename_changes_the_label_of_the_users_own_address(
     subscriptions: Subscriptions,
 ) -> None:
-    alice = await subscriptions.register("telegram", "1", "telegram", "1")
-    bob = await subscriptions.register("telegram", "2", "telegram", "2")
+    alice = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
+    bob = await subscriptions.register("telegram", "2", "telegram", "2", now=NOW)
     home = await subscriptions.add(
         alice, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
     )
@@ -259,7 +259,7 @@ async def test_rename_changes_the_label_of_the_users_own_address(
 
 
 async def test_rename_rejects_a_blank_label(subscriptions: Subscriptions) -> None:
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     home = await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
     )

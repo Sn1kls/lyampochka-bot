@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from poweron.adapters.telegram import texts
@@ -9,8 +11,9 @@ class FakeBot:
     def __init__(self) -> None:
         self.sent: list[tuple[int, str]] = []
 
-    async def send_message(self, chat_id: int, text: str) -> None:
+    async def send_message(self, chat_id: int, text: str) -> SimpleNamespace:
         self.sent.append((chat_id, text))
+        return SimpleNamespace(message_id=500)
 
 
 @pytest.mark.parametrize(
@@ -40,3 +43,9 @@ async def test_alert_details_are_truncated() -> None:
     await TelegramAdminAlerter(bot, 42).alert(AlertKind.API_DOWN, "x" * 2000)  # type: ignore[arg-type]
 
     assert bot.sent[0][1].count("x") == MAX_DETAILS
+
+
+async def test_an_alert_returns_the_ref_of_its_message() -> None:
+    ref = await TelegramAdminAlerter(FakeBot(), 42).alert(AlertKind.NEW_USER, "Оля")  # type: ignore[arg-type]
+
+    assert ref == "telegram:42:500"

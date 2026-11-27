@@ -166,6 +166,7 @@ async def start(
         "telegram",
         str(message.chat.id),
         display_name(event_from_user),
+        now=_now(),
     )
     await message.answer(texts.GREETING, reply_markup=keyboards.menu_keyboard())
     if not await subscriptions.of_user(user_id):
@@ -309,6 +310,7 @@ async def feedback_by_reply(
         message,
         message_ids,
         thread.source_message_id,
+        True,
         state,
         bot,
         event_from_user,
@@ -320,7 +322,7 @@ async def feedback_by_reply(
 
 
 @router.message(Command("feedback"))
-@router.message(F.text == texts.MENU_FEEDBACK)
+@router.message(F.text.in_(keyboards.FEEDBACK_LABELS))
 async def ask_feedback(
     message: Message,
     state: FSMContext,
@@ -355,39 +357,11 @@ async def cancel_feedback(callback: CallbackQuery, state: FSMContext) -> None:
     await _respond(callback, texts.FEEDBACK_CANCELLED)
 
 
-@router.message(FeedbackFlow.waiting, _not_a_command)
-async def forward_feedback(
-    message: Message,
-    state: FSMContext,
-    bot: Bot,
-    event_from_user: User,
-    user_id: int,
-    subscriptions: Subscriptions,
-    feedback: Feedback,
-    admin_chat_id: int | None,
-) -> None:
-    message_ids = await _whole_album(message)
-    if message_ids is None:
-        return
-    assert admin_chat_id is not None  # ask_feedback lets no one in without it
-    await _send_feedback(
-        message,
-        message_ids,
-        None,
-        state,
-        bot,
-        event_from_user,
-        user_id,
-        subscriptions,
-        feedback,
-        admin_chat_id,
-    )
-
-
 async def _send_feedback(
     message: Message,
     message_ids: list[int],
     answering: int | None,
+    asked: bool,
     state: FSMContext,
     bot: Bot,
     event_from_user: User,
@@ -396,8 +370,10 @@ async def _send_feedback(
     feedback: Feedback,
     admin_chat_id: int,
 ) -> None:
+    """`asked`: the user chose to write; a message out of the blue has a limit of its own."""
     await _reset(state)
-    sender, admitted_at = _feedback_sender(event_from_user), _now()
+    sender = _feedback_sender(event_from_user) + ("" if asked else ":unasked")
+    admitted_at = _now()
     if await _over_limit(message, feedback.admit(sender, admitted_at)):
         return
     try:
@@ -410,10 +386,11 @@ async def _send_feedback(
     except BaseException:  # nothing reached the admin either
         feedback.refund(sender, admitted_at)
         raise
-    if not copied:  # Telegram skips what it cannot copy: invoices, quizzes with a hidden answer…
+    if not copied:  # Telegram skips what it cannot copy: invoices, a pin, a timer change…
         feedback.refund(sender, admitted_at)
-        await state.set_state(FeedbackFlow.waiting)  # the answer asks for another message
-        await message.answer(texts.FEEDBACK_NOT_COPYABLE)
+        if asked:  # a service message out of the blue is no attempt to write
+            await state.set_state(FeedbackFlow.waiting)  # the answer asks for another message
+            await message.answer(texts.FEEDBACK_NOT_COPYABLE)
         return
     admin_ids = [copy.message_id for copy in copied]
     header = render_feedback_header(
@@ -1048,3 +1025,43 @@ def _viewed_queues(subscription: Subscription, subqueue: str | None) -> list[str
 @router.message(AddFlow.queues, F.text)
 async def queue_typed(message: Message) -> None:
     await message.answer(texts.PICK_QUEUE_BUTTON)
+
+
+def _outside_admin_chat(message: Message, admin_chat_id: int | None) -> bool:
+    """Feedback needs an admin chat, and the admin writing to their own bot is not feedback."""
+    return admin_chat_id is not None and message.chat.id != admin_chat_id
+
+
+# Last in the file: outside any flow it takes only what no handler above did, since someone
+# writing out of the blue is likely stuck.
+@router.message(FeedbackFlow.waiting, _not_a_command)
+@router.message(StateFilter(None), _not_a_command, _outside_admin_chat)
+async def forward_feedback(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    event_from_user: User,
+    user_id: int,
+    subscriptions: Subscriptions,
+    feedback: Feedback,
+    admin_chat_id: int | None,
+) -> None:
+    asked = await state.get_state() == FeedbackFlow.waiting.state
+    message_ids = await _whole_album(message)
+    if message_ids is None:
+        return
+    # ask_feedback and _outside_admin_chat let no one in without it
+    assert admin_chat_id is not None
+    await _send_feedback(
+        message,
+        message_ids,
+        None,
+        asked,
+        state,
+        bot,
+        event_from_user,
+        user_id,
+        subscriptions,
+        feedback,
+        admin_chat_id,
+    )

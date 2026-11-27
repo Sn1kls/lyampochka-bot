@@ -19,17 +19,16 @@ class Alerts:
         last_sent = self._last_sent.get(kind)
         if last_sent is not None and now - last_sent < self._interval:
             return
-        if await self.send(kind, details):
+        if await self.send(kind, details) is not None:
             self._last_sent[kind] = now
 
-    async def send(self, kind: AlertKind, details: str) -> bool:
-        """Send without rate limiting; a failed send is logged, never raised."""
+    async def send(self, kind: AlertKind, details: str) -> str | None:
+        """Send without rate limiting: the sent message's ref, or None when a failure was logged."""
         try:
-            await self._alerter.alert(kind, details)
+            return await self._alerter.alert(kind, details)
         except Exception as error:
             logger.warning("admin alert %s was not delivered: %r", kind, error)
-            return False
-        return True
+            return None
 
 
 async def report_source_error(

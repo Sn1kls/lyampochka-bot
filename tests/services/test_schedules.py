@@ -43,7 +43,7 @@ async def save(repository: SqlRepository, schedule: DaySchedule) -> None:
 @pytest.fixture
 async def subscription(repository: SqlRepository) -> Subscription:
     subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     return await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, Building(1, "1", "4.1"), ["4.1"], ["4.1"], NOW
     )
@@ -210,7 +210,7 @@ async def test_power_on_follows_switching_that_came_after_an_outage(
 @pytest.fixture
 async def two_queues(repository: SqlRepository) -> Subscription:
     subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", "2", "telegram", "2")
+    user_id = await subscriptions.register("telegram", "2", "telegram", "2", now=NOW)
     building = Building(2, "96", "4.1")
     queues = ["2.2", "4.1"]
     return await subscriptions.add(user_id, "Дім", TERNOPIL, SADOVA, building, queues, ["4.1"], NOW)
@@ -243,7 +243,7 @@ async def test_events_list_every_change_of_both_days_ordered_by_earliest(
     repository: SqlRepository, schedules: Schedules
 ) -> None:
     subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", "3", "telegram", "3")
+    user_id = await subscriptions.register("telegram", "3", "telegram", "3", now=NOW)
     building = Building(3, "3", "4.1")
     both = await subscriptions.add(
         user_id, "Дім", TERNOPIL, SADOVA, building, ["2.2", "4.1"], ["2.2", "4.1"], NOW

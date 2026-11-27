@@ -60,7 +60,7 @@ async def test_each_subqueue_goes_to_its_providers_source() -> None:
 
 async def subscribe_in_volyn(repository: SqlRepository) -> None:
     subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", "1", "telegram", "1")
+    user_id = await subscriptions.register("telegram", "1", "telegram", "1", now=NOW)
     building = Building(9, "19", "voe:6.1")
     await subscriptions.add(
         user_id, "Дім", KIVERTSI, NEZALEZHNOSTI, building, ["voe:6.1"], ["voe:6.1"], NOW
@@ -141,7 +141,7 @@ async def test_a_house_of_two_operators_belongs_to_the_tracked_one(
     repository: SqlRepository,
 ) -> None:
     subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", "77", "telegram", "77")
+    user_id = await subscriptions.register("telegram", "77", "telegram", "77", now=NOW)
     queues = ["cek:1.2", "dnem:17.1"]
 
     home = await subscriptions.add(
