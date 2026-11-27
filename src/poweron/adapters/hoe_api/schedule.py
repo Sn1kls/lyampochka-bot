@@ -23,7 +23,7 @@ _NEWS_ENTRY = re.compile(r'href="(/post/[^"]+)"[^>]*>\s*([^<]+?)\s*<')
 _NEWS_DAY = re.compile(r"(?:ГПВ|[Пп]огодинні відключення) на (\d\d?) ([а-яіїє]+)")
 _TIME = r"\d\d:[03]0"
 _SUBQUEUE_LINE = re.compile(
-    rf"Підчерга ([1-6]\.[12]) [–-] (?:(?P<intervals>{_TIME}-{_TIME}(?:; {_TIME}-{_TIME})*)\.?"
+    rf"Підчерга ([1-6]\.[12])\.? [–-] (?:(?P<intervals>{_TIME}-{_TIME}(?:; {_TIME}-{_TIME})*)\.?"
     r"|вимкнень немає\.|без відключень\.)"
 )
 _INTERVAL = re.compile(r"(\d\d):(\d\d)-(\d\d):(\d\d)")

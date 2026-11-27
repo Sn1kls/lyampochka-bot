@@ -103,5 +103,6 @@ The day's post, newest block on top, blocks separated by `<hr />`. Surveyed 20 p
 - Checked live through the real client on 27.11: Kamianets-Podilskyi, вул. Шевченка 21 → `hoe:4.1`, `hoe:5.1`; 45 → `hoe:3.1`; 1 → none; today's 4.1 and 6.1 match the post (6.1 with its added hour).
 - Known limits:
   - The rule is read from the posts, not stated by the oblenergo; a new kind of block fails loudly, but a «Додаткові» block meant as a replacement would be read wrong.
+  - Subqueue lines vary by hand: en dash or hyphen, a dot after the number («Підчерга 5.1. - …», 28.11 23:50). Anything else is an `ApiSchemaError`.
   - A day's post missing from both the archive and the news list (a reworded title and a slow archive) looks like no post: no alert, the last version stays.
   - At most 10 settlements and 30 streets per search: a short query may not show the wanted one; typing more narrows it.

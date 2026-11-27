@@ -414,3 +414,17 @@ async def test_a_missing_archive_page_leaves_the_news(clock: FakeClock) -> None:
     await hoe_client.aclose()
 
     assert [schedule.day for schedule in schedules] == [date(2026, 11, 27), date(2026, 11, 28)]
+
+
+def test_a_dot_after_the_subqueue_number_is_read() -> None:
+    """28.11 23:50 in production: «Підчерга 5.1. - 00:00-01:00» in an addition."""
+    subqueues = parse_post(fixture_text("hoe_post_dotted.html"))
+
+    assert blocks(subqueues["5.1"]) == [
+        ("00:00", "01:00"),
+        ("06:00", "09:00"),
+        ("12:00", "16:00"),
+        ("19:00", "22:00"),
+    ]
+    assert blocks(subqueues["1.1"])[0] == ("00:00", "01:00")
+    assert blocks(subqueues["1.2"])[-1] == ("21:00", "24:00")
