@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, Teleg
 from aiogram.methods import SendMessage
 from aiogram.types import ReplyKeyboardMarkup, ReplyParameters
 
-from poweron.adapters.telegram import texts
+from poweron.adapters.telegram import keyboards, texts
 from poweron.adapters.telegram.notifier import TelegramNotifier
 from poweron.core.ports import DeliveryTargetGone
 
@@ -148,6 +148,8 @@ async def test_a_user_without_an_address_is_nudged_with_a_buzz() -> None:
 
     assert bot.sent == [(42, texts.NO_ADDRESS_NUDGE)]
     assert bot.silent == [None]
+    # The add button rides on the message: the reply keyboard has none.
+    assert bot.markups == [keyboards.actions_keyboard("add")]
 
 
 async def test_every_push_refreshes_the_menu_without_a_separate_announcement() -> None:

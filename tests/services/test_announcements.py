@@ -1,10 +1,17 @@
 from datetime import UTC, datetime, timedelta
 
 from poweron.adapters.db.repository import SqlRepository
+from poweron.core.domain.models import KYIV
 from poweron.core.services.announcements import Announcements
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.subscriptions import Subscriptions
 from tests.services.conftest import NOW, FakeNotifier, subscribe
+
+
+def tomorrow_at(hour: int, minute: int = 0) -> datetime:
+    """Kyiv time of day, a day after users joined (they join on the real clock)."""
+    day = datetime.now(KYIV) + timedelta(days=1)
+    return day.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
 async def register(repository: SqlRepository, *chat_ids: str) -> list[int]:
@@ -49,7 +56,7 @@ async def test_users_without_an_address_are_nudged_once(repository: SqlRepositor
     await subscribe(repository, "102")
     announcements = Announcements(repository)
     notifier = FakeNotifier()
-    later = datetime.now(UTC) + timedelta(days=2)
+    later = tomorrow_at(12)
 
     assert await announcements.nudge_without_address(later) == 1
     assert await announcements.nudge_without_address(later) == 0
@@ -58,7 +65,19 @@ async def test_users_without_an_address_are_nudged_once(repository: SqlRepositor
     assert notifier.sent == [("101", "no_address", {})]
 
 
-async def test_a_user_who_just_joined_is_not_nudged_yet(repository: SqlRepository) -> None:
+async def test_a_user_is_nudged_an_hour_after_joining(repository: SqlRepository) -> None:
     await register(repository, "101")
+    announcements = Announcements(repository)
+    joined = datetime.now(UTC)
 
-    assert await Announcements(repository).nudge_without_address(datetime.now(UTC)) == 0
+    assert await announcements.nudge_without_address(joined + timedelta(minutes=50)) == 0
+    assert await announcements.nudge_without_address(tomorrow_at(12)) == 1
+
+
+async def test_no_nudge_at_night_it_waits_for_the_morning(repository: SqlRepository) -> None:
+    await register(repository, "101")
+    announcements = Announcements(repository)
+
+    assert await announcements.nudge_without_address(tomorrow_at(22)) == 0
+    assert await announcements.nudge_without_address(tomorrow_at(7, 59)) == 0
+    assert await announcements.nudge_without_address(tomorrow_at(8)) == 1

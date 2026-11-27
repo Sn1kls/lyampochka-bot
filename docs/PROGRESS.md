@@ -428,4 +428,8 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - The menu button is «✉️ Написати розробнику» (asks for questions too); the old «✉️ Відгук» still works on old keyboards. No `announce-menu`: every push brings the new keyboard.
   - Where `/add` gets stuck (nothing found, no buildings, no schedules) and in the no-address reminder, a line points to that button.
   - «Пуші» became «сповіщення» in user texts: not everyone knows the word.
+- Then (owner's decisions): the no-address reminder is automatic.
+  - The worker queues it every 10 minutes for whoever joined over an hour ago and has no address, once ever per user (`no-address:{user_id}`, as before), never 22:00–08:00 Kyiv. `make nudge-no-address` and its script are gone.
+  - The reminder carries an inline «➕ Додати адресу» button: the six-button menu has no add button, so the old text pointed at nothing.
+  - Anything typed outside a wizard reaches the developer as feedback (same rate limit; not in the admin chat). A Reply to a bot message that is not an answer becomes new feedback, not a continuation.
 - Postponed: an admin alert on every empty search (it would show what people type).

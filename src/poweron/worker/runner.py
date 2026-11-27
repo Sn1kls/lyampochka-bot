@@ -6,6 +6,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 
 from poweron.core.ports import Heartbeat
+from poweron.core.services.announcements import Announcements
 from poweron.core.services.backups import Backups
 from poweron.core.services.catalog_age import VoeCatalogAge
 from poweron.core.services.groups import SubqueueChecker
@@ -22,6 +23,7 @@ REMINDER_INTERVAL = 60.0
 CHECK_SUBQUEUES_INTERVAL = 3600.0
 PLANNED_WORKS_INTERVAL = 3600.0
 BACKUP_INTERVAL = 600.0
+NUDGE_INTERVAL = 600.0
 VOE_CATALOG_AGE_INTERVAL = 86400.0
 POLL_JITTER = 20.0
 MIN_DELAY = 1.0
@@ -38,6 +40,7 @@ async def run_worker(
     heartbeat: Heartbeat | None = None,
     backups: Backups | None = None,
     voe_catalog_age: VoeCatalogAge | None = None,
+    announcements: Announcements | None = None,
 ) -> None:
     """Runs the jobs until `stop` is set.
 
@@ -58,6 +61,14 @@ async def run_worker(
                     lambda: voe_catalog_age.check(datetime.now(UTC)),
                     stop,
                     VOE_CATALOG_AGE_INTERVAL,
+                )
+            )
+        if announcements is not None:
+            group.create_task(
+                repeat(
+                    lambda: announcements.nudge_without_address(datetime.now(UTC)),
+                    stop,
+                    NUDGE_INTERVAL,
                 )
             )
         if backups is not None:
@@ -101,7 +112,7 @@ async def poll_then_beat(
 
 
 async def repeat(
-    job: Callable[[], Awaitable[None]],
+    job: Callable[[], Awaitable[object]],
     stop: asyncio.Event,
     interval: float,
     jitter: float = 0.0,

@@ -1049,3 +1049,35 @@ def _viewed_queues(subscription: Subscription, subqueue: str | None) -> list[str
 @router.message(AddFlow.queues, F.text)
 async def queue_typed(message: Message) -> None:
     await message.answer(texts.PICK_QUEUE_BUTTON)
+
+
+# Last of all: only a message no other handler took gets here.
+@router.message(StateFilter(None), _not_a_command)
+async def feedback_without_asking(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    event_from_user: User,
+    user_id: int,
+    subscriptions: Subscriptions,
+    feedback: Feedback,
+    admin_chat_id: int | None,
+) -> None:
+    """Someone writing outside a wizard is likely stuck, so it reaches the developer as feedback."""
+    if admin_chat_id is None or message.chat.id == admin_chat_id:
+        return
+    message_ids = await _whole_album(message)
+    if message_ids is None:
+        return
+    await _send_feedback(
+        message,
+        message_ids,
+        None,
+        state,
+        bot,
+        event_from_user,
+        user_id,
+        subscriptions,
+        feedback,
+        admin_chat_id,
+    )

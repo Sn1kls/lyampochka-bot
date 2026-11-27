@@ -344,14 +344,20 @@ async def test_the_reply_to_an_answer_keeps_the_limit(repository: SqlRepository)
     assert len(copies(chat)) == 1
 
 
-async def test_a_reply_to_another_bot_message_is_not_a_feedback(
+async def test_a_reply_to_another_bot_message_is_new_feedback_not_a_continuation(
     user_chat: Chat, repository: SqlRepository
 ) -> None:
     await got_answer(user_chat, repository)
 
     await reply_to_bot(user_chat, replied_id=77)  # looks like an answer, but is not one
 
-    assert copies(user_chat) == []
+    assert len(copies(user_chat)) == 1
+    [header] = [
+        call
+        for call in user_chat.session.calls
+        if isinstance(call, SendMessage) and call.text.startswith("✉️")
+    ]
+    assert header.reply_parameters is None  # not tied to the admin's answer
 
 
 async def test_a_command_sent_as_a_reply_to_an_answer_runs(
@@ -477,3 +483,23 @@ async def test_the_admin_writes_first_by_answering_a_new_user_alert(
             {"text": "Привіт! Не вийшло знайти вулицю?", "reply_to": None, "answer": 61},
         )
     ]
+
+
+async def test_any_message_outside_a_wizard_goes_to_the_developer(
+    repository: SqlRepository,
+) -> None:
+    chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository))
+    await chat.say("/start")
+
+    await chat.send(message_id=40, text="Не знаходжу свою вулицю")
+
+    assert [copied for copied, _ in copies(chat)] == [[40]]
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_SENT
+
+
+async def test_the_admin_writing_to_their_own_bot_is_not_feedback(chat: Chat) -> None:
+    await chat.say("/start")
+
+    await chat.send(message_id=40, text="просто перевіряю")
+
+    assert copies(chat) == []
