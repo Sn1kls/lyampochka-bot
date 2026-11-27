@@ -397,3 +397,14 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - `make nudge-no-address` queues «👋 Адреси ще немає…» once ever per user (`no-address:{user_id}`) for everyone reachable on Telegram with no subscription now who joined over a day ago (someone who removed their only address counts too: removal leaves no trace; none of the first five ever had one); it buzzes, unlike the menu news.
 - The text avoids the past tense so it does not guess the user's gender.
 - Manual for now; an automatic reminder a day after joining waits until the manual one proves too little.
+
+## 2026-11-27: Dnipropetrovsk research
+
+- Several users asked for Dnipropetrovsk oblast. Researched it for a fourth region; details in `docs/dnipro-notes.md`.
+- Found:
+  - two operators, DTEK DnEM (18 groups `1.1` … `18.1`) and CEK (12 groups `1.1` … `6.2`), both in one public YASNO JSON API (`app.yasno.ua`): schedules as minute intervals per group for today and tomorrow, and the address → group lookup;
+  - the catalogue is search-only (at least 3 letters, at most 20 results), and the operators overlap in Dnipro, Kryvyi Rih and a few other towns, so the bot must search both;
+  - dtek-dnem.com.ua challenges even the Mac with Incapsula; CEK's own schedule form was stale on 27.11.
+- Added `scripts/probe_dnipro.py` and fixtures `tests/fixtures/yasno_*.json` (public streets only).
+- Open, and blocking: whether the production server gets JSON from `app.yasno.ua`, which is behind Incapsula too.
+- Next step: the server check, then grill the design points in the notes, then a plan for `feature/dnipro-oblast`. The owner asked for the region buttons in alphabetical order in the same feature.
