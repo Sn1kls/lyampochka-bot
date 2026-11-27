@@ -443,3 +443,14 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Server access: the production VM gets 200 from the lookup and the schedule page. No Cloudflare.
 - Added `scripts/probe_khmelnytskyi.py` and fixtures `tests/fixtures/hoe_*` (public pages, one public street).
 - Decisions (owner): build with that rule, an unknown block is a schema error; no post for today means unknown; the house typed or picked from buttons.
+
+## 2026-11-27: Khmelnytskyi region
+
+- Done (a user in Kamianets-Podilskyi asked): «Хмельницька» as a fifth region, the whole oblast, from Khmelnytskoblenergo's own site; details in `docs/khmelnytskyi-notes.md` ("How it is built").
+  - `adapters/hoe_api`: the daily prose posts parsed into the 12 subqueues (newest full list plus the additions above it), the archive page as the index of days, the site's «Перевірити чергу» lookup.
+  - A third catalogue shape in core, `StreetSearchCatalogSource`: settlements and streets searched (the site caps them at 10 and 30), houses listed as buttons with a typed number taken too (owner's request: either way).
+  - `PacedHttp.post` sends a form POST (the queue lookup).
+  - One provider `hoe` (`hoe:4.1`); no migration. Schedules only.
+- Decisions (owner): build with the rule now, an unknown block alerts the admin; no post for today means unknown; the house typed or picked.
+- Checked live: Kamianets-Podilskyi, вул. Шевченка 21 → 4.1 and 5.1; today's schedule matches the post.
+- Known limits: the posts carry no publication time (first seen by the worker, reset by a restart); 31.12 misses tomorrow; see the notes.

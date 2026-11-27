@@ -4,7 +4,7 @@ The current shape of the code, for an agent starting a session. Rules live in `C
 
 ## What it does
 
-Users add an address. Each address maps to one or more **subqueues** (`4.1`). The worker polls each subqueue's schedule, stores a new **version** when it changes, and queues pushes and reminders in the **outbox**. The Telegram notifier sends them. Regions: Ternopil (`toe`), Volyn (`voe`), Lviv (`loe`), Dnipropetrovsk (two operators, `dnem` and `cek`, behind one region `dnipro`).
+Users add an address. Each address maps to one or more **subqueues** (`4.1`). The worker polls each subqueue's schedule, stores a new **version** when it changes, and queues pushes and reminders in the **outbox**. The Telegram notifier sends them. Regions: Ternopil (`toe`), Volyn (`voe`), Lviv (`loe`), Dnipropetrovsk (two operators, `dnem` and `cek`, behind one region `dnipro`), Khmelnytskyi (`hoe`).
 
 ## Flow
 
@@ -31,7 +31,8 @@ oblenergo ──fetch──▶ Polling ──version + outbox rows (one transact
 | `adapters/voe_api/` | Volyn: archive PNGs decoded from pixels (`image.py`) |
 | `adapters/loe_api/` | Lviv: schedule text per group (`schedule.py`) and the catalogue, both live from the oblenergo's APIs |
 | `adapters/yasno_api/` | Dnipropetrovsk: both operators' schedules and the search-only catalogue from YASNO's JSON API (`client.py`) |
-| `adapters/paced_http.py` | shared by `voe_api`, `loe_api` and `yasno_api`: GETs at most once a second, with retries |
+| `adapters/hoe_api/` | Khmelnytskyi: schedules read from the oblenergo's daily prose posts (`schedule.py`), the site's «Перевірити чергу» lookup (`client.py`) |
+| `adapters/paced_http.py` | shared by `voe_api`, `loe_api`, `yasno_api` and `hoe_api`: requests at most once a second (a form POST too), with retries |
 | `adapters/db/` | `tables.py`, `repository.py` (`SqlRepository`), `voe_catalog.py` (Volyn `CatalogSource` over the imported table), `voe_outages.py` (Volyn outages snapshot from the Mac), Alembic `migrations/` |
 | `adapters/telegram/` | `handlers.py` (commands, FSM for the `/add` wizard, rename and feedback), `render.py` (payload → HTML), `keyboards.py`, `texts.py` (all Ukrainian), `notifier.py` |
 | `import_voe.py` | CLI that loads the weekly Volyn address → queue export |
@@ -54,12 +55,12 @@ Import-linter (`pyproject.toml`) enforces it: `core` sees only stdlib and pydant
 
 ## Adding a region
 
-Worked examples: Volyn (`docs/volyn-notes.md`; imported catalogue, image schedules), Lviv (`docs/lviv-notes.md`; everything live, the closest to a plain new region) and Dnipropetrovsk (`docs/dnipro-notes.md`; two operators in one region, a search-only catalogue).
+Worked examples: Volyn (`docs/volyn-notes.md`; imported catalogue, image schedules), Lviv (`docs/lviv-notes.md`; everything live, the closest to a plain new region), Dnipropetrovsk (`docs/dnipro-notes.md`; two operators in one region, a search-only catalogue) and Khmelnytskyi (`docs/khmelnytskyi-notes.md`; schedules parsed from prose, settlements and streets searched, houses listed).
 
 1. **Research first**: `docs/<region>-notes.md` and a stdlib probe `scripts/probe_<region>.py` (1 request/s, public street names only), with fixtures under `tests/fixtures/`. Find the schedule source, the address → queue source, and whether **the production server** gets an answer (`curl` over ssh). energy.volyn.ua challenges the server with Cloudflare; we never get around such a challenge.
 2. `core/domain/providers.py`: a region constant.
 3. Adapter `adapters/<region>_api/` implementing `ScheduleSource`. Add it to the independence contract in `pyproject.toml`.
-4. A `CatalogSource`: either the region's API (like toe) or an imported table (like Volyn: table + migration, `adapters/db/<region>_catalog.py`, an import CLI, a staleness alert like `VoeCatalogAge`, its own `cache_prefix`). A source that can only search (like YASNO) is a `SearchCatalogSource`: `/add` then asks for the house number as text.
+4. A `CatalogSource`: either the region's API (like toe) or an imported table (like Volyn: table + migration, `adapters/db/<region>_catalog.py`, an import CLI, a staleness alert like `VoeCatalogAge`, its own `cache_prefix`). A source that can only search (like YASNO) is a `SearchCatalogSource`: `/add` then asks for the house number as text. One that searches settlements and streets but lists a street's houses (like hoe) is a `StreetSearchCatalogSource`: `/add` shows the houses as buttons, as for a listed catalogue.
 5. `__main__.py`: add the region to `Catalog` (bot, keyed by region), `SchedulesByProvider` and `SubqueueChecker` (worker, keyed by provider).
 6. Telegram: `REGIONS`, `_site` and `outages_url` (the page of current outages behind the «⚡ Немає світла? Аварійні» button) in `render.py`, plus `REGION_*`, `SITE_*` and `OUTAGES_*` (when that page is not the site itself) in `texts.py`. The region button and the rest of `/add` then work.
 7. Per-region features to decide: `Subscription.has_switching` (Ternopil only, it gates `remind_exact`), planned works (Ternopil only, `PlannedWorks`), the current-outage line in «Що далі» and today's «Графік» (`CurrentOutages`: Ternopil from the API, Volyn from the Mac's snapshot, Dnipropetrovsk only «графік не діє» during the operator's emergency shutdowns), and `/status`.

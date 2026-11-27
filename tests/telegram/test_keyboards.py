@@ -20,10 +20,10 @@ from poweron.adapters.telegram.keyboards import (
     settings_keyboard,
 )
 from poweron.adapters.telegram.render import outages_url
-from poweron.core.domain.providers import CEK, DNEM, LOE, TOE, VOE
+from poweron.core.domain.providers import CEK, DNEM, HOE, LOE, TOE, VOE
 from tests.telegram.test_render import SUBSCRIPTION
 
-PROVIDERS = (TOE, VOE, LOE, DNEM, CEK)
+PROVIDERS = (TOE, VOE, LOE, HOE, DNEM, CEK)
 LABELS = [f"Item {number}" for number in range(20)]
 
 
@@ -193,4 +193,5 @@ def test_regions_are_offered_in_alphabetical_order() -> None:
         ["Дніпропетровська"],
         ["Львівська"],
         ["Тернопільська"],
+        ["Хмельницька"],
     ]

@@ -15,7 +15,7 @@ NOT_JSON = "not JSON"
 
 
 class PacedHttp:
-    """GETs at most one per second, retried on network errors, 429/5xx and non-JSON stubs."""
+    """Requests at most one per second, retried on network errors, 429/5xx and non-JSON stubs."""
 
     def __init__(
         self,
@@ -35,13 +35,37 @@ class PacedHttp:
     async def get(
         self, path: str, params: dict[str, Any], headers: dict[str, str], *, json: bool = False
     ) -> httpx.Response:
+        return await self._send("GET", path, params, headers, json=json)
+
+    async def post(
+        self, path: str, form: dict[str, str], headers: dict[str, str]
+    ) -> httpx.Response:
+        """A form POST that only reads (hoe's queue lookup), so it is retried like a GET."""
+        return await self._send("POST", path, {}, headers, form=form)
+
+    async def _send(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, Any],
+        headers: dict[str, str],
+        *,
+        json: bool = False,
+        form: dict[str, str] | None = None,
+    ) -> httpx.Response:
         async with self._lock:
             for attempt in range(1, ATTEMPTS + 1):
                 wait = self._last_request_at + MIN_REQUEST_INTERVAL - self._monotonic()
                 if wait > 0:
                     await self._sleep(wait)
                 try:
-                    response = await self._http.get(path, params=params, headers=headers)
+                    response = await self._http.request(
+                        method,
+                        path,
+                        params=params,
+                        headers=headers,
+                        data=form,
+                    )
                 except httpx.RequestError as error:
                     failure = f"{type(error).__name__}: {error}"
                     delay = _backoff(attempt)

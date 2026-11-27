@@ -1,6 +1,6 @@
 # Khmelnytskyi oblast: research notes
 
-Status: **researched** (2026-11-27, branch `chore/khmelnytskyi-research`); not built.
+Status: **built** (2026-11-27, branch `feature/khmelnytskyi-oblast`); researched on `chore/khmelnytskyi-research`.
 
 Why this region: a friend in Kamianets-Podilskyi asked for it. Kamianets-Podilskyi is in Khmelnytskyi oblast and is served by **AT Khmelnytskoblenergo** (its own Kamianets-Podilskyi РЕМ), with the same 12 subqueues and the same schedule as the rest of the oblast. So the region is the whole oblast, one button «Хмельницька»; the city is just a settlement in its catalogue (`id 25601`, «м. Кам'янець-Подільський (Кам’янець-Подільська громада)»).
 
@@ -82,6 +82,24 @@ The day's post, newest block on top, blocks separated by `<hr />`. Surveyed 20 p
 ## Fit with the code
 
 - One provider and region, `hoe`, keys `hoe:4.1`. No migration.
-- `adapters/hoe_api/`: `ScheduleSource` (archive index → posts → parser) and a `SearchCatalogSource` (settlements and streets are search-only), through `PacedHttp`.
+- `adapters/hoe_api/`: `ScheduleSource` (archive index → posts → parser) and a `StreetSearchCatalogSource` (settlements and streets are search-only, houses listed), through `PacedHttp`.
 - No planned works, no current outages, no `remind_exact` at first. The site has «Відключення за адресою» and «Актуальні відключення» pages for later.
 - Region buttons stay alphabetical: «Хмельницька» goes last.
+
+## How it is built
+
+- `adapters/hoe_api/schedule.py`: `parse_archive` (day → its entries' links) and `parse_post` (the rule above: the newest full list, a subqueue left out is ON, plus every «Додаткові» block above it). A subqueue line of any other shape, an interval off the 30-minute grid, a subqueue twice in a block, or a block above the newest list that is neither kind (say «графік скасовано») is an `ApiSchemaError`. «22:00-00:00» ends at midnight.
+- `adapters/hoe_api/client.py`: `HoeClient` is the schedule source and a `StreetSearchCatalogSource`.
+  - Schedules: the archive page of the year, then the posts of today and tomorrow, cached 60 s, so a poll costs 2–3 requests. A day with no entry gives no schedule (the last version stays). A day with several entries or a picture instead of a post is an `ApiSchemaError`. A broken today fails the poll (the admin hears of it); a broken tomorrow is only logged, so it does not hide today.
+  - The posts carry no publication time, so each subqueue's day dates from when the worker first saw its codes (in memory: a restart dates the current days anew).
+  - Catalogue: settlements and streets searched live (the hromada split off into `otg_name`), a street's houses listed (cached 24 h, ids are crc32 of the name), the queues asked once a house is picked (`POST /shutdown-queues`; «-» or an empty value is no queue). The search term loses the type prefix and Latin look-alikes and keeps the longest piece between apostrophes, since the site only knows its own apostrophe.
+- `StreetSearchCatalogSource` in core: `Catalog` searches settlements and streets live and lists houses; `/add` shows them as buttons and takes a typed number too, like Ternopil.
+- `PacedHttp.post` sends a form POST, paced and retried like a GET.
+- Telegram: «Хмельницька» last among the regions; the site link is the «Погодинні відключення» page, the «⚡ Немає світла? Аварійні» button opens `hoe.com.ua/shutdown/all`.
+- No migration (keys `hoe:4.1`), no switching state, no planned works, no current-outage line, no `remind_exact`.
+- Checked live through the real client on 27.11: Kamianets-Podilskyi, вул. Шевченка 21 → `hoe:4.1`, `hoe:5.1`; 45 → `hoe:3.1`; 1 → none; today's 4.1 and 6.1 match the post (6.1 with its added hour).
+- Known limits:
+  - The rule is read from the posts, not stated by the oblenergo; a new kind of block fails loudly, but a «Додаткові» block meant as a replacement would be read wrong.
+  - On 31.12 tomorrow sits on next year's archive page and is missed; if the site names that page differently, polling fails (the admin gets `SCHEDULE_STALE`).
+  - If the archive stops listing new days (say a reworded title), the bot sees «not published yet» and stays quiet: no alert, the last versions stay. Days without ГПВ look the same, so there is nothing to alert on.
+  - At most 10 settlements and 30 streets per search: a short query may not show the wanted one; typing more narrows it.
