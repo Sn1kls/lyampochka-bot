@@ -1,7 +1,10 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from poweron.adapters.db.repository import SqlRepository
 from poweron.core.domain.models import KYIV
+from poweron.core.services import announcements as announcements_module
 from poweron.core.services.announcements import Announcements
 from poweron.core.services.notifications import Notifications
 from poweron.core.services.subscriptions import Subscriptions
@@ -65,7 +68,10 @@ async def test_users_without_an_address_are_nudged_once(repository: SqlRepositor
     assert notifier.sent == [("101", "no_address", {})]
 
 
-async def test_a_user_is_nudged_an_hour_after_joining(repository: SqlRepository) -> None:
+async def test_a_user_is_nudged_an_hour_after_joining(
+    repository: SqlRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(announcements_module, "QUIET_FROM", 24)  # no night, whenever it runs
     await register(repository, "101")
     announcements = Announcements(repository)
     joined = datetime.now(UTC)
@@ -81,3 +87,11 @@ async def test_no_nudge_at_night_it_waits_for_the_morning(repository: SqlReposit
     assert await announcements.nudge_without_address(tomorrow_at(22)) == 0
     assert await announcements.nudge_without_address(tomorrow_at(7, 59)) == 0
     assert await announcements.nudge_without_address(tomorrow_at(8)) == 1
+
+
+async def test_a_user_who_joined_long_ago_is_not_nudged(repository: SqlRepository) -> None:
+    # Most likely someone who removed their address to add another one.
+    await register(repository, "101")
+    week_later = tomorrow_at(12) + timedelta(days=7)
+
+    assert await Announcements(repository).nudge_without_address(week_later) == 0

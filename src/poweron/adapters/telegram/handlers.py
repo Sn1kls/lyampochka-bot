@@ -310,6 +310,7 @@ async def feedback_by_reply(
         message,
         message_ids,
         thread.source_message_id,
+        True,
         state,
         bot,
         event_from_user,
@@ -360,6 +361,7 @@ async def _send_feedback(
     message: Message,
     message_ids: list[int],
     answering: int | None,
+    asked: bool,
     state: FSMContext,
     bot: Bot,
     event_from_user: User,
@@ -368,8 +370,10 @@ async def _send_feedback(
     feedback: Feedback,
     admin_chat_id: int,
 ) -> None:
+    """`asked`: the user chose to write; a message out of the blue has a limit of its own."""
     await _reset(state)
-    sender, admitted_at = _feedback_sender(event_from_user), _now()
+    sender = _feedback_sender(event_from_user) + ("" if asked else ":unasked")
+    admitted_at = _now()
     if await _over_limit(message, feedback.admit(sender, admitted_at)):
         return
     try:
@@ -382,10 +386,11 @@ async def _send_feedback(
     except BaseException:  # nothing reached the admin either
         feedback.refund(sender, admitted_at)
         raise
-    if not copied:  # Telegram skips what it cannot copy: invoices, quizzes with a hidden answer…
+    if not copied:  # Telegram skips what it cannot copy: invoices, a pin, a timer change…
         feedback.refund(sender, admitted_at)
-        await state.set_state(FeedbackFlow.waiting)  # the answer asks for another message
-        await message.answer(texts.FEEDBACK_NOT_COPYABLE)
+        if asked:  # a service message out of the blue is no attempt to write
+            await state.set_state(FeedbackFlow.waiting)  # the answer asks for another message
+            await message.answer(texts.FEEDBACK_NOT_COPYABLE)
         return
     admin_ids = [copy.message_id for copy in copied]
     header = render_feedback_header(
@@ -1041,16 +1046,17 @@ async def forward_feedback(
     feedback: Feedback,
     admin_chat_id: int | None,
 ) -> None:
+    asked = await state.get_state() == FeedbackFlow.waiting.state
     message_ids = await _whole_album(message)
     if message_ids is None:
         return
-    assert (
-        admin_chat_id is not None
-    )  # ask_feedback and _outside_admin_chat let no one in without it
+    # ask_feedback and _outside_admin_chat let no one in without it
+    assert admin_chat_id is not None
     await _send_feedback(
         message,
         message_ids,
         None,
+        asked,
         state,
         bot,
         event_from_user,

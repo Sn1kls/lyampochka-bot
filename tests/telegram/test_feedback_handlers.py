@@ -503,3 +503,30 @@ async def test_the_admin_writing_to_their_own_bot_is_not_feedback(chat: Chat) ->
     await chat.send(message_id=40, text="просто перевіряю")
 
     assert copies(chat) == []
+
+
+async def test_an_uncopyable_message_out_of_the_blue_starts_no_feedback(
+    repository: SqlRepository,
+) -> None:
+    chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository))
+    await chat.say("/start")
+    chat.session.uncopyable = {40}  # a pin or a timer change: service messages are not copied
+
+    await chat.send(message_id=40, text="📌")
+    await chat.send(message_id=41, text="Шевченка")
+
+    assert texts.FEEDBACK_NOT_COPYABLE not in chat.sent_texts()
+    assert [copied for copied, admin_ids in copies(chat) if admin_ids] == [[41]]
+
+
+async def test_messages_out_of_the_blue_leave_the_button_its_own_limit(
+    repository: SqlRepository,
+) -> None:
+    chat = Chat(repository, admin_chat_id=999, feedback=Feedback(repository, limit=1))
+    await chat.say("/start")
+    await chat.send(message_id=40, text="Руська")
+    await chat.send(message_id=41, text="Руська 5")
+
+    await chat.say(texts.MENU_FEEDBACK)
+
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_ASK

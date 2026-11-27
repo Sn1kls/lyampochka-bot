@@ -402,7 +402,9 @@ class SqlRepository:
                 )
             )
 
-    async def user_ids_without_address(self, channel: str, joined_before: datetime) -> list[int]:
+    async def user_ids_without_address(
+        self, channel: str, joined_after: datetime, joined_before: datetime
+    ) -> list[int]:
         async with self._engine.connect() as connection:
             return list(
                 await connection.scalars(
@@ -411,6 +413,7 @@ class SqlRepository:
                     .where(
                         delivery_targets.c.channel == channel,
                         delivery_targets.c.is_active,
+                        users.c.created_at > joined_after,
                         users.c.created_at < joined_before,
                         ~select(subscriptions.c.id)
                         .where(subscriptions.c.user_id == users.c.id)
