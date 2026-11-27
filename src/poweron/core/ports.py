@@ -91,6 +91,20 @@ class SearchCatalogSource(QueueLookup, Protocol):
     ) -> list[Building]: ...
 
 
+@runtime_checkable
+class StreetSearchCatalogSource(QueueLookup, Protocol):
+    """Settlements and streets only answer searches; a street's houses come as a list (hoe).
+
+    Its buildings carry no queue (`cherg_gpv` None): `building_subqueues` tells, once picked.
+    """
+
+    async def search_cities(self, query: str) -> list[City]: ...
+
+    async def search_streets(self, city_id: int, query: str) -> list[Street]: ...
+
+    async def buildings(self, city_id: int, street_id: int) -> list[Building]: ...
+
+
 class PlannedWorkSource(Protocol):
     async def planned_works(
         self, city_id: int, street_id: int, after: datetime

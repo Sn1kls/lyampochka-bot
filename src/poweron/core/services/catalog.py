@@ -5,7 +5,13 @@ from datetime import datetime, timedelta
 
 from poweron.core.domain.models import Building, City, Street
 from poweron.core.domain.text import normalise
-from poweron.core.ports import CatalogSource, Repository, SearchCatalogSource, SourceError
+from poweron.core.ports import (
+    CatalogSource,
+    Repository,
+    SearchCatalogSource,
+    SourceError,
+    StreetSearchCatalogSource,
+)
 
 CACHE_TTL = timedelta(hours=24)
 FAILED_REFRESH_BACKOFF = timedelta(minutes=5)
@@ -15,18 +21,22 @@ class Catalog:
     def __init__(
         self,
         repository: Repository,
-        source: CatalogSource | SearchCatalogSource,
+        source: CatalogSource | SearchCatalogSource | StreetSearchCatalogSource,
         *,
         cache_prefix: str = "",
     ) -> None:
         """`cache_prefix` keeps each oblenergo's cached lists apart (their ids overlap)."""
         self._repository = repository
         self._source = source
-        # Decided once: a source either lists a street's buildings or only searches them.
+        # Decided once: a source lists everything, searches everything, or searches settlements
+        # and streets but lists a street's buildings.
         self._searched: SearchCatalogSource | None = None
+        self._street_searched: StreetSearchCatalogSource | None = None
         self._listed: CatalogSource | None = None
         if isinstance(source, SearchCatalogSource):
             self._searched = source
+        elif isinstance(source, StreetSearchCatalogSource):
+            self._street_searched = source
         else:
             self._listed = source
         self._cache_prefix = cache_prefix
@@ -38,12 +48,15 @@ class Catalog:
         return self._searched is not None
 
     async def find_cities(self, query: str, now: datetime) -> list[City]:
-        cities = await self._cached("cities", City, self._source.cities, now)
-        return _search(cities, query)
+        if self._street_searched is not None:  # searched live, never cached
+            return _search(await self._street_searched.search_cities(query), query)
+        source = self._searched or self._list_source()
+        return _search(await self._cached("cities", City, source.cities, now), query)
 
     async def find_streets(self, city_id: int, query: str, now: datetime) -> list[Street]:
-        if self._searched is not None:
-            return _search(await self._searched.search_streets(city_id, query), query)
+        searched = self._searched or self._street_searched
+        if searched is not None:
+            return _search(await searched.search_streets(city_id, query), query)
         listed = self._list_source()
         streets = await self._cached(
             f"streets:{city_id}", Street, lambda: listed.streets(city_id), now
@@ -52,7 +65,7 @@ class Catalog:
 
     async def buildings(self, city_id: int, street_id: int, now: datetime) -> list[Building]:
         """In house number order: sources list them as their records go (LOE by account)."""
-        listed = self._list_source()
+        listed = self._street_searched or self._list_source()
         buildings = await self._cached(
             f"buildings:{city_id}:{street_id}",
             Building,
@@ -71,8 +84,9 @@ class Catalog:
 
     async def subqueues(self, city_id: int, street_id: int, building: Building) -> list[str]:
         """All subqueues of the building; empty when schedules do not apply to it."""
-        if self._searched is not None:
-            return await self._searched.building_subqueues(city_id, street_id, building.name)
+        asked = self._searched or self._street_searched
+        if asked is not None:
+            return await asked.building_subqueues(city_id, street_id, building.name)
         if building.cherg_gpv is None:
             return []
         found = await self._source.building_subqueues(city_id, street_id, building.name)

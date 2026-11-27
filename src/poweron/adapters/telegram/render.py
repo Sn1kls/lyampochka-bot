@@ -19,6 +19,7 @@ from poweron.core.domain.providers import (
     CEK,
     DNEM,
     DNIPRO,
+    HOE,
     LOE,
     TOE,
     VOE,
@@ -45,6 +46,7 @@ REGIONS = {
     DNIPRO: texts.REGION_DNIPRO,
     LOE: texts.REGION_LVIV,
     TOE: texts.REGION_TERNOPIL,
+    HOE: texts.REGION_KHMELNYTSKYI,
 }
 OPERATORS = {DNEM: texts.OPERATOR_DNEM, CEK: texts.OPERATOR_CEK}
 
@@ -55,6 +57,7 @@ def _site(provider: str) -> tuple[str, str]:
         TOE: texts.SITE_TERNOPIL,
         VOE: texts.SITE_VOLYN,
         LOE: texts.SITE_LVIV,
+        HOE: texts.SITE_KHMELNYTSKYI,
         DNEM: texts.SITE_DNEM,
         CEK: texts.SITE_CEK,
     }[provider]
@@ -66,6 +69,7 @@ def outages_url(provider: str) -> str:
         TOE: texts.OUTAGES_TERNOPIL,
         VOE: texts.OUTAGES_VOLYN,
         LOE: texts.SITE_LVIV[0],
+        HOE: texts.OUTAGES_KHMELNYTSKYI,
         DNEM: texts.SITE_DNEM[0],
         CEK: texts.OUTAGES_CEK,
     }[provider]
