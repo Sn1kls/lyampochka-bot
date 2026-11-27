@@ -433,3 +433,25 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - The reminder carries an inline «➕ Додати адресу» button: the six-button menu has no add button, so the old text pointed at nothing.
   - Anything typed outside a wizard reaches the developer as feedback (a rate limit of its own, so it cannot block the ✉️ button; not in the admin chat; a service message such as a pin is dropped). A Reply to a bot message that is not an answer becomes new feedback, not a continuation.
 - Postponed: an admin alert on every empty search (it would show what people type).
+
+## 2026-11-27: Khmelnytskyi research
+
+- A friend in Kamianets-Podilskyi asked for it. The city is in Khmelnytskyi oblast, served by Khmelnytskoblenergo (its own РЕМ) with the oblast's 12 subqueues, so the region is the whole oblast. Details in `docs/khmelnytskyi-notes.md`.
+- Found:
+  - the address → subqueue lookup behind the site's «Перевірити чергу»: settlements and streets search-only (10 and 30 results), houses as a full list, the subqueue as an HTML line («4.1, 5.1» for two connections, «-» for none); it needs `X-Requested-With`;
+  - the schedule only as prose in a post per day, newest block on top: full lists (a missing subqueue has no outages) and «Додаткові години» added on top. All 20 posts of November fit one rule: the newest full list plus every addition above it.
+- Server access: the production VM gets 200 from the lookup and the schedule page. No Cloudflare.
+- Added `scripts/probe_khmelnytskyi.py` and fixtures `tests/fixtures/hoe_*` (public pages, one public street).
+- Decisions (owner): build with that rule, an unknown block is a schema error; no post for today means unknown; the house typed or picked from buttons.
+
+## 2026-11-27: Khmelnytskyi region
+
+- Done (a user in Kamianets-Podilskyi asked): «Хмельницька» as a fifth region, the whole oblast, from Khmelnytskoblenergo's own site; details in `docs/khmelnytskyi-notes.md` ("How it is built").
+  - `adapters/hoe_api`: the daily prose posts parsed into the 12 subqueues (newest full list plus the additions above it), the archive page as the index of days, the site's «Перевірити чергу» lookup.
+  - A third catalogue shape in core, `StreetSearchCatalogSource`: settlements and streets searched (the site caps them at 10 and 30), houses listed as buttons with a typed number taken too (owner's request: either way).
+  - `PacedHttp.post` sends a form POST (the queue lookup).
+  - One provider `hoe` (`hoe:4.1`); no migration. Schedules only.
+- Decisions (owner): build with the rule now, an unknown block alerts the admin; no post for today means unknown; the house typed or picked.
+- Checked live: Kamianets-Podilskyi, вул. Шевченка 21 → 4.1 and 5.1; today's schedule matches the post.
+- The archive is checked against the posts and the schedule page, so a renamed entry or a misfiled post alerts instead of going quiet; on 31.12 next year's archive is read too.
+- Known limit: the posts carry no publication time, so «оновлено» is when the worker first saw a subqueue's schedule (reset by a restart).

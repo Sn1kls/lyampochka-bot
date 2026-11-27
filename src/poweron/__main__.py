@@ -11,6 +11,7 @@ from poweron.adapters.db.repository import SqlRepository, create_engine, run_mig
 from poweron.adapters.db.voe_catalog import VoeCatalog
 from poweron.adapters.db.voe_outages import VoeOutages
 from poweron.adapters.healthcheck import HealthcheckPinger
+from poweron.adapters.hoe_api.client import HoeClient
 from poweron.adapters.loe_api.client import LoeClient
 from poweron.adapters.telegram.alerts import TelegramAdminAlerter
 from poweron.adapters.telegram.backup import TelegramBackupSink
@@ -25,6 +26,8 @@ from poweron.core.domain.providers import (
     CEK,
     DNEM,
     DNIPRO,
+    HOE,
+    HOE_CACHE_PREFIX,
     LOE,
     LOE_CACHE_PREFIX,
     TOE,
@@ -80,6 +83,7 @@ async def run(role: str, settings: Settings) -> None:
     voe_client = VoeClient(settings.voe_api_base)
     voe_catalog = VoeCatalog(engine)
     loe_client = LoeClient()
+    hoe_client = HoeClient()
     bot = create_bot(settings.bot_token.get_secret_value())
     alerts = (
         None
@@ -108,6 +112,7 @@ async def run(role: str, settings: Settings) -> None:
                         TOE: Catalog(repository, toe_client),
                         VOE: Catalog(repository, voe_catalog, cache_prefix=VOE_CACHE_PREFIX),
                         LOE: Catalog(repository, loe_client, cache_prefix=LOE_CACHE_PREFIX),
+                        HOE: Catalog(repository, hoe_client, cache_prefix=HOE_CACHE_PREFIX),
                         DNIPRO: Catalog(repository, yasno_client, cache_prefix=YASNO_CACHE_PREFIX),
                     },
                     Schedules(repository),
@@ -138,6 +143,7 @@ async def run(role: str, settings: Settings) -> None:
                                     TOE: toe_client,
                                     VOE: voe_client,
                                     LOE: loe_client,
+                                    HOE: hoe_client,
                                     DNEM: yasno_client,
                                     CEK: yasno_client,
                                 }
@@ -153,6 +159,7 @@ async def run(role: str, settings: Settings) -> None:
                                 TOE: toe_client,
                                 VOE: voe_catalog,
                                 LOE: loe_client,
+                                HOE: hoe_client,
                                 DNEM: yasno_client,
                                 CEK: yasno_client,
                             },
@@ -171,6 +178,7 @@ async def run(role: str, settings: Settings) -> None:
         await toe_client.aclose()
         await voe_client.aclose()
         await loe_client.aclose()
+        await hoe_client.aclose()
         await yasno_client.aclose()
         await bot.session.close()
         await engine.dispose()

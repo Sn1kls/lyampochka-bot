@@ -1,6 +1,6 @@
 [project]
 name = "poweron"
-version = "0.18.0"
+version = "0.19.0"
 description = "Power outage schedules for Ternopiloblenergo"
 requires-python = ">=3.13"
 dependencies = [
@@ -73,6 +73,7 @@ modules = [
     "poweron.adapters.toe_api",
     "poweron.adapters.voe_api",
     "poweron.adapters.loe_api",
+    "poweron.adapters.hoe_api",
     "poweron.adapters.yasno_api",
     "poweron.adapters.telegram",
     "poweron.adapters.healthcheck",

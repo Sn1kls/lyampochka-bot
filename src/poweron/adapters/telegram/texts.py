@@ -6,6 +6,7 @@ SITE_VOLYN = (
     "energy.volyn.ua",
 )
 SITE_LVIV = ("https://poweron.loe.lviv.ua", "poweron.loe.lviv.ua")
+SITE_KHMELNYTSKYI = ("https://hoe.com.ua/page/pogodinni-vidkljuchennja", "hoe.com.ua")
 # Behind a bot check that a person's browser passes; also DTEK's current outages page.
 SITE_DNEM = ("https://www.dtek-dnem.com.ua/ua/shutdowns", "dtek-dnem.com.ua")
 SITE_CEK = ("https://cek.dp.ua/index.php/cpojivaham/vidkliuchennia.html", "cek.dp.ua")
@@ -15,6 +16,7 @@ OUTAGES_VOLYN = (
     "https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/"
     "chomu-nemaie-elektropostachannia/"
 )
+OUTAGES_KHMELNYTSKYI = "https://hoe.com.ua/shutdown/all"
 OUTAGES_CEK = "https://cek.dp.ua/index.php/cpojivaham/vidkliuchennia/2-uncategorised/961-gav.html"
 BUTTON_OUTAGES = "⚡ Немає світла? Аварійні"
 
@@ -66,6 +68,7 @@ REGION_TERNOPIL = "Тернопільська"
 REGION_VOLYN = "Волинська"
 REGION_LVIV = "Львівська"
 REGION_DNIPRO = "Дніпропетровська"
+REGION_KHMELNYTSKYI = "Хмельницька"
 # Next to a Dnipropetrovsk queue: the two operators' groups share names («1.1»).
 OPERATOR_DNEM = "ДТЕК"
 OPERATOR_CEK = "ЦЕК"

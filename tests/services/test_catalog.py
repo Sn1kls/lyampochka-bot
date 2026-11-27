@@ -294,3 +294,72 @@ async def test_a_searched_building_without_queues_is_outside_the_schedules(
     search_catalog: Catalog,
 ) -> None:
     assert await search_catalog.subqueues(1, 2, Building(7, "12", None)) == []
+
+
+@dataclass
+class FakeStreetSearchSource:
+    """Like hoe: settlements and streets by search, a street's houses as a list without queues."""
+
+    city_queries: list[str] = field(default_factory=list)
+    groups: list[str] = field(default_factory=list)
+
+    async def search_cities(self, query: str) -> list[City]:
+        self.city_queries.append(query)
+        return CITIES
+
+    async def search_streets(self, city_id: int, query: str) -> list[Street]:
+        return STREETS
+
+    async def buildings(self, city_id: int, street_id: int) -> list[Building]:
+        return [Building(7, "12", None), Building(8, "10", None)]
+
+    async def building_subqueues(
+        self, city_id: int, street_id: int, building_name: str
+    ) -> list[str]:
+        return self.groups
+
+
+@pytest.fixture
+def street_search_source() -> FakeStreetSearchSource:
+    return FakeStreetSearchSource()
+
+
+@pytest.fixture
+def street_search_catalog(
+    repository: SqlRepository, street_search_source: FakeStreetSearchSource
+) -> Catalog:
+    return Catalog(repository, street_search_source, cache_prefix="hoe:")
+
+
+async def test_settlements_are_searched_live_every_time(
+    street_search_catalog: Catalog, street_search_source: FakeStreetSearchSource
+) -> None:
+    first = await street_search_catalog.find_cities("Терноп", NOW)
+    await street_search_catalog.find_cities("Терноп", NOW)
+
+    assert [city.id for city in first] == [1, 5]
+    assert street_search_source.city_queries == ["Терноп", "Терноп"]
+
+
+async def test_a_street_search_catalogue_lists_the_buildings(
+    street_search_catalog: Catalog,
+) -> None:
+    buildings = await street_search_catalog.buildings(1, 2, NOW)
+
+    assert not street_search_catalog.asks_building_number
+    assert [building.name for building in buildings] == ["10", "12"]
+    assert [street.id for street in await street_search_catalog.find_streets(1, "Сад", NOW)] == [
+        1,
+        5,
+    ]
+
+
+async def test_a_listed_building_without_a_queue_asks_the_source(
+    street_search_catalog: Catalog, street_search_source: FakeStreetSearchSource
+) -> None:
+    street_search_source.groups = ["hoe:4.1", "hoe:5.1"]
+
+    assert await street_search_catalog.subqueues(1, 2, Building(7, "12", None)) == [
+        "hoe:4.1",
+        "hoe:5.1",
+    ]
