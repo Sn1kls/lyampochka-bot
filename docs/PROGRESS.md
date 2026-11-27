@@ -433,3 +433,13 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - The reminder carries an inline «➕ Додати адресу» button: the six-button menu has no add button, so the old text pointed at nothing.
   - Anything typed outside a wizard reaches the developer as feedback (a rate limit of its own, so it cannot block the ✉️ button; not in the admin chat; a service message such as a pin is dropped). A Reply to a bot message that is not an answer becomes new feedback, not a continuation.
 - Postponed: an admin alert on every empty search (it would show what people type).
+
+## 2026-11-27: Khmelnytskyi research
+
+- A friend in Kamianets-Podilskyi asked for it. The city is in Khmelnytskyi oblast, served by Khmelnytskoblenergo (its own РЕМ) with the oblast's 12 subqueues, so the region is the whole oblast. Details in `docs/khmelnytskyi-notes.md`.
+- Found:
+  - the address → subqueue lookup behind the site's «Перевірити чергу»: settlements and streets search-only (10 and 30 results), houses as a full list, the subqueue as an HTML line («4.1, 5.1» for two connections, «-» for none); it needs `X-Requested-With`;
+  - the schedule only as prose in a post per day, newest block on top: full lists (a missing subqueue has no outages) and «Додаткові години» added on top. All 20 posts of November fit one rule: the newest full list plus every addition above it.
+- Server access: the production VM gets 200 from the lookup and the schedule page. No Cloudflare.
+- Added `scripts/probe_khmelnytskyi.py` and fixtures `tests/fixtures/hoe_*` (public pages, one public street).
+- Decisions (owner): build with that rule, an unknown block is a schema error; no post for today means unknown; the house typed or picked from buttons.
