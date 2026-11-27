@@ -408,3 +408,15 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Added `scripts/probe_dnipro.py` and fixtures `tests/fixtures/yasno_*.json` (public streets only).
 - Server access: the production VM gets JSON from `app.yasno.ua` (200), although the host is behind Incapsula too.
 - Next step: grill the design points in the notes, then a plan for `feature/dnipro-oblast`. The owner asked for the region buttons in alphabetical order in the same feature.
+
+## 2026-11-27: Dnipropetrovsk region
+
+- Done (several users asked): «Дніпропетровська» as a fourth region, both operators (DTEK DnEM and CEK) through YASNO's public API; details in `docs/dnipro-notes.md` ("How it is built").
+  - `adapters/yasno_api`: schedules of both operators (2 requests per poll), the search-only catalogue merged over both operators, the house's queues once it is picked.
+  - Two providers (`dnem:17.1`, `cek:1.2`) under one region `dnipro`; `region_of` maps them. No migration.
+  - `SearchCatalogSource` in core: `/add` asks for the house number as text for such a catalogue.
+  - Queues show their operator («17.1 (ДТЕК)»); emergency shutdowns show «графік не діє» (no push yet).
+  - Region buttons and `/status` in alphabetical order (owner's request): Волинська, Дніпропетровська, Львівська, Тернопільська.
+- Decisions (owner): one button, the address decides the operator; a house in both operators offers both queues; inputs merge; links per operator; schedules only; no broadcast.
+- Checked live: CEK and DnEM addresses in Dnipro through the real client; просп. Яворницького Дмитра 1 has its two inputs in different groups.
+- Known limits: see the notes (differently spelled streets, 20 results per search, the emergency status not seen live).

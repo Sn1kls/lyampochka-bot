@@ -75,6 +75,8 @@ class PlannedWork:
 class OutageKind(StrEnum):
     EMERGENCY = "emergency"
     PLANNED = "planned"
+    # The operator's emergency shutdowns: no schedule applies, so there is no work to show.
+    SUSPENDED = "suspended"
 
 
 @dataclass(frozen=True)
@@ -82,7 +84,7 @@ class CurrentOutage:
     """An outage going on right now on the subscription's building."""
 
     kind: OutageKind
-    work: PlannedWork
+    work: PlannedWork | None
 
 
 @dataclass(frozen=True)
@@ -125,7 +127,8 @@ class Subscription:
 
     @property
     def provider(self) -> str:
-        """A subscription always has queues, and all of them belong to one oblenergo."""
+        """The first queue's: the repository lists tracked queues first (a Dnipropetrovsk house
+        may have queues of both operators)."""
         return provider_of(self.subqueues[0])
 
     @property
@@ -212,6 +215,7 @@ class AlertKind(StrEnum):
     BACKUP_FAILED = "backup_failed"
     VOE_CATALOG_STALE = "voe_catalog_stale"
     VOE_CATALOG_IMPORTED = "voe_catalog_imported"
+    SCHEDULE_SUSPENDED = "schedule_suspended"
 
 
 @dataclass(frozen=True)

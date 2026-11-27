@@ -223,3 +223,74 @@ async def test_subqueues_are_empty_when_no_schedule_applies(
     source.groups = ["4.1"]
 
     assert await catalog.subqueues(1, 1, Building(3, "23", None)) == []
+
+
+@dataclass
+class FakeSearchSource:
+    """Like YASNO: streets and houses only by search, queues once a house is picked."""
+
+    street_queries: list[str] = field(default_factory=list)
+    groups: list[str] = field(default_factory=list)
+
+    async def cities(self) -> list[City]:
+        return CITIES
+
+    async def search_streets(self, city_id: int, query: str) -> list[Street]:
+        self.street_queries.append(query)
+        return STREETS
+
+    async def search_buildings(self, city_id: int, street_id: int, query: str) -> list[Building]:
+        return [Building(7, "12", None), Building(8, "10", None), Building(9, "12А", None)]
+
+    async def building_subqueues(
+        self, city_id: int, street_id: int, building_name: str
+    ) -> list[str]:
+        return self.groups
+
+
+@pytest.fixture
+def search_source() -> FakeSearchSource:
+    return FakeSearchSource()
+
+
+@pytest.fixture
+def search_catalog(repository: SqlRepository, search_source: FakeSearchSource) -> Catalog:
+    return Catalog(repository, search_source, cache_prefix="yasno:")
+
+
+async def test_a_list_catalogue_shows_every_building(catalog: Catalog) -> None:
+    assert not catalog.asks_building_number
+
+
+async def test_a_search_catalogue_asks_for_the_house_number(search_catalog: Catalog) -> None:
+    assert search_catalog.asks_building_number
+
+
+async def test_streets_are_searched_live_every_time(
+    search_catalog: Catalog, search_source: FakeSearchSource
+) -> None:
+    first = await search_catalog.find_streets(1, "Садова", NOW)
+    await search_catalog.find_streets(1, "Садова", NOW)
+
+    assert [street.id for street in first] == [1, 5]  # still ranked, prefix match first
+    assert search_source.street_queries == ["Садова", "Садова"]
+
+
+async def test_searched_buildings_are_in_house_number_order(search_catalog: Catalog) -> None:
+    buildings = await search_catalog.find_buildings(1, 2, "1", NOW)
+
+    assert [building.name for building in buildings] == ["10", "12", "12А"]
+
+
+async def test_a_searched_building_takes_its_queues_from_the_source(
+    search_catalog: Catalog, search_source: FakeSearchSource
+) -> None:
+    search_source.groups = ["dnem:17.1"]
+
+    assert await search_catalog.subqueues(1, 2, Building(7, "12", None)) == ["dnem:17.1"]
+
+
+async def test_a_searched_building_without_queues_is_outside_the_schedules(
+    search_catalog: Catalog,
+) -> None:
+    assert await search_catalog.subqueues(1, 2, Building(7, "12", None)) == []

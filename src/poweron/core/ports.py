@@ -1,6 +1,6 @@
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pydantic import ValidationError
 
@@ -59,18 +59,36 @@ class ScheduleSource(Protocol):
         ...
 
 
-class CatalogSource(Protocol):
+class QueueLookup(Protocol):
+    async def building_subqueues(
+        self, city_id: int, street_id: int, building_name: str
+    ) -> list[str]:
+        """All subqueues a building belongs to (a building can have several power sources)."""
+        ...
+
+
+class CatalogSource(QueueLookup, Protocol):
     async def cities(self) -> list[City]: ...
 
     async def streets(self, city_id: int) -> list[Street]: ...
 
     async def buildings(self, city_id: int, street_id: int) -> list[Building]: ...
 
-    async def building_subqueues(
-        self, city_id: int, street_id: int, building_name: str
-    ) -> list[str]:
-        """All subqueues a building belongs to (a building can have several power sources)."""
-        ...
+
+@runtime_checkable
+class SearchCatalogSource(QueueLookup, Protocol):
+    """A catalogue that only answers searches (YASNO: 20 matches at most).
+
+    Its buildings carry no queue (`cherg_gpv` None): `building_subqueues` tells, once picked.
+    """
+
+    async def cities(self) -> list[City]: ...
+
+    async def search_streets(self, city_id: int, query: str) -> list[Street]: ...
+
+    async def search_buildings(
+        self, city_id: int, street_id: int, query: str
+    ) -> list[Building]: ...
 
 
 class PlannedWorkSource(Protocol):
@@ -84,6 +102,12 @@ class PlannedWorkSource(Protocol):
 class EmergencyOutageSource(Protocol):
     async def emergency_outages(self, city_id: int, street_id: int) -> list[PlannedWork]:
         """Emergency outages the oblenergo lists on the street, including ones it forgot to close."""
+        ...
+
+
+class SuspensionSource(Protocol):
+    async def suspended(self, cherg_gpv: str) -> bool:
+        """Whether the operator says no schedule applies to the subqueue now."""
         ...
 
 
