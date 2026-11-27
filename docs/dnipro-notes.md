@@ -74,15 +74,19 @@ All under `.../addresses/v2/`, each takes `regionId=3&dsoId=…`:
 
 `scripts/probe_dnipro.py`: stdlib only, sequential, at most 1 request/second, public addresses (просп. Яворницького Дмитра and вул. Братів Горобців, Dnipro). Prints the shapes and saves the `yasno_*` fixtures; `--dry` saves nothing. It stops on an HTML answer (the Incapsula challenge answers 200).
 
-## Design points for the build (to grill before a plan)
+## Decisions (owner, 2026-11-27)
 
-1. **One button, two operators.** «Дніпропетровська» maps to two providers (`dnem:17.1`, `cek:1.2`), since group names collide. `REGIONS` is keyed by provider today.
-2. **Search-only catalogue.** `CatalogSource.streets(city_id)` returns a full list and `Catalog` filters it; YASNO can only search, 20 at a time. Needs the query passed to the source (a port change), at least for streets.
-3. **Houses.** The bot shows buildings as buttons; YASNO stops at 20. Either ask for the house number as text (then `houses?query=`), or show the first 20 and search past that.
-4. **Inputs («ввод 1/2»).** Merge them into one building with all their groups, like Ternopil buildings in several queues, or show them as they are.
-5. **`EmergencyShutdowns`.** What to show and push when the day is that status: no schedule, or the last one.
-6. Links for «⚡ Немає світла? Аварійні» and the site note: the DTEK page and the CEK «ГАВ» page, per operator.
-7. Region button order: alphabetical (owner's request): Волинська, Дніпропетровська, Львівська, Тернопільська.
+1. **One button, the address decides the operator.** «Дніпропетровська» searches both operators; there is no «ДТЕК чи ЦЕК?» step, since most people do not know theirs. Two providers inside (`dnem:17.1`, `cek:1.2`), since group names collide.
+   - A house found in one operator takes its queue. A house found in both offers both queues on the usual «Яку відстежувати?» screen with «Усі»; the extra one can be switched off in the address settings (✅/🚫).
+2. **The operator next to the queue**, Dnipropetrovsk only: «Черга 17.1 (ДТЕК)», «Черга 1.2 (ЦЕК)», on the picking screen, in the settings, «Графік» and pushes. Matches how the news write it, and tells two «1.1» apart.
+3. **Same-named cities and streets merge** into one button (by normalised name: «м. Дніпро» = «Дніпро»); the house is looked up in every operator that has the street. City ids are *not* shared (`8` is Zhovti Vody in CEK, Kamianske in ДнЕМ), so merging is by name only. Differently named streets stay apart.
+4. **House number as text** for this region: «Напиши номер будинку», then the matches as buttons (YASNO stops at 20).
+5. **Inputs merge**: «1 ввод 1» and «1 ввод 2» are one building «1»; different groups go through the queue picking above.
+6. **`EmergencyShutdowns`**: a line «⚠️ Зараз екстрені відключення, графік не діє» in «Графік» and «Що далі»; no push and a log for the admin until the status is seen live.
+7. **Links** per operator: DTEK `dtek-dnem.com.ua/ua/shutdowns` (a person in a browser gets through), CEK its «ГАВ» page on `cek.dp.ua`.
+8. **Schedules only** at first: no current-outage line by building, no planned works.
+9. **Region buttons in alphabetical order** everywhere, `/status` too: Волинська, Дніпропетровська, Львівська, Тернопільська.
+10. **No broadcast**: the button just appears; the owner tells the people who asked.
 
 ## Still unknown
 
