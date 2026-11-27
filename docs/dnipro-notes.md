@@ -1,6 +1,6 @@
 # Dnipropetrovsk oblast: research notes
 
-Status: **researched** (2026-11-27, branch `chore/dnipro-research`); not built yet.
+Status: **built** (2026-11-27, branch `feature/dnipro-oblast`); researched on `chore/dnipro-research`.
 
 Short version: the oblast has two distribution operators, **DTEK Dnipro Grids (ДнЕМ)** and **CEK (ЦЕК)**, and both are served by one public JSON API of YASNO (DTEK's supplier), `app.yasno.ua`. It gives schedules per group as minute intervals and the address → group lookup for both operators. Closer to Lviv than to Volyn: no images, no export from the Mac: the production server gets through Incapsula.
 
@@ -92,5 +92,22 @@ All under `.../addresses/v2/`, each takes `regionId=3&dsoId=…`:
 
 - When «tomorrow» gets filled, and how often `updatedOn` moves in a day.
 - `EmergencyShutdowns`: its slots and how long it lasts.
-- Whether a house's inputs are ever in different groups.
 - Whether CEK ever publishes on YASNO late compared with its own channels.
+
+## How it is built
+
+- `adapters/yasno_api/client.py`: `YasnoClient` is the schedule source of both providers, the `SearchCatalogSource` of the region and the `SuspensionSource` of both providers.
+  - Schedules: one `planned-outages` request per operator, cached 60 s, so a poll costs 2 requests. Minutes become 48 half-hour codes (`Definite` → OFF, `NotPlanned` → ON). `WaitingForSchedule` and `EmergencyShutdowns` days give no schedule (the last version stays); an unknown status or type, or a slot off the 30-minute grid, is an `ApiSchemaError`; an Incapsula page is one too (`PacedHttp` wants JSON).
+  - Catalogue: cities and streets of both operators merge by `normalise`d name; the item id carries both operators' ids (`DnEM id × 100 000 + CEK id`, 0 for absent), so the daily queue re-check finds the house in both without the user's text. One operator's own duplicates stay apart. Houses merge their inputs («1 ввод 1/2» → «1»); building ids are crc32 of the name. Streets need 3 letters.
+  - Queues: once a house is picked, `houses?query=<name>` per operator and `group` per matching entry (2–4 requests).
+- `Catalog` takes either kind of source: a `SearchCatalogSource` is searched live (no 24 h cache for streets and houses), `asks_building_number` tells `/add` to ask for the number, and an empty queue list refuses the address.
+- `/add`: «Дніпропетровська» (region `dnipro`) → city → street → «Напиши номер будинку» → exact match or buttons → queue picking when inputs or operators differ.
+- `queue_name` adds the operator («17.1 (ДТЕК)», «1.2 (ЦЕК)») everywhere a queue is shown.
+- `CurrentOutages` asks `suspended` first: «⚠️ Зараз екстрені відключення, графік не діє» in «Що далі» and today's «Графік». No push.
+- No migration: keys `dnem:17.1`, `cek:1.2` fit the existing columns. No switching state, no planned works, no `remind_exact`.
+- Checked live through the real client on 27.11: Dnipro, вул. Братів Горобців (Дмитра Кедріна) 36 → `cek:1.2`; просп. Яворницького Дмитра 1 → `dnem:17.1` and `dnem:18.1` (its two inputs are in **different** groups, so merging inputs with queue picking matters).
+- Known limits:
+  - A street spelled differently by the two operators is two buttons («вул. Братів Горобців» in DnEM, «… (Дмитра Кедріна)» in CEK); the house is only under one of them.
+  - YASNO stops at 20 houses and streets per search: a short number like «1» may not show every match; typing more of it narrows it.
+  - Same-named villages of the two operators merge into one city; a house number in both then offers both queues.
+  - The `EmergencyShutdowns` line is untested live: the status has not been seen yet.

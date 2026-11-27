@@ -75,6 +75,8 @@ class PlannedWork:
 class OutageKind(StrEnum):
     EMERGENCY = "emergency"
     PLANNED = "planned"
+    # The operator's emergency shutdowns: no schedule applies, so there is no work to show.
+    SUSPENDED = "suspended"
 
 
 @dataclass(frozen=True)
@@ -82,7 +84,7 @@ class CurrentOutage:
     """An outage going on right now on the subscription's building."""
 
     kind: OutageKind
-    work: PlannedWork
+    work: PlannedWork | None
 
 
 @dataclass(frozen=True)

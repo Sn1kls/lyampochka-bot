@@ -6,12 +6,16 @@ SITE_VOLYN = (
     "energy.volyn.ua",
 )
 SITE_LVIV = ("https://poweron.loe.lviv.ua", "poweron.loe.lviv.ua")
+SITE_DNEM = ("https://www.dtek-dnem.com.ua/ua/shutdowns", "dtek-dnem.com.ua")
+SITE_CEK = ("https://cek.dp.ua/index.php/cpojivaham/vidkliuchennia.html", "cek.dp.ua")
 # Each oblenergo's page of the outages happening now (Lviv: its homepage). Checked 2026-11-24.
 OUTAGES_TERNOPIL = "https://poweron.toe.com.ua/avarijni_vidkluchenna_realtime"
 OUTAGES_VOLYN = (
     "https://energy.volyn.ua/spozhyvacham/perervy-u-elektropostachanni/"
     "chomu-nemaie-elektropostachannia/"
 )
+# DTEK's page is behind a bot check that a person's browser passes.
+OUTAGES_CEK = "https://cek.dp.ua/index.php/cpojivaham/vidkliuchennia/2-uncategorised/961-gav.html"
 BUTTON_OUTAGES = "⚡ Немає світла? Аварійні"
 
 MENU_SCHEDULE = "📅 Графік"
@@ -30,13 +34,13 @@ GREETING = (
 ADD_FIRST = "Почнімо з твоєї адреси 👇"
 # Profile "about" (≤120 chars) and the empty-chat description before Start (≤512 chars).
 ABOUT = (
-    "Графіки відключень світла на Тернопільщині, Волині й Львівщині: "
-    "сповіщення про зміни й нагадування перед вимкненням 💡"
+    "Графіки відключень світла на Волині, Дніпропетровщині, Львівщині й Тернопільщині: "
+    "сповіщення про зміни й нагадування 💡"
 )
 DESCRIPTION = (
     f"Привіт! Я «{BRAND}» 💡\n\n"
-    "Стежу за графіками відключень світла Тернопільобленерго, Волиньобленерго "
-    "та Львівобленерго.\n\n"
+    "Стежу за графіками відключень світла Волиньобленерго, ДТЕК і ЦЕК на Дніпропетровщині, "
+    "Львівобленерго та Тернопільобленерго.\n\n"
     "• Покажу графік для твоєї адреси на сьогодні й завтра\n"
     "• Напишу, щойно графік зміниться\n"
     "• Нагадаю перед вимкненням\n\n"
@@ -58,11 +62,16 @@ ASK_REGION = "У якій області адреса?"
 REGION_TERNOPIL = "Тернопільська"
 REGION_VOLYN = "Волинська"
 REGION_LVIV = "Львівська"
+REGION_DNIPRO = "Дніпропетровська"
+# Next to a Dnipropetrovsk queue: the two operators' groups share names («1.1»).
+OPERATOR_DNEM = "ДТЕК"
+OPERATOR_CEK = "ЦЕК"
 ASK_CITY = "З якого ти міста чи села? Напиши кілька літер назви."
 CHOOSE_CITY = "Обери зі списку або напиши назву ще раз:"
 ASK_STREET = "Місто: <b>{city}</b>.\nТепер напиши кілька літер назви вулиці."
 CHOOSE_STREET = "Обери вулицю зі списку або напиши назву ще раз:"
 CHOOSE_BUILDING = "Вулиця: <b>{street}</b>.\nОбери будинок зі списку або просто напиши його номер:"
+ASK_BUILDING_NUMBER = "Вулиця: <b>{street}</b>.\nНапиши номер будинку, наприклад 12 чи 12А."
 NOTHING_FOUND = "Нічого не знайшлося. Спробуй написати інакше."
 NO_BUILDINGS = "Для цієї вулиці будинків не знайшлося. Спробуй іншу вулицю."
 BUILDING_NOT_FOUND = "Такого будинку не бачу. Обери зі списку або спробуй написати інакше."
@@ -202,6 +211,7 @@ PLANNED_WORK = "🛠 <b>{label}</b>: планові роботи {date} з {star
 PLANNED_WORK_REASON = " – {reason}"
 EMERGENCY = "⚠️ <b>Зараз аварійне відключення</b>, світло обіцяють дати {at}"
 PLANNED_NOW = "🛠 <b>Зараз планове відключення</b>, світло обіцяють дати {at}"
+SUSPENDED = "⚠️ <b>Зараз екстрені відключення</b>, графік не діє"
 OUTAGE_REASON = "\nПричина: {reason}"
 
 SETTINGS_TITLE = "⚙️ Налаштування для <b>{label}</b>"

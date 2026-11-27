@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from poweron.core.domain.models import Building, City, Street
 from poweron.core.domain.text import normalise
-from poweron.core.ports import CatalogSource, Repository, SourceError
+from poweron.core.ports import CatalogSource, Repository, SearchCatalogSource, SourceError
 
 CACHE_TTL = timedelta(hours=24)
 FAILED_REFRESH_BACKOFF = timedelta(minutes=5)
@@ -13,7 +13,11 @@ FAILED_REFRESH_BACKOFF = timedelta(minutes=5)
 
 class Catalog:
     def __init__(
-        self, repository: Repository, source: CatalogSource, *, cache_prefix: str = ""
+        self,
+        repository: Repository,
+        source: CatalogSource | SearchCatalogSource,
+        *,
+        cache_prefix: str = "",
     ) -> None:
         """`cache_prefix` keeps each oblenergo's cached lists apart (their ids overlap)."""
         self._repository = repository
@@ -21,28 +25,49 @@ class Catalog:
         self._cache_prefix = cache_prefix
         self._failed_refresh_at: dict[str, datetime] = {}
 
+    @property
+    def asks_building_number(self) -> bool:
+        """A searched catalogue cannot list a street's buildings: the user types the number."""
+        return isinstance(self._source, SearchCatalogSource)
+
     async def find_cities(self, query: str, now: datetime) -> list[City]:
         cities = await self._cached("cities", City, self._source.cities, now)
         return _search(cities, query)
 
     async def find_streets(self, city_id: int, query: str, now: datetime) -> list[Street]:
+        if isinstance(self._source, SearchCatalogSource):
+            return _search(await self._source.search_streets(city_id, query), query)
+        source = self._source
         streets = await self._cached(
-            f"streets:{city_id}", Street, lambda: self._source.streets(city_id), now
+            f"streets:{city_id}", Street, lambda: source.streets(city_id), now
         )
         return _search(streets, query)
 
     async def buildings(self, city_id: int, street_id: int, now: datetime) -> list[Building]:
         """In house number order: sources list them as their records go (LOE by account)."""
+        if isinstance(self._source, SearchCatalogSource):
+            raise TypeError("a searched catalogue has no building list: use find_buildings")
+        source = self._source
         buildings = await self._cached(
             f"buildings:{city_id}:{street_id}",
             Building,
-            lambda: self._source.buildings(city_id, street_id),
+            lambda: source.buildings(city_id, street_id),
             now,
         )
-        return sorted(buildings, key=lambda building: _house_number_key(building.name))
+        return _in_house_order(buildings)
+
+    async def find_buildings(
+        self, city_id: int, street_id: int, query: str, now: datetime
+    ) -> list[Building]:
+        """Houses whose number holds what the user typed; only for `asks_building_number`."""
+        if not isinstance(self._source, SearchCatalogSource):
+            raise TypeError("a listed catalogue has no building search: use buildings")
+        return _in_house_order(await self._source.search_buildings(city_id, street_id, query))
 
     async def subqueues(self, city_id: int, street_id: int, building: Building) -> list[str]:
         """All subqueues of the building; empty when schedules do not apply to it."""
+        if isinstance(self._source, SearchCatalogSource):
+            return await self._source.building_subqueues(city_id, street_id, building.name)
         if building.cherg_gpv is None:
             return []
         found = await self._source.building_subqueues(city_id, street_id, building.name)
@@ -92,6 +117,10 @@ def _search[Item: (City, Street)](items: list[Item], query: str) -> list[Item]:
     matches = [match for match in matches if wanted in match[0]]
     matches.sort(key=lambda match: (not match[0].startswith(wanted), match[0]))
     return [item for _, item in matches]
+
+
+def _in_house_order(buildings: list[Building]) -> list[Building]:
+    return sorted(buildings, key=lambda building: _house_number_key(building.name))
 
 
 def _house_number_key(name: str) -> list[int | str]:

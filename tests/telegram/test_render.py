@@ -5,6 +5,7 @@ import pytest
 
 from poweron.adapters.telegram import texts
 from poweron.adapters.telegram.render import (
+    queue_name,
     render_confirm,
     render_current_outage,
     render_day,
@@ -512,25 +513,42 @@ def test_planned_work_escapes_label_and_reason() -> None:
     assert text.endswith("a &lt; b &amp; c")
 
 
-def test_status_lists_lviv_after_the_other_regions() -> None:
+def test_status_lists_the_regions_in_alphabetical_order() -> None:
+    polled = NOW - timedelta(minutes=5)
     report = StatusReport(
         version="0.1.0",
         users=1,
         subscriptions=2,
         pending_messages=0,
         subqueues=(
-            SubqueueStatus("loe:3.1", NOW - timedelta(minutes=5), date(2026, 10, 17)),
-            SubqueueStatus("4.1", NOW - timedelta(minutes=5), None),
+            SubqueueStatus("loe:3.1", polled, date(2026, 10, 17)),
+            SubqueueStatus("4.1", polled, None),
+            SubqueueStatus("dnem:17.1", polled, None),
+            SubqueueStatus("voe:6.1", polled, None),
+            SubqueueStatus("cek:1.2", polled, None),
         ),
         stale_after=timedelta(minutes=15),
     )
 
     assert render_status(report, NOW).endswith(
-        "\n<b>Тернопільська</b>\n"
-        "4.1: опитано 17.10 17:15, графіків ще немає\n"
+        "\n<b>Волинська</b>\n"
+        "6.1: опитано 17.10 17:15, графіків ще немає\n"
+        "\n<b>Дніпропетровська</b>\n"
+        "17.1 (ДТЕК): опитано 17.10 17:15, графіків ще немає\n"
+        "1.2 (ЦЕК): опитано 17.10 17:15, графіків ще немає\n"
         "\n<b>Львівська</b>\n"
-        "3.1: опитано 17.10 17:15, останній графік на 17.10"
+        "3.1: опитано 17.10 17:15, останній графік на 17.10\n"
+        "\n<b>Тернопільська</b>\n"
+        "4.1: опитано 17.10 17:15, графіків ще немає"
     )
+
+
+@pytest.mark.parametrize(
+    ("cherg_gpv", "name"),
+    [("4.1", "4.1"), ("voe:6.1", "6.1"), ("dnem:17.1", "17.1 (ДТЕК)"), ("cek:1.2", "1.2 (ЦЕК)")],
+)
+def test_a_dnipropetrovsk_queue_names_its_operator(cherg_gpv: str, name: str) -> None:
+    assert queue_name(cherg_gpv) == name
 
 
 def test_status_separates_the_last_poll_from_the_last_schedule() -> None:
@@ -551,12 +569,12 @@ def test_status_separates_the_last_poll_from_the_last_schedule() -> None:
     assert render_status(report, NOW) == (
         "📊 <b>Лямпочка 0.1.0</b>\n"
         "Користувачів: 2, адрес: 3, у черзі розсилки: 1\n"
+        "\n<b>Волинська</b>\n"
+        "1.2: опитано 17.10 17:15, графіків ще немає\n"
         "\n<b>Тернопільська</b>\n"
         "4.1: опитано 17.10 17:15, останній графік на 15.10\n"
         "⚠️ 2.2: опитано 17.10 17:04, графіків ще немає\n"
-        "⚠️ 1.1: ще не опитувалась\n"
-        "\n<b>Волинська</b>\n"
-        "1.2: опитано 17.10 17:15, графіків ще немає"
+        "⚠️ 1.1: ще не опитувалась"
     )
 
 
@@ -658,4 +676,12 @@ def test_planned_outage_going_on_now_has_its_own_line() -> None:
 
     assert text == (
         "🛠 <b>Зараз планове відключення</b>, світло обіцяють дати о 21:00\nПричина: Ремонт"
+    )
+
+
+def test_emergency_shutdowns_say_the_schedule_does_not_apply() -> None:
+    outage = CurrentOutage(OutageKind.SUSPENDED, None)
+
+    assert render_current_outage(outage, NOW) == (
+        "⚠️ <b>Зараз екстрені відключення</b>, графік не діє"
     )
