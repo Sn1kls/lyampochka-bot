@@ -20,6 +20,7 @@ from poweron.adapters.toe_api.client import ToeClient
 from poweron.adapters.voe_api.client import VoeClient
 from poweron.adapters.yasno_api.client import YasnoClient
 from poweron.config import Settings
+from poweron.core.domain.models import AlertKind
 from poweron.core.domain.providers import (
     CEK,
     DNEM,
@@ -78,13 +79,18 @@ async def run(role: str, settings: Settings) -> None:
     voe_client = VoeClient(settings.voe_api_base)
     voe_catalog = VoeCatalog(engine)
     loe_client = LoeClient()
-    yasno_client = YasnoClient()
     bot = create_bot(settings.bot_token.get_secret_value())
     alerts = (
         None
         if settings.admin_chat_id is None
         else Alerts(TelegramAdminAlerter(bot, settings.admin_chat_id))
     )
+
+    async def report_suspended(details: str) -> None:
+        if alerts is not None:  # the client sends each one once a day, so no rate limit
+            await alerts.send(AlertKind.SCHEDULE_SUSPENDED, details)
+
+    yasno_client = YasnoClient(on_suspended=report_suspended)
     heartbeat = (
         None
         if settings.healthcheck_url is None

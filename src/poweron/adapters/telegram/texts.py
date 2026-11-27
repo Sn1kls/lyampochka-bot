@@ -265,6 +265,10 @@ ALERT_VOE_CATALOG_STALE = (
     "Перевір щотижневе вивантаження на Mac: <code>scripts/sync_volyn_queues.sh</code>"
 )
 ALERT_VOE_CATALOG_IMPORTED = "📒 Довідник черг Волині оновлено: {details}"
+ALERT_SCHEDULE_SUSPENDED = (
+    "⚠️ YASNO показує екстрені відключення ({details}): графік не діє. "
+    "Час подивитися, як виглядає відповідь, і вирішити про пуш."
+)
 BACKUP_CAPTION = "🗄 Бекап бази {name}, зашифрований паролем BACKUP_PASSWORD"
 
 STATUS_TITLE = "📊 <b>Лямпочка {version}</b>"

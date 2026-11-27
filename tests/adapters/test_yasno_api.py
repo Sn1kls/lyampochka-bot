@@ -296,3 +296,28 @@ async def test_a_typed_house_and_its_queues_cost_one_house_search(client: YasnoC
     await client.building_subqueues(DNIPRO, STREET, "10")
 
     assert (dnem.call_count, cek.call_count) == (1, 1)
+
+
+@respx.mock
+async def test_emergency_shutdowns_are_reported_once_per_operator_and_day(
+    clock: FakeClock,
+) -> None:
+    reported: list[str] = []
+
+    async def report(details: str) -> None:
+        reported.append(details)
+
+    client = YasnoClient(
+        now=lambda: NOW, monotonic=clock.monotonic, sleep=clock.sleep, on_suspended=report
+    )
+    suspended = with_today(status="EmergencyShutdowns", slots=[])
+    respx.get(DNEM_URL).respond(json=suspended | {"9.1": suspended["17.1"]})
+    try:
+        await client.fetch_schedules(ADDRESS, "dnem:17.1")
+        await client.fetch_schedules(ADDRESS, "dnem:9.1")
+        clock.monotonic_now += 120  # the next poll
+        await client.fetch_schedules(ADDRESS, "dnem:17.1")
+    finally:
+        await client.aclose()
+
+    assert reported == ["dnem 2026-11-27"]

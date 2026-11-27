@@ -214,6 +214,7 @@ class AlertKind(StrEnum):
     BACKUP_FAILED = "backup_failed"
     VOE_CATALOG_STALE = "voe_catalog_stale"
     VOE_CATALOG_IMPORTED = "voe_catalog_imported"
+    SCHEDULE_SUSPENDED = "schedule_suspended"
 
 
 @dataclass(frozen=True)

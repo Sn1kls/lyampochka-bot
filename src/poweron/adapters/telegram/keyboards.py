@@ -166,8 +166,8 @@ def menu_keyboard() -> ReplyKeyboardMarkup:
 
 def region_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for provider, text in REGIONS.items():
-        builder.button(text=text, callback_data=Region(provider=provider))
+    for region, text in REGIONS.items():
+        builder.button(text=text, callback_data=Region(provider=region))
     builder.button(text=texts.BUTTON_CANCEL, callback_data=Decision(action="add", accepted=False))
     builder.adjust(1)
     return builder.as_markup()

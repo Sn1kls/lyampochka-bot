@@ -5,7 +5,7 @@ import time
 import zlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from importlib.metadata import version
 from typing import Any
 
@@ -91,7 +91,9 @@ class YasnoClient:
         now: Callable[[], datetime] = lambda: datetime.now(KYIV),
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        on_suspended: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
+        """`on_suspended` hears of an operator's emergency shutdowns once a day (the admin)."""
         self._http = PacedHttp(
             httpx.AsyncClient(
                 headers={"User-Agent": f"poweron-bot/{version('poweron')} (personal use)"},
@@ -106,6 +108,8 @@ class YasnoClient:
         # provider → (expires at, groups); one request a minute covers all of its groups.
         self._schedules: dict[str, tuple[float, dict[str, _Group]]] = {}
         self._failures: dict[str, tuple[float, SourceError]] = {}
+        self._on_suspended = on_suspended
+        self._suspended_seen: set[tuple[str, date]] = set()
         # `/add` searches a number, then asks the picked house's queues: one request, not two.
         self._houses_cache: dict[tuple[str, int, int, str], tuple[float, list[_Named]]] = {}
 
@@ -125,7 +129,7 @@ class YasnoClient:
             if day.status == WAITING:
                 continue
             if day.status == SUSPENDED:
-                logger.warning("yasno %s: emergency shutdowns on %s", cherg_gpv, day.date.date())
+                await self._report_suspended(provider_of(cherg_gpv), day.date.date())
                 continue
             if day.status not in WITH_SCHEDULE:
                 raise ApiSchemaError(f"yasno {cherg_gpv}: unknown day status {day.status!r}")
@@ -138,6 +142,15 @@ class YasnoClient:
                 )
             )
         return schedules
+
+    async def _report_suspended(self, provider: str, day: date) -> None:
+        """Not seen live yet: the admin should hear of it, once per operator and day."""
+        if (provider, day) in self._suspended_seen:
+            return
+        self._suspended_seen.add((provider, day))
+        logger.warning("yasno %s: emergency shutdowns on %s", provider, day)
+        if self._on_suspended is not None:
+            await self._on_suspended(f"{provider} {day}")
 
     async def suspended(self, cherg_gpv: str) -> bool:
         """Today is emergency shutdowns: the operator says no schedule applies."""

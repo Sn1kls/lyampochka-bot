@@ -331,7 +331,7 @@ def render_subqueues_changed(payload: Mapping[str, Any]) -> str:
 
 
 def render_current_outage(outage: CurrentOutage, now: datetime) -> str:
-    if outage.work is None:  # OutageKind.SUSPENDED
+    if outage.work is None:
         return texts.SUSPENDED
     ends_at = outage.work.ends_at.astimezone(KYIV)
     at = _at(ends_at, f"{ends_at:%H:%M}")

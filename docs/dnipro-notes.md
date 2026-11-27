@@ -104,6 +104,7 @@ All under `.../addresses/v2/`, each takes `regionId=3&dsoId=…`:
 - `/add`: «Дніпропетровська» (region `dnipro`) → city → street → «Напиши номер будинку» → exact match or buttons → queue picking when inputs or operators differ.
 - `queue_name` adds the operator («17.1 (ДТЕК)», «1.2 (ЦЕК)») everywhere a queue is shown.
 - `CurrentOutages` asks `suspended` first: «⚠️ Зараз екстрені відключення, графік не діє» in «Що далі» and today's «Графік». No push.
+- The admin gets `SCHEDULE_SUSPENDED` («⚠️ YASNO показує екстрені відключення …») once per operator and day the worker sees the status, so the push can be designed from a real answer.
 - No migration: keys `dnem:17.1`, `cek:1.2` fit the existing columns. No switching state, no planned works, no `remind_exact`.
 - Checked live through the real client on 27.11: Dnipro, вул. Братів Горобців (Дмитра Кедріна) 36 → `cek:1.2`; просп. Яворницького Дмитра 1 → `dnem:17.1` and `dnem:18.1` (its two inputs are in **different** groups, so merging inputs with queue picking matters).
 - Known limits:
