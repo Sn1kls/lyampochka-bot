@@ -10,15 +10,18 @@ from importlib.metadata import version
 import httpx
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from poweron.adapters.hoe_api.schedule import SUBQUEUES, parse_archive, parse_post
+from poweron.adapters.hoe_api.schedule import SUBQUEUES, announced_day, parse_archive, parse_post
 from poweron.adapters.paced_http import PacedHttp
 from poweron.core.domain.models import KYIV, Address, Building, City, DaySchedule, Street
 from poweron.core.domain.providers import HOE, plain_subqueue, scoped_subqueue
 from poweron.core.domain.schedule import day_slots
 from poweron.core.domain.text import LATIN_LOOKALIKES, TYPE_PREFIX
-from poweron.core.ports import ApiSchemaError, SourceError
+from poweron.core.ports import ApiSchemaError, SourceError, SourceUnavailable
 
 SITE = "https://hoe.com.ua"
+# Shows the current day's post; only read to check that the archive is not missing it.
+SCHEDULE_PAGE = f"{SITE}/page/pogodinni-vidkljuchennja"
+ARCHIVE = f"{SITE}/page/arhiv-grafikiv-pogodinnih-vidkljuchen-{{year}}"
 CACHE_SECONDS = 60.0
 # The site's lookup answers its 404 page to anything that does not look like jQuery.
 AJAX = {"X-Requested-With": "XMLHttpRequest"}
@@ -147,19 +150,27 @@ class HoeClient:
             return days
 
     async def _fetch_days(self, today: date) -> _Days:
-        # ponytail: the archive page of today's year, so on 31.12 tomorrow (next year's page)
-        # is missed; a differently named page for a new year fails the poll loudly.
-        archive_url = f"{SITE}/page/arhiv-grafikiv-pogodinnih-vidkljuchen-{today.year}"
-        entries = parse_archive((await self._http.get(archive_url, {}, {})).text, archive_url)
+        tomorrow = today + timedelta(days=1)
+        entries = await self._archive(today.year)
+        if tomorrow.year != today.year:
+            entries |= await self._archive(tomorrow.year, missing_ok=True)
+        # The archive is the only index of days: a day the schedule page shows but the archive
+        # lacks means the archive changed, not that nothing was published.
+        shown = announced_day((await self._http.get(SCHEDULE_PAGE, {}, {})).text)
         days: _Days = {}
-        for day in (today, today + timedelta(days=1)):
+        for day in (today, tomorrow):
             links = entries.get(day)
             if not links:
+                if shown == (day.day, day.month):
+                    raise ApiSchemaError(f"hoe: the schedule page shows {day}, the archive not")
                 continue  # not published: today unknown, the last version stays
             try:
                 if len(links) > 1 or "/post/" not in links[0]:
                     raise ApiSchemaError(f"hoe archive {day}: {len(links)} entries, not one post")
-                subqueues = parse_post((await self._http.get(links[0], {}, {})).text)
+                page = (await self._http.get(links[0], {}, {})).text
+                if announced_day(page) != (day.day, day.month):
+                    raise ApiSchemaError(f"hoe archive {day}: its post is about another day")
+                subqueues = parse_post(page)
             except ApiSchemaError as error:
                 if day == today:
                     raise  # a broken or cancelled today must reach the admin
@@ -172,6 +183,16 @@ class HoeClient:
             }
         self._seen = {key: seen for key, seen in self._seen.items() if key[0] >= today}
         return days
+
+    async def _archive(self, year: int, *, missing_ok: bool = False) -> dict[date, list[str]]:
+        """A year's archive page; next year's may not exist yet on 31.12."""
+        url = ARCHIVE.format(year=year)
+        try:
+            return parse_archive((await self._http.get(url, {}, {})).text, url)
+        except SourceUnavailable:
+            if missing_ok:
+                return {}
+            raise
 
     def _seen_at(self, day: date, subqueue: str, codes: str) -> datetime:
         seen = self._seen.get((day, subqueue))

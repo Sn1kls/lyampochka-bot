@@ -25,6 +25,18 @@ _SUBQUEUE_LINE = re.compile(
 )
 _INTERVAL = re.compile(r"(\d\d):(\d\d)-(\d\d):(\d\d)")
 _ADDITION = "Додатков"  # «Додаткові години», once «Додатково години»
+# «За розпорядженням НЕК «Укренерго» 27.11.2026 р. …» or «… на 27 листопада (оновлено …)».
+_HEADER = "За розпорядженням"
+_HEADER_DAY = re.compile(r"\b(\d\d?)(?:\.(\d\d)\.\d{4}| ([а-яіїє]+))")
+MONTHS = {
+    name: number
+    for number, name in enumerate(
+        (
+            "січня лютого березня квітня травня червня липня серпня вересня жовтня листопада грудня"
+        ).split(),
+        start=1,
+    )
+}
 
 
 def parse_archive(page: str, base_url: str) -> dict[date, list[str]]:
@@ -36,6 +48,21 @@ def parse_archive(page: str, base_url: str) -> dict[date, list[str]]:
     if not entries:
         raise ApiSchemaError("hoe archive: no schedule entries")
     return entries
+
+
+def announced_day(page: str) -> tuple[int, int] | None:
+    """(day, month) the newest block of a post or of the schedule page is about, if it says."""
+    start = page.find('<div class="post">')
+    for line in _lines(page[start:] if start >= 0 else ""):
+        if not line.startswith(_HEADER):
+            continue
+        match = _HEADER_DAY.search(line)
+        if match is None:
+            return None
+        day, numeric_month, month_name = match.groups()
+        month = int(numeric_month) if numeric_month else MONTHS.get(month_name)
+        return (int(day), month) if month else None
+    return None
 
 
 def parse_post(page: str) -> dict[str, str]:

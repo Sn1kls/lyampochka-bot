@@ -5,7 +5,12 @@ import pytest
 import respx
 
 from poweron.adapters.hoe_api.client import HoeClient, _search_term
-from poweron.adapters.hoe_api.schedule import SUBQUEUES, parse_archive, parse_post
+from poweron.adapters.hoe_api.schedule import (
+    SUBQUEUES,
+    announced_day,
+    parse_archive,
+    parse_post,
+)
 from poweron.core.domain.models import KYIV, Address, City
 from poweron.core.ports import ApiSchemaError, SourceUnavailable
 from tests.conftest import FIXTURES
@@ -15,6 +20,7 @@ SITE = "https://hoe.com.ua"
 ARCHIVE_URL = f"{SITE}/page/arhiv-grafikiv-pogodinnih-vidkljuchen-2026"
 POST_26_URL = f"{SITE}/post/prognoz-gpv-na-26-listopada.html"
 POST_27_URL = f"{SITE}/post/prognoz-gpv-na-27-listopada.html"
+SCHEDULE_PAGE = f"{SITE}/page/pogodinni-vidkljuchennja"
 ADDRESS = Address(city_id=25601, street_id=329329, building_name="21")
 NOW = datetime(2026, 11, 27, 18, 0, tzinfo=KYIV)
 
@@ -139,8 +145,19 @@ async def client(clock: FakeClock) -> AsyncIterator[HoeClient]:
     await hoe_client.aclose()
 
 
+def about(page: str, day: int) -> str:
+    """The 27.11 post retold as another November day's."""
+    return page.replace("27 листопада", f"{day} листопада").replace("27.11.", f"{day}.11.")
+
+
+def mock_archive(shown: str | None = None) -> respx.Route:
+    """The 2026 archive, and the schedule page showing 27.11 unless told otherwise."""
+    respx.get(SCHEDULE_PAGE).respond(text=shown or fixture_text("hoe_post_addition.html"))
+    return respx.get(ARCHIVE_URL).respond(text=fixture_text("hoe_archive.html"))
+
+
 def mock_schedules() -> tuple[respx.Route, respx.Route]:
-    archive = respx.get(ARCHIVE_URL).respond(text=fixture_text("hoe_archive.html"))
+    archive = mock_archive()
     post_route = respx.get(POST_27_URL).respond(text=fixture_text("hoe_post_addition.html"))
     return archive, post_route
 
@@ -175,8 +192,8 @@ async def test_one_pass_serves_every_subqueue_for_a_minute(
 
 @respx.mock
 async def test_tomorrow_is_read_from_its_own_post(clock: FakeClock) -> None:
-    respx.get(ARCHIVE_URL).respond(text=fixture_text("hoe_archive.html"))
-    respx.get(POST_26_URL).respond(text=fixture_text("hoe_post_partial.html"))
+    mock_archive()
+    respx.get(POST_26_URL).respond(text=about(fixture_text("hoe_post_addition.html"), 26))
     respx.get(POST_27_URL).respond(text=fixture_text("hoe_post_addition.html"))
     before = datetime(2026, 11, 26, 21, 0, tzinfo=KYIV)
     hoe_client = HoeClient(now=lambda: before, monotonic=clock.monotonic, sleep=clock.sleep)
@@ -189,8 +206,8 @@ async def test_tomorrow_is_read_from_its_own_post(clock: FakeClock) -> None:
 
 @respx.mock
 async def test_a_broken_tomorrow_does_not_hide_today(clock: FakeClock) -> None:
-    respx.get(ARCHIVE_URL).respond(text=fixture_text("hoe_archive.html"))
-    respx.get(POST_26_URL).respond(text=fixture_text("hoe_post_partial.html"))
+    mock_archive()
+    respx.get(POST_26_URL).respond(text=about(fixture_text("hoe_post_addition.html"), 26))
     respx.get(POST_27_URL).respond(text=post("<p>Графік скасовано.</p>"))
     before = datetime(2026, 11, 26, 21, 0, tzinfo=KYIV)
     hoe_client = HoeClient(now=lambda: before, monotonic=clock.monotonic, sleep=clock.sleep)
@@ -203,7 +220,7 @@ async def test_a_broken_tomorrow_does_not_hide_today(clock: FakeClock) -> None:
 
 @respx.mock
 async def test_a_broken_today_is_an_error_even_with_tomorrow_fine(clock: FakeClock) -> None:
-    respx.get(ARCHIVE_URL).respond(text=fixture_text("hoe_archive.html"))
+    mock_archive()
     respx.get(POST_26_URL).respond(text=post("<p>Графік скасовано.</p>"))
     respx.get(POST_27_URL).respond(text=fixture_text("hoe_post_addition.html"))
     before = datetime(2026, 11, 26, 21, 0, tzinfo=KYIV)
@@ -216,7 +233,7 @@ async def test_a_broken_today_is_an_error_even_with_tomorrow_fine(clock: FakeClo
 
 @respx.mock
 async def test_an_addition_redates_only_its_subqueues(clock: FakeClock) -> None:
-    respx.get(ARCHIVE_URL).respond(text=fixture_text("hoe_archive.html"))
+    mock_archive()
     post_route = respx.get(POST_27_URL)
     base = fixture_text("hoe_post_addition.html").split("<hr />", 1)[1]
     post_route.respond(text='<div class="post">' + base)
@@ -236,8 +253,54 @@ async def test_an_addition_redates_only_its_subqueues(clock: FakeClock) -> None:
 
 
 @respx.mock
+async def test_a_day_the_schedule_page_shows_must_be_in_the_archive(clock: FakeClock) -> None:
+    mock_archive(shown=about(fixture_text("hoe_post_addition.html"), 28))
+    respx.get(POST_27_URL).respond(text=fixture_text("hoe_post_addition.html"))
+    hoe_client = HoeClient(now=lambda: NOW, monotonic=clock.monotonic, sleep=clock.sleep)
+
+    with pytest.raises(ApiSchemaError, match="archive not"):
+        await hoe_client.fetch_schedules(ADDRESS, "hoe:6.1")
+    await hoe_client.aclose()
+
+
+@respx.mock
+async def test_a_post_about_another_day_is_a_schema_error(client: HoeClient) -> None:
+    mock_archive()
+    respx.get(POST_27_URL).respond(text=about(fixture_text("hoe_post_addition.html"), 26))
+
+    with pytest.raises(ApiSchemaError, match="another day"):
+        await client.fetch_schedules(ADDRESS, "hoe:6.1")
+
+
+@respx.mock
+async def test_on_new_years_eve_next_years_archive_may_be_missing(clock: FakeClock) -> None:
+    mock_archive()
+    next_year = respx.get(ARCHIVE_URL.replace("2026", "2027")).respond(404)
+    new_years_eve = datetime(2026, 12, 31, 18, 0, tzinfo=KYIV)
+    hoe_client = HoeClient(now=lambda: new_years_eve, monotonic=clock.monotonic, sleep=clock.sleep)
+
+    assert await hoe_client.fetch_schedules(ADDRESS, "hoe:6.1") == []
+    assert next_year.called
+    await hoe_client.aclose()
+
+
+@pytest.mark.parametrize(
+    ("header", "day"),
+    [
+        ("За розпорядженням НЕК «Укренерго» 27.11.2026 р. на Хмельниччині будуть", (27, 11)),
+        ("За розпорядженням НЕК «Укренерго» 8 листопада на Хмельниччині будуть", (8, 11)),
+        ("За розпорядженням НЕК «Укренерго» оновлено графік (ГПВ) на 1 січня (оновлено)", (1, 1)),
+        ("За розпорядженням НЕК «Укренерго» щось без дати", None),
+        ("Інший текст 27.11.2026", None),
+    ],
+)
+def test_the_day_a_post_announces(header: str, day: tuple[int, int] | None) -> None:
+    assert announced_day(post(f"<p>{header}</p>")) == day
+
+
+@respx.mock
 async def test_a_day_of_pictures_is_a_schema_error(clock: FakeClock) -> None:
-    respx.get(ARCHIVE_URL).respond(text=fixture_text("hoe_archive.html"))
+    mock_archive()
     october = datetime(2026, 10, 17, 18, 0, tzinfo=KYIV)
     hoe_client = HoeClient(now=lambda: october, monotonic=clock.monotonic, sleep=clock.sleep)
 

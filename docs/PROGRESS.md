@@ -453,4 +453,5 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - One provider `hoe` (`hoe:4.1`); no migration. Schedules only.
 - Decisions (owner): build with the rule now, an unknown block alerts the admin; no post for today means unknown; the house typed or picked.
 - Checked live: Kamianets-Podilskyi, вул. Шевченка 21 → 4.1 and 5.1; today's schedule matches the post.
-- Known limits: the posts carry no publication time (first seen by the worker, reset by a restart); 31.12 misses tomorrow; see the notes.
+- The archive is checked against the posts and the schedule page, so a renamed entry or a misfiled post alerts instead of going quiet; on 31.12 next year's archive is read too.
+- Known limit: the posts carry no publication time, so «оновлено» is when the worker first saw a subqueue's schedule (reset by a restart).
