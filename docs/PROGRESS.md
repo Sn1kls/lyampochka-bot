@@ -455,3 +455,9 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Checked live: Kamianets-Podilskyi, вул. Шевченка 21 → 4.1 and 5.1; today's schedule matches the post.
 - The archive is checked against the posts and the schedule page, so a renamed entry or a misfiled post alerts instead of going quiet; on 31.12 next year's archive is read too.
 - Known limit: the posts carry no publication time, so «оновлено» is when the worker first saw a subqueue's schedule (reset by a restart).
+
+## 2026-11-27: Khmelnytskyi archive lag
+
+- Alert in production after 0.19.0: «hoe: the schedule page shows 2026-11-28, the archive not», then `SCHEDULE_STALE` for every hoe subqueue. Users kept today's schedule from memory; tomorrow's was missing.
+- Cause: the archive is filed by hand hours after the post; the 0.19.0 check took that lag for a broken archive. The «Погодинні відключення» page is no better: it had dropped 27.11's 12:30 addition and still showed 26.11.
+- Fix: days are found through the news list and the archive together; the schedule page is not read; a post must still announce its own day. Regression test from the production state (fixtures `hoe_news.html`, `hoe_post_28.html`).
