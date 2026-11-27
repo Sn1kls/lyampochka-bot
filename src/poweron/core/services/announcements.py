@@ -5,8 +5,8 @@ from poweron.core.ports import Repository
 
 # Someone who joined a moment ago may still be adding the address.
 NEW_USER_GRACE = timedelta(hours=1)
-# Kyiv hours [start, end) when a nudge waits for the morning instead of waking someone up.
-QUIET_HOURS = (22, 8)
+# Kyiv hours when a nudge waits for the morning instead of waking someone up.
+QUIET_FROM, QUIET_UNTIL = 22, 8
 
 
 class Announcements:
@@ -32,8 +32,8 @@ class Announcements:
 
         A user who removed their only address gets it too: removal leaves no trace.
         """
-        start, end = QUIET_HOURS
-        if not end <= now.astimezone(KYIV).hour < start:
+        hour = now.astimezone(KYIV).hour
+        if hour >= QUIET_FROM or hour < QUIET_UNTIL:
             return 0
         user_ids = await self._repository.user_ids_without_address("telegram", now - NEW_USER_GRACE)
         return await self._repository.enqueue_messages(

@@ -356,35 +356,6 @@ async def cancel_feedback(callback: CallbackQuery, state: FSMContext) -> None:
     await _respond(callback, texts.FEEDBACK_CANCELLED)
 
 
-@router.message(FeedbackFlow.waiting, _not_a_command)
-async def forward_feedback(
-    message: Message,
-    state: FSMContext,
-    bot: Bot,
-    event_from_user: User,
-    user_id: int,
-    subscriptions: Subscriptions,
-    feedback: Feedback,
-    admin_chat_id: int | None,
-) -> None:
-    message_ids = await _whole_album(message)
-    if message_ids is None:
-        return
-    assert admin_chat_id is not None  # ask_feedback lets no one in without it
-    await _send_feedback(
-        message,
-        message_ids,
-        None,
-        state,
-        bot,
-        event_from_user,
-        user_id,
-        subscriptions,
-        feedback,
-        admin_chat_id,
-    )
-
-
 async def _send_feedback(
     message: Message,
     message_ids: list[int],
@@ -1051,9 +1022,16 @@ async def queue_typed(message: Message) -> None:
     await message.answer(texts.PICK_QUEUE_BUTTON)
 
 
-# Last of all: only a message no other handler took gets here.
-@router.message(StateFilter(None), _not_a_command)
-async def feedback_without_asking(
+def _outside_admin_chat(message: Message, admin_chat_id: int | None) -> bool:
+    """Feedback needs an admin chat, and the admin writing to their own bot is not feedback."""
+    return admin_chat_id is not None and message.chat.id != admin_chat_id
+
+
+# Last in the file: outside any flow it takes only what no handler above did, since someone
+# writing out of the blue is likely stuck.
+@router.message(FeedbackFlow.waiting, _not_a_command)
+@router.message(StateFilter(None), _not_a_command, _outside_admin_chat)
+async def forward_feedback(
     message: Message,
     state: FSMContext,
     bot: Bot,
@@ -1063,12 +1041,12 @@ async def feedback_without_asking(
     feedback: Feedback,
     admin_chat_id: int | None,
 ) -> None:
-    """Someone writing outside a wizard is likely stuck, so it reaches the developer as feedback."""
-    if admin_chat_id is None or message.chat.id == admin_chat_id:
-        return
     message_ids = await _whole_album(message)
     if message_ids is None:
         return
+    assert (
+        admin_chat_id is not None
+    )  # ask_feedback and _outside_admin_chat let no one in without it
     await _send_feedback(
         message,
         message_ids,
