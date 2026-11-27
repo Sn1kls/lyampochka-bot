@@ -284,3 +284,15 @@ async def test_a_schedule_that_applies_is_not_suspended(client: YasnoClient) -> 
     respx.get(DNEM_URL).respond(json=DNEM_SCHEDULE)
 
     assert not await client.suspended("dnem:17.1")
+
+
+@respx.mock
+async def test_a_typed_house_and_its_queues_cost_one_house_search(client: YasnoClient) -> None:
+    dnem, cek = mock_houses()
+    mock_group(13, 17, 1)
+    mock_group(21, 1, 2)
+
+    await client.search_buildings(DNIPRO, STREET, "10")
+    await client.building_subqueues(DNIPRO, STREET, "10")
+
+    assert (dnem.call_count, cek.call_count) == (1, 1)

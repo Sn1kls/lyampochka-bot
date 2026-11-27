@@ -22,36 +22,41 @@ class Catalog:
         """`cache_prefix` keeps each oblenergo's cached lists apart (their ids overlap)."""
         self._repository = repository
         self._source = source
+        # Decided once: a source either lists a street's buildings or only searches them.
+        self._searched: SearchCatalogSource | None = None
+        self._listed: CatalogSource | None = None
+        if isinstance(source, SearchCatalogSource):
+            self._searched = source
+        else:
+            self._listed = source
         self._cache_prefix = cache_prefix
         self._failed_refresh_at: dict[str, datetime] = {}
 
     @property
     def asks_building_number(self) -> bool:
         """A searched catalogue cannot list a street's buildings: the user types the number."""
-        return isinstance(self._source, SearchCatalogSource)
+        return self._searched is not None
 
     async def find_cities(self, query: str, now: datetime) -> list[City]:
         cities = await self._cached("cities", City, self._source.cities, now)
         return _search(cities, query)
 
     async def find_streets(self, city_id: int, query: str, now: datetime) -> list[Street]:
-        if isinstance(self._source, SearchCatalogSource):
-            return _search(await self._source.search_streets(city_id, query), query)
-        source = self._source
+        if self._searched is not None:
+            return _search(await self._searched.search_streets(city_id, query), query)
+        listed = self._list_source()
         streets = await self._cached(
-            f"streets:{city_id}", Street, lambda: source.streets(city_id), now
+            f"streets:{city_id}", Street, lambda: listed.streets(city_id), now
         )
         return _search(streets, query)
 
     async def buildings(self, city_id: int, street_id: int, now: datetime) -> list[Building]:
         """In house number order: sources list them as their records go (LOE by account)."""
-        if isinstance(self._source, SearchCatalogSource):
-            raise TypeError("a searched catalogue has no building list: use find_buildings")
-        source = self._source
+        listed = self._list_source()
         buildings = await self._cached(
             f"buildings:{city_id}:{street_id}",
             Building,
-            lambda: source.buildings(city_id, street_id),
+            lambda: listed.buildings(city_id, street_id),
             now,
         )
         return _in_house_order(buildings)
@@ -60,18 +65,23 @@ class Catalog:
         self, city_id: int, street_id: int, query: str, now: datetime
     ) -> list[Building]:
         """Houses whose number holds what the user typed; only for `asks_building_number`."""
-        if not isinstance(self._source, SearchCatalogSource):
+        if self._searched is None:
             raise TypeError("a listed catalogue has no building search: use buildings")
-        return _in_house_order(await self._source.search_buildings(city_id, street_id, query))
+        return _in_house_order(await self._searched.search_buildings(city_id, street_id, query))
 
     async def subqueues(self, city_id: int, street_id: int, building: Building) -> list[str]:
         """All subqueues of the building; empty when schedules do not apply to it."""
-        if isinstance(self._source, SearchCatalogSource):
-            return await self._source.building_subqueues(city_id, street_id, building.name)
+        if self._searched is not None:
+            return await self._searched.building_subqueues(city_id, street_id, building.name)
         if building.cherg_gpv is None:
             return []
         found = await self._source.building_subqueues(city_id, street_id, building.name)
         return found or [building.cherg_gpv]
+
+    def _list_source(self) -> CatalogSource:
+        if self._listed is None:
+            raise TypeError("a searched catalogue has no lists: use the find_ methods")
+        return self._listed
 
     async def _cached[Item: (City, Street, Building)](
         self,

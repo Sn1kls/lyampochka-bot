@@ -4,6 +4,7 @@ import re
 import time
 import zlib
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from importlib.metadata import version
 from typing import Any
@@ -105,6 +106,8 @@ class YasnoClient:
         # provider → (expires at, groups); one request a minute covers all of its groups.
         self._schedules: dict[str, tuple[float, dict[str, _Group]]] = {}
         self._failures: dict[str, tuple[float, SourceError]] = {}
+        # `/add` searches a number, then asks the picked house's queues: one request, not two.
+        self._houses_cache: dict[tuple[str, int, int, str], tuple[float, list[_Named]]] = {}
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -175,7 +178,7 @@ class YasnoClient:
     async def building_subqueues(
         self, city_id: int, street_id: int, building_name: str
     ) -> list[str]:
-        cities = _unpair(city_id)
+        cities, streets = _unpair(city_id), _unpair(street_id)
         wanted = normalise(building_name)
         subqueues = set()
         for provider, house in await self._houses(city_id, street_id, building_name):
@@ -187,7 +190,7 @@ class YasnoClient:
                     "regionId": REGION_ID,
                     "dsoId": DSO_IDS[provider],
                     "cityId": cities[provider],
-                    "streetId": _unpair(street_id)[provider],
+                    "streetId": streets[provider],
                     "houseId": house.id,
                 },
                 {"Accept": "application/json"},
@@ -200,13 +203,21 @@ class YasnoClient:
     async def _houses(self, city_id: int, street_id: int, query: str) -> list[tuple[str, _Named]]:
         cities = _unpair(city_id)
         found = []
+        now = self._monotonic()
+        self._houses_cache = {
+            key: cached for key, cached in self._houses_cache.items() if now < cached[0]
+        }
         for provider, provider_street in _unpair(street_id).items():
-            houses = await self._addresses(
-                "houses",
-                provider,
-                {"cityId": cities[provider], "streetId": provider_street, "query": query.strip()},
-            )
-            found += [(provider, house) for house in houses]
+            key = (provider, cities[provider], provider_street, query.strip())
+            if (cached := self._houses_cache.get(key)) is None:
+                houses = await self._addresses(
+                    "houses",
+                    provider,
+                    {"cityId": key[1], "streetId": key[2], "query": key[3]},
+                )
+                cached = (now + CACHE_SECONDS, houses)
+                self._houses_cache[key] = cached
+            found += [(provider, house) for house in cached[1]]
         return found
 
     async def _addresses(
@@ -244,22 +255,30 @@ class YasnoClient:
             return groups
 
 
+@dataclass
+class _Merged:
+    name: str
+    ids: dict[str, int] = field(default_factory=dict)  # provider → its own id
+
+
 def _merge(named: dict[str, list[_Named]]) -> list[tuple[int, str]]:
     """(pair id, name): a name both operators list becomes one item, named as DnEM writes it."""
-    merged: list[list[Any]] = []  # [name, DnEM id, CEK id]
-    by_name: dict[str, list[Any]] = {}
-    for column, provider in enumerate((DNEM, CEK), start=1):
+    merged: list[_Merged] = []
+    by_name: dict[str, _Merged] = {}
+    for provider in (DNEM, CEK):
         for item in named.get(provider, []):
             if not 0 < item.id < PAIR_BASE:
                 raise ApiSchemaError(f"yasno: id {item.id} does not fit a pair id")
             entry = by_name.get(normalise(item.value))
             # One operator's own duplicates stay apart: only the other operator merges in.
-            if entry is None or entry[column]:
-                entry = [item.value.strip(), 0, 0]
+            if entry is None or provider in entry.ids:
+                entry = _Merged(item.value.strip())
                 merged.append(entry)
                 by_name.setdefault(normalise(item.value), entry)
-            entry[column] = item.id
-    return [(dnem_id * PAIR_BASE + cek_id, name) for name, dnem_id, cek_id in merged]
+            entry.ids[provider] = item.id
+    return [
+        (entry.ids.get(DNEM, 0) * PAIR_BASE + entry.ids.get(CEK, 0), entry.name) for entry in merged
+    ]
 
 
 def _unpair(pair_id: int) -> dict[str, int]:

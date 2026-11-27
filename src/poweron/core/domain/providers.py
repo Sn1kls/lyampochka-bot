@@ -21,8 +21,12 @@ VOE_CACHE_PREFIX = "voe:"
 VOE_CATALOG_IMPORTED_KEY = VOE_CACHE_PREFIX + "imported"
 
 
+# Providers that share a region; every other provider is a region of its own.
+REGION_OF = {DNEM: DNIPRO, CEK: DNIPRO}
+
+
 def region_of(provider: str) -> str:
-    return DNIPRO if provider in (DNEM, CEK) else provider
+    return REGION_OF.get(provider, provider)
 
 
 def provider_of(cherg_gpv: str) -> str:
