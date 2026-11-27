@@ -442,7 +442,7 @@ class SqlRepository:
             return [DeliveryTarget(row.id, row.channel, row.address) for row in result]
 
     async def add_feedback_messages(
-        self, user_id: int, source_message_id: int, refs: Sequence[str], now: datetime
+        self, user_id: int, source_message_id: int | None, refs: Sequence[str], now: datetime
     ) -> None:
         rows = [
             {

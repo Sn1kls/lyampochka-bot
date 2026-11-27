@@ -7,6 +7,7 @@ from poweron.adapters.db.repository import SqlRepository
 from poweron.core.domain.models import (
     AlertKind,
     City,
+    FeedbackThread,
     MessageKind,
     OutboxMessage,
     Street,
@@ -14,6 +15,7 @@ from poweron.core.domain.models import (
 from poweron.core.domain.providers import TOE
 from poweron.core.ports import ApiSchemaError, SourcePaused, SourceUnavailable
 from poweron.core.services.alerts import Alerts
+from poweron.core.services.feedback import Feedback
 from poweron.core.services.groups import RECHECK_AFTER, SubqueueChecker
 from poweron.core.services.notifications import MAX_ATTEMPTS
 from poweron.core.services.planned_works import PlannedWorks
@@ -210,6 +212,16 @@ async def test_every_new_user_is_announced_once(
         (AlertKind.NEW_USER, "Оля @olya"),
         (AlertKind.NEW_USER, "Петро"),
     ]
+
+
+async def test_the_admin_can_answer_a_new_user_alert(
+    repository: SqlRepository, alerter: FakeAlerter, alerts: Alerts
+) -> None:
+    subscriptions = Subscriptions(repository, alerts)
+
+    user_id = await subscriptions.register("telegram", "101", "telegram", "101", "Оля", now=NOW)
+
+    assert await Feedback(repository).thread("fake:1") == FeedbackThread(user_id, None)
 
 
 async def test_registration_survives_a_failing_alerter(

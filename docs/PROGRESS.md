@@ -420,3 +420,12 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
 - Decisions (owner): one button, the address decides the operator; a house in both operators offers both queues; inputs merge; links per operator; schedules only; no broadcast.
 - Checked live: CEK and DnEM addresses in Dnipro through the real client; просп. Яворницького Дмитра 1 has its two inputs in different groups.
 - Known limits: see the notes (differently spelled streets, 20 results per search, the emergency status not seen live).
+
+## 2026-11-27: Write to the developer
+
+- Owner's request: users who join and add no address may be stuck; let them ask, and let the owner write first.
+  - The admin's Reply to a «👤 Новий користувач» alert reaches that user, like a reply to feedback (`AdminAlerter.alert` returns the message ref; `register` stores it as a thread with no user message). Alerts sent before this release cannot be answered.
+  - The menu button is «✉️ Написати розробнику» (asks for questions too); the old «✉️ Відгук» still works on old keyboards. No `announce-menu`: every push brings the new keyboard.
+  - Where `/add` gets stuck (nothing found, no buildings, no schedules) and in the no-address reminder, a line points to that button.
+  - «Пуші» became «сповіщення» in user texts: not everyone knows the word.
+- Postponed: an admin alert on every empty search (it would show what people type).

@@ -9,7 +9,9 @@ from aiogram.methods import CopyMessages, SendMessage
 
 from poweron.adapters.db.repository import SqlRepository
 from poweron.adapters.telegram import handlers, keyboards, texts
-from poweron.core.domain.models import FeedbackThread
+from poweron.adapters.telegram.notifier import message_ref
+from poweron.core.domain.models import AlertKind, FeedbackThread
+from poweron.core.services.alerts import Alerts
 from poweron.core.services.feedback import Feedback
 from tests.telegram.test_handlers import Chat, add_address
 
@@ -446,3 +448,32 @@ async def test_without_the_header_the_copy_still_leads_back_to_the_user(
     feedback = user_chat.dispatcher["feedback"]
     assert await feedback.thread(f"telegram:999:{copy_id}") == FeedbackThread(1, 40)
     assert user_chat.sent_texts()[-1] == texts.FEEDBACK_SENT
+
+
+class AlertInAdminChat:
+    """Puts every alert at message 90 of the admin chat, as Telegram would number it."""
+
+    async def alert(self, kind: AlertKind, details: str) -> str:
+        return message_ref(ADMIN_CHAT_ID, 90)
+
+
+async def test_the_admin_writes_first_by_answering_a_new_user_alert(
+    repository: SqlRepository,
+) -> None:
+    chat = Chat(
+        repository,
+        alerts=Alerts(AlertInAdminChat()),
+        admin_chat_id=ADMIN_CHAT_ID,
+        feedback=Feedback(repository),
+    )
+    await chat.say("/start")
+
+    await reply_to(chat, 90, "Привіт! Не вийшло знайти вулицю?")
+
+    assert chat.sent_texts()[-1] == texts.FEEDBACK_REPLY_SENT
+    assert await queued(repository) == [
+        (
+            "feedback_reply",
+            {"text": "Привіт! Не вийшло знайти вулицю?", "reply_to": None, "answer": 61},
+        )
+    ]

@@ -8,10 +8,11 @@ class FakeAlerter:
     alerts: list[tuple[AlertKind, str]] = field(default_factory=list)
     error: Exception | None = None
 
-    async def alert(self, kind: AlertKind, details: str) -> None:
+    async def alert(self, kind: AlertKind, details: str) -> str:
         if self.error:
             raise self.error
         self.alerts.append((kind, details))
+        return f"fake:{len(self.alerts)}"
 
 
 class FakeClock:

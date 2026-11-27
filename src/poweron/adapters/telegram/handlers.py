@@ -166,6 +166,7 @@ async def start(
         "telegram",
         str(message.chat.id),
         display_name(event_from_user),
+        now=_now(),
     )
     await message.answer(texts.GREETING, reply_markup=keyboards.menu_keyboard())
     if not await subscriptions.of_user(user_id):
@@ -320,7 +321,7 @@ async def feedback_by_reply(
 
 
 @router.message(Command("feedback"))
-@router.message(F.text == texts.MENU_FEEDBACK)
+@router.message(F.text.in_({texts.MENU_FEEDBACK, texts.MENU_FEEDBACK_OLD}))
 async def ask_feedback(
     message: Message,
     state: FSMContext,

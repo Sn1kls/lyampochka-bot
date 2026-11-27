@@ -239,7 +239,7 @@ class Repository(Protocol):
     async def deactivate_target(self, target_id: int) -> None: ...
 
     async def add_feedback_messages(
-        self, user_id: int, source_message_id: int, refs: Sequence[str], now: datetime
+        self, user_id: int, source_message_id: int | None, refs: Sequence[str], now: datetime
     ) -> None: ...
 
     async def feedback_thread(self, ref: str) -> FeedbackThread | None: ...
@@ -266,6 +266,9 @@ class Heartbeat(Protocol):
 
 
 class AdminAlerter(Protocol):
-    async def alert(self, kind: AlertKind, details: str) -> None:
-        """Tell the bot owner that something needs attention; `details` is technical, not for users."""
+    async def alert(self, kind: AlertKind, details: str) -> str:
+        """Tell the bot owner that something needs attention; `details` is technical, not for users.
+
+        Returns an opaque ref of the sent message, so the owner's Reply to it can be traced.
+        """
         ...
