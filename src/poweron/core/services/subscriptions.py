@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Sequence
 from datetime import datetime
 
@@ -6,6 +7,8 @@ from poweron.core.ports import Repository
 from poweron.core.services.alerts import Alerts
 
 REMINDER_MINUTES = (0, 15, 30, 60)
+
+logger = logging.getLogger(__name__)
 
 
 class NoScheduleForAddress(Exception):
@@ -41,7 +44,12 @@ class Subscriptions:
         if created and self._alerts is not None:
             ref = await self._alerts.send(AlertKind.NEW_USER, display_name)
             if ref is not None:
-                await self._repository.add_feedback_messages(user_id, None, [ref], now)
+                try:  # the user is registered already; only the admin's Reply is lost
+                    await self._repository.add_feedback_messages(user_id, None, [ref], now)
+                except Exception as error:
+                    logger.warning(
+                        "new-user alert of user %s cannot be answered: %r", user_id, error
+                    )
         return user_id
 
     async def find_user(self, provider: str, external_id: str) -> int | None:

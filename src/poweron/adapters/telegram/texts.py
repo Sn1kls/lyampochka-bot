@@ -27,8 +27,8 @@ MENU_REMOVE = "🗑 Видалити адресу"
 MENU_HELP = "❓ Допомога"
 MENU_FEEDBACK = "✉️ Написати розробнику"
 MENU_FEEDBACK_OLD = "✉️ Відгук"
-# Where someone gets stuck adding an address.
-STUCK = f"\nНе виходить? Натисни «{MENU_FEEDBACK}» внизу і напиши, що шукаєш."
+# For a stuck user. The envelope, not the label: an old keyboard still says «✉️ Відгук».
+STUCK = "\nНе виходить? Натисни ✉️ внизу і напиши, що шукаєш."
 
 GREETING = (
     f"Привіт! Я «{BRAND}» 💡\n"
@@ -81,7 +81,7 @@ BUILDING_NOT_FOUND = "Такого будинку не бачу. Обери зі
 NO_SCHEDULE_FOR_ADDRESS = (
     "На жаль, для адреси <b>{address}</b> графіки погодинних відключень не діють, "
     "тож підписувати не буду.\n"
-    f"Думаєш, це помилка? Натисни «{MENU_FEEDBACK}» внизу і напиши."
+    "Думаєш, це помилка? Натисни ✉️ внизу і напиши."
 )
 CHOOSE_QUEUES = "Твій будинок у кількох чергах: {queues}. Яку відстежувати?"
 BUTTON_QUEUE = "Черга {queue}"

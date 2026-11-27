@@ -236,6 +236,21 @@ async def test_registration_survives_a_failing_alerter(
     assert await repository.find_user("telegram", "101") == user_id
 
 
+async def test_registration_survives_a_failing_thread_write(
+    repository: SqlRepository, alerts: Alerts, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def locked(*_: object) -> None:
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(repository, "add_feedback_messages", locked)
+
+    user_id = await Subscriptions(repository, alerts).register(
+        "telegram", "101", "telegram", "101", "Оля", now=NOW
+    )
+
+    assert await repository.find_user("telegram", "101") == user_id
+
+
 async def test_jobs_work_without_alerts(repository: SqlRepository) -> None:
     await subscribe(repository)
     source = BrokenSource(SourceUnavailable("down"))
