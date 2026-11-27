@@ -390,3 +390,10 @@ Newest entry at the bottom. Each entry: date, phase, done, decisions, open quest
   - Volyn depends on the Mac being awake and online; asleep for over an hour means no line (the link button stays).
   - In Ternopil a user may wait for two API requests (emergency, then planned); during a poll burst one may time out and the line is missing.
   - Volyn rows carry the site's reason text as is («Планові ремонтні роботи»).
+
+## 2026-11-27: Reminder for users without an address
+
+- Five users had been in the bot 4–14 days without an address, so they never got a schedule or a push.
+- `make nudge-no-address` queues «👋 Адреси ще немає…» once ever per user (`no-address:{user_id}`) for everyone reachable on Telegram with no subscription now who joined over a day ago (someone who removed their only address counts too: removal leaves no trace; none of the first five ever had one); it buzzes, unlike the menu news.
+- The text avoids the past tense so it does not guess the user's gender.
+- Manual for now; an automatic reminder a day after joining waits until the manual one proves too little.
