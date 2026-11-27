@@ -204,9 +204,9 @@ async def test_every_new_user_is_announced_once(
 ) -> None:
     subscriptions = Subscriptions(repository, alerts)
 
-    await subscriptions.register("telegram", "101", "telegram", "101", "Оля @olya")
-    await subscriptions.register("telegram", "101", "telegram", "101", "Оля @olya")
-    await subscriptions.register("telegram", "102", "telegram", "102", "Петро")
+    await subscriptions.register("telegram", "101", "telegram", "101", "Оля @olya", now=NOW)
+    await subscriptions.register("telegram", "101", "telegram", "101", "Оля @olya", now=NOW)
+    await subscriptions.register("telegram", "102", "telegram", "102", "Петро", now=NOW)
 
     assert alerter.alerts == [
         (AlertKind.NEW_USER, "Оля @olya"),
@@ -230,7 +230,7 @@ async def test_registration_survives_a_failing_alerter(
     alerter.error = RuntimeError("telegram is down")
 
     user_id = await Subscriptions(repository, alerts).register(
-        "telegram", "101", "telegram", "101", "Оля"
+        "telegram", "101", "telegram", "101", "Оля", now=NOW
     )
 
     assert await repository.find_user("telegram", "101") == user_id

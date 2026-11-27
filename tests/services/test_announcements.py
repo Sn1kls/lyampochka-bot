@@ -10,7 +10,7 @@ from tests.services.conftest import NOW, FakeNotifier, subscribe
 async def register(repository: SqlRepository, *chat_ids: str) -> list[int]:
     subscriptions = Subscriptions(repository)
     return [
-        await subscriptions.register("telegram", chat_id, "telegram", chat_id)
+        await subscriptions.register("telegram", chat_id, "telegram", chat_id, now=NOW)
         for chat_id in chat_ids
     ]
 

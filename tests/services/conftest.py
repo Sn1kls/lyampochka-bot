@@ -51,7 +51,9 @@ class FakeNotifier:
 async def subscribe(repository: SqlRepository, external_id: str = "101") -> int:
     """One subscription to subqueue 4.1, created at NOW."""
     subscriptions = Subscriptions(repository)
-    user_id = await subscriptions.register("telegram", external_id, "telegram", external_id)
+    user_id = await subscriptions.register(
+        "telegram", external_id, "telegram", external_id, now=NOW
+    )
     city, street = (
         City(id=1032, name="Тернопіль", otg_name=None),
         Street(id=9985, name="вул. Садова"),

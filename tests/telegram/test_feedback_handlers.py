@@ -149,7 +149,7 @@ async def test_forgetting_oneself_does_not_reset_the_limit(repository: SqlReposi
     await chat.say("/start")
     await send_feedback(chat)
     # Someone registers later, so the returning user cannot get their old id back.
-    await chat.subscriptions.register("telegram", "7", "telegram", "7")
+    await chat.subscriptions.register("telegram", "7", "telegram", "7", now=LATER)
     await chat.press(keyboards.Decision(action="forget", accepted=True))
     await chat.say("/start")  # a new internal user, the same Telegram account
 
@@ -231,7 +231,7 @@ async def test_a_reply_to_a_bot_prompt_still_reaches_the_wizard(chat: Chat) -> N
 
 async def test_a_reply_to_a_forgotten_user_says_so(chat: Chat) -> None:
     await chat.say("/start")
-    other = await chat.subscriptions.register("telegram", "2", "telegram", "2")
+    other = await chat.subscriptions.register("telegram", "2", "telegram", "2", now=LATER)
     await chat.dispatcher["feedback"].record(other, 40, ["telegram:1:77"], datetime.now(UTC))
     await chat.subscriptions.forget(other)
 

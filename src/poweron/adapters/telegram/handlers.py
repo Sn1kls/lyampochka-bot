@@ -321,7 +321,7 @@ async def feedback_by_reply(
 
 
 @router.message(Command("feedback"))
-@router.message(F.text.in_({texts.MENU_FEEDBACK, texts.MENU_FEEDBACK_OLD}))
+@router.message(F.text.in_(keyboards.FEEDBACK_LABELS))
 async def ask_feedback(
     message: Message,
     state: FSMContext,

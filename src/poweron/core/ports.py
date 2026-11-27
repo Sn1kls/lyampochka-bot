@@ -267,8 +267,8 @@ class Heartbeat(Protocol):
 
 class AdminAlerter(Protocol):
     async def alert(self, kind: AlertKind, details: str) -> str:
-        """Tell the bot owner that something needs attention; `details` is technical, not for users.
+        """Tell the bot owner that something needs attention; returns the sent message's ref.
 
-        Returns an opaque ref of the sent message, so the owner's Reply to it can be traced.
+        `details` is technical, not for users.
         """
         ...

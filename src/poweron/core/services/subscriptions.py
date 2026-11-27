@@ -28,18 +28,19 @@ class Subscriptions:
         channel: str,
         address: str,
         display_name: str = "",
-        now: datetime | None = None,
+        *,
+        now: datetime,
     ) -> int:
         """`display_name` only goes into the admin's new-user alert; it is never stored.
 
-        With `now` the admin can answer that alert, like a feedback the user never wrote.
+        The admin can answer that alert, like a feedback the user never wrote.
         """
         user_id, created = await self._repository.register_user(
             provider, external_id, channel, address
         )
         if created and self._alerts is not None:
             ref = await self._alerts.send(AlertKind.NEW_USER, display_name)
-            if ref is not None and now is not None:
+            if ref is not None:
                 await self._repository.add_feedback_messages(user_id, None, [ref], now)
         return user_id
 
