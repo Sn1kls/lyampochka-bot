@@ -137,8 +137,14 @@ def _search[Item: (City, Street)](items: list[Item], query: str) -> list[Item]:
     wanted = normalise(query)
     if not wanted:
         return []
+    words = set(wanted.split())
     matches = [(normalise(item.name), item) for item in items]
-    matches = [match for match in matches if wanted in match[0]]
+    # Or every word of the name was typed: «Степана Бандери» finds Volyn's «Бандери».
+    matches = [
+        match
+        for match in matches
+        if wanted in match[0] or match[0] and set(match[0].split()) <= words
+    ]
     matches.sort(key=lambda match: (not match[0].startswith(wanted), match[0]))
     return [item for _, item in matches]
 
