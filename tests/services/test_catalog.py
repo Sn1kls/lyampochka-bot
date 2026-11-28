@@ -6,7 +6,7 @@ import pytest
 from poweron.adapters.db.repository import SqlRepository
 from poweron.core.domain.models import Building, City, Street
 from poweron.core.ports import SourceUnavailable
-from poweron.core.services.catalog import Catalog, find_by_name
+from poweron.core.services.catalog import Catalog, _search, find_by_name
 from tests.services.conftest import NOW
 
 TERNOPIL = City(id=1, name="Тернопіль", otg_name="Тернопільська")
@@ -24,6 +24,7 @@ STREETS = [
     Street(id=3, name="просп. Степана Бандери"),
     Street(id=4, name="вул. Об'їзна"),
     Street(id=5, name="вул. Лісова Садова"),
+    Street(id=6, name="вул. Шевченка"),  # Volyn lists some streets by the surname alone
 ]
 BUILDINGS = [Building(1, "1", "4.1"), Building(2, "1А", "4.1"), Building(3, "23", None)]
 
@@ -85,6 +86,16 @@ async def test_leading_type_prefix_is_ignored_on_both_sides(catalog: Catalog) ->
     assert [city.id for city in await catalog.find_cities("с. острів", NOW)] == [3]
     streets = await catalog.find_streets(1, "вул. садова", NOW)
     assert [street.id for street in streets] == [1, 5]
+
+
+async def test_a_full_name_finds_a_street_listed_by_the_surname(catalog: Catalog) -> None:
+    for query in ("Тараса Шевченка", "вул. Т. Шевченка"):
+        assert [street.id for street in await catalog.find_streets(1, query, NOW)] == [6]
+    assert [street.id for street in await catalog.find_streets(1, "Степана Бандери", NOW)] == [3]
+
+
+async def test_a_blank_name_matches_no_query() -> None:
+    assert _search([Street(id=7, name="  ")], "шевченка") == []
 
 
 async def test_apostrophes_are_unified(catalog: Catalog) -> None:
